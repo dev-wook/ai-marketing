@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server'
-import { generateGeminiText } from '@/lib/gemini'
+import { GeminiApiError, generateGeminiText } from '@/lib/gemini'
+import {
+  searchNaverBlog,
+  searchNaverLocal,
+  toNaverBlogSearchContext,
+  toNaverLocalSearchContext,
+} from '@/lib/naver'
 
 type KeywordRequest = {
   keyword?: string
@@ -10,6 +16,11 @@ type KeywordRecommendation = {
   keyword: string
   intent: string
   reason: string
+  aiScore: number
+  blogSignal: string
+  searchSignal: string
+  placeSignal: string
+  finalJudgement: string
 }
 
 type KeywordPayload = {
@@ -26,31 +37,224 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: '분석할 키워드를 입력해주세요.' }, { status: 400 })
     }
 
-    const generatedText = await generateGeminiText(createKeywordPrompt(keyword), true)
+    const naverSearchContext = await getNaverSearchContext(keyword)
+    const generatedText = await generateGeminiText(createKeywordPrompt(keyword, naverSearchContext), true)
     const payload = normalizeKeywordPayload(keyword, parseJsonPayload(generatedText))
 
     return NextResponse.json(payload)
   } catch (error) {
-    const message = error instanceof Error ? error.message : '키워드 분석에 실패했습니다.'
-    const status = message.includes('Gemini 사용량') ? 503 : 500
+    const { message, status } = toKeywordErrorResponse(error)
 
     return NextResponse.json({ message }, { status })
   }
 }
 
-function createKeywordPrompt(keyword: string) {
+function toKeywordErrorResponse(error: unknown) {
+  if (error instanceof GeminiApiError) {
+    if (error.status === 400) {
+      return {
+        status: 400,
+        message: '입력한 키워드를 다시 확인해주세요.',
+      }
+    }
+
+    if (error.status === 401 || error.status === 403) {
+      return {
+        status: 500,
+        message: '현재 AI 연결 상태가 원활하지 않습니다. 잠시 후 다시 시도해주세요.',
+      }
+    }
+
+    if (error.status === 404) {
+      return {
+        status: 500,
+        message: '현재 요청을 처리할 수 없습니다. 잠시 후 다시 시도해주세요.',
+      }
+    }
+
+    if (error.status === 429) {
+      return {
+        status: 429,
+        message: '현재 요청이 많습니다. 잠시 후 다시 시도해주세요.',
+      }
+    }
+
+    if (error.status === 500 || error.status === 503) {
+      return {
+        status: 503,
+        message: '현재 AI 분석이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
+      }
+    }
+  }
+
+  if (error instanceof Error) {
+    console.error('Keyword recommendation error', {
+      message: error.message,
+      stack: error.stack,
+    })
+  }
+
+  return {
+    status: 500,
+    message: '키워드 분석 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.',
+  }
+}
+
+async function getNaverSearchContext(keyword: string) {
+  const [blogContext, localContext] = await Promise.all([
+    getNaverBlogContext(keyword),
+    getNaverLocalContext(keyword),
+  ])
+
+  return [blogContext, localContext].join('\n\n')
+}
+
+async function getNaverBlogContext(keyword: string) {
+  try {
+    const payload = await searchNaverBlog({
+      query: keyword,
+      display: 20,
+      start: 1,
+      sort: 'sim',
+    })
+
+    return toNaverBlogSearchContext(payload, 20)
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error('Naver blog context skipped', {
+        message: error.message,
+      })
+    }
+
+    return '네이버 블로그 검색 참고 데이터: 현재 조회하지 못했습니다.'
+  }
+}
+
+async function getNaverLocalContext(keyword: string) {
+  try {
+    const payload = await searchNaverLocal({
+      query: keyword,
+      display: 5,
+      start: 1,
+      sort: 'comment',
+    })
+
+    return toNaverLocalSearchContext(payload)
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error('Naver local context skipped', {
+        message: error.message,
+      })
+    }
+
+    return '네이버 지역 검색 참고 데이터: 현재 조회하지 못했습니다.'
+  }
+}
+
+function createKeywordPrompt(keyword: string, naverSearchContext: string) {
   return `
-당신은 AEO(Answer Engine Optimization), SEO, 검색 의도 분석에 능숙한 한국어 마케팅 키워드 전략가입니다.
-Google Search grounding을 사용해 입력 키워드와 관련된 최근 검색 흐름, 질문 패턴, 상위 콘텐츠 주제를 참고하세요.
+당신은 블로그 SEO, 네이버 플레이스, 생성형 AI 검색 환경을 함께 이해하는
+한국어 AI 검색 노출 키워드 분석가입니다.
+
+목표는 단순히 검색량이 높은 키워드를 추천하는 것이 아니라,
+사용자가 블로그를 작성하거나 플레이스 정보를 관리할 때
+AI 검색, AEO, GEO 관점에서 중요하게 반영해야 할 주제어와 검색 키워드를 선별하는 것입니다.
+
+입력 키워드가 "노원 속눈썹펌"처럼 지역과 서비스가 함께 들어오면,
+해당 서비스가 상위 노출과 AI 추천에서 더 잘 이해되도록 만드는 핵심 키워드를 분석하세요.
 
 입력 키워드: ${keyword}
 
-목표:
-- 입력 키워드를 기준으로 AEO 상위 노출에 유리한 추천 키워드 10개를 선별하세요.
-- 사용자가 실제로 검색창이나 AI 검색창에 입력할 법한 자연스러운 한국어 키워드를 우선하세요.
-- 질문형, 비교형, 문제해결형, 구매검토형, 방법탐색형처럼 검색 의도를 구분하세요.
-- 너무 광범위하거나 의미가 겹치는 키워드는 피하고, 콘텐츠 제목/FAQ/본문 소제목으로 활용하기 좋은 키워드를 선택하세요.
-- 순위는 AEO 콘텐츠로 답변하기 좋은 정도와 상위 노출 가능성을 함께 고려해 정하세요.
+${naverSearchContext}
+
+분석 기준:
+- 입력 키워드의 핵심 주제, 업종, 제품/서비스, 사용자 니즈를 먼저 파악하세요.
+- 네이버 블로그 검색 참고 데이터를 가장 중요한 근거로 사용해 상위 콘텐츠의 제목, 요약, 반복 표현, 고객 관심사를 분석하세요.
+- Google Search grounding을 활용해 최근 검색 흐름, 연관 질문, 상위 콘텐츠 주제, 사용자 관심사를 참고하세요.
+- 네이버 지역 검색 참고 데이터는 플레이스 분류와 지역성 확인용 보조 데이터로만 사용하세요.
+- 블로그 본문, 제목 후보, 소제목, FAQ, 네이버 플레이스 소개/시술 설명에 반영하기 좋은 키워드를 우선하세요.
+- 생성형 AI가 업체나 콘텐츠를 이해할 때 함께 묶기 쉬운 서비스 속성, 지역성, 고객 고민, 신뢰 신호를 우선하세요.
+- 단순 검색량 중심 키워드보다 사용자의 상황, 목적, 고민, 전환 가능성이 드러나는 키워드를 우선하세요.
+- 실제 사용자가 검색창 또는 AI 검색창에 입력할 법한 자연스러운 한국어 표현을 사용하세요.
+- 실제 검색 로그에 존재할 법한 자연스러운 표현을 사용하세요.
+
+추천 기준:
+1. 지역/서비스 핵심 키워드
+2. 가격, 후기, 추천, 유지기간, 전후, 예약, 잘하는곳 같은 전환 속성 키워드
+3. 고객의 고민, 불안, 문제를 드러내는 키워드
+4. 시술/서비스 방식, 품질, 전문성, 신뢰도를 설명하는 키워드
+5. 블로그 본문과 FAQ에서 다루면 좋은 질문 의도 키워드
+6. 네이버 플레이스 소개, 메뉴명, 시술 설명, 사진 설명에 반영하기 좋은 키워드
+7. AI 검색 결과에서 관련 주제어로 함께 묶이기 좋은 키워드
+8. 상위 블로그 콘텐츠에서 반복되는 표현을 그대로 베끼지 말고 검색 의도 단위로 압축한 키워드
+9. 의미가 겹치는 키워드, 단어 순서만 바꾼 키워드, 과도한 광고성 표현은 제외
+
+키워드 작성 규칙:
+- keyword는 콘텐츠 제목이 아니라 실제 검색어 또는 핵심 주제어 형태로 작성하세요.
+- 너무 길거나 문장형 표현은 피하고, 실제 검색어처럼 자연스럽고 간결하게 작성하세요.
+- 문장형, 질문문, 블로그 제목형, 설명형 문구는 출력하지 마세요.
+- "~하는 법", "~고르는 법", "~알아야 할 것", "~주의사항", "~추천 가이드", "~총정리"처럼 제목으로 보이는 표현은 피하세요.
+- 가격, 후기, 추천, 유지기간 같은 속성어는 제거 대상이 아니라 균형 있게 섞어야 하는 핵심 요소입니다.
+- 입력 키워드에 같은 속성어만 붙인 반복 패턴은 피하고, 상황/목적/스타일/지역/비교/전환 의도가 골고루 드러나게 구성하세요.
+- 지역명이 입력된 경우 지역명은 중요한 신호이지만, 모든 키워드에 무조건 반복하지 마세요.
+- "블로그에서 다룰 주제", "플레이스에서 보강할 정보", "AI가 업체를 이해하는 단서"가 되도록 구성하세요.
+
+좋은 예시:
+입력 키워드: 카페
+- 감성카페
+- 디저트 맛집
+- 데이트 코스
+- 브런치 카페
+- 루프탑 카페
+- 조용한 카페
+- 카페거리
+- 사진맛집
+- 베이커리 카페
+- 신상카페
+
+나쁜 예시:
+- 분위기 좋은 카페를 고르는 방법
+- 데이트하기 좋은 카페 추천 가이드
+- 카페 방문 전 알아야 할 주의사항
+- 감성카페에서 사진 잘 찍는 법
+- 요즘 인기 있는 카페 총정리
+
+좋은 예시:
+입력 키워드: 노원 속눈썹펌
+- 노원 속눈썹펌
+- 노원 속눈썹펌 가격
+- 속눈썹펌 유지기간
+- 자연스러운 속눈썹펌
+- 속눈썹펌 전후
+- 노글루 속눈썹펌
+- 속눈썹펌 잘하는곳
+- 속눈썹펌 예약
+- 속눈썹펌 디자인
+- 속눈썹펌 후기
+
+나쁜 예시:
+- 속눈썹펌 오래 유지하는 관리법과 주의사항
+- 속눈썹펌 시술 전 반드시 알아야 할 모든 것
+- 내 눈매에 맞는 속눈썹펌 컬 종류 고르는 법
+- 속눈썹펌 부작용 예방하고 안전하게 시술받는 팁
+- 속눈썹펌 시술 주기 및 재시술 적정 간격은?
+
+순위 기준:
+- 1순위에 가까울수록 사용자의 의도가 명확하고,
+  검색엔진과 생성형 AI가 문맥을 이해하기 쉬우며,
+  블로그/플레이스에 반영했을 때 서비스 이해도와 전환 가능성을 높일 수 있는 키워드여야 합니다.
+
+AI Score 기준:
+- aiScore는 1~100 사이 정수로 작성하세요.
+- 점수는 Naver Blog Signal, Search Intent Signal, Google/AI Search Signal, Place Signal, Conversion Signal을 종합해 산정하세요.
+- 특정 근거 문장에서 "상위 블로그"만 반복하지 마세요. 블로그는 여러 신호 중 하나일 뿐입니다.
+- 90점 이상: 블로그 데이터, 검색 의도, AI 검색 연관성, 플레이스 전환성이 모두 강함
+- 80~89점: 둘 이상의 신호가 명확하고 실무 반영 가치가 높음
+- 70~79점: 보조 주제로 의미가 있으나 우선순위는 상대적으로 낮음
+- blogSignal은 네이버 블로그 상위 콘텐츠에서 확인되는 제목/요약/반복 표현 신호를 작성하세요.
+- searchSignal은 Google Search grounding, 일반 검색 의도, 생성형 AI가 연관 주제로 묶기 쉬운 정도를 종합해 작성하세요.
+- placeSignal은 지역성, 업체 선택, 예약, 방문, 후기, 플레이스 설명과 연결되는 신호를 작성하세요.
+- finalJudgement는 위 신호들을 종합한 최종 판단을 작성하세요.
 
 반드시 아래 JSON 형식으로만 답하세요.
 마크다운 코드블록, 설명 문장, 주석, trailing comma는 절대 포함하지 마세요.
@@ -62,11 +266,40 @@ Google Search grounding을 사용해 입력 키워드와 관련된 최근 검색
       "rank": 1,
       "keyword": "추천 키워드",
       "intent": "검색 의도 유형",
-      "reason": "추천 이유를 한국어 한 문장으로 작성"
+      "reason": "왜 AI 검색 노출과 사용자 의도 이해에 중요한지 한국어 한 문장으로 작성",
+      "aiScore": 92,
+      "blogSignal": "네이버 블로그 검색 데이터에서 확인한 신호를 한국어 한 문장으로 작성",
+      "searchSignal": "Google 검색 흐름과 AI 검색 맥락에서 확인한 신호를 한국어 한 문장으로 작성",
+      "placeSignal": "플레이스/지역/전환 맥락에서 확인한 신호를 한국어 한 문장으로 작성",
+      "finalJudgement": "종합 판단을 한국어 한 문장으로 작성"
     }
   ]
 }
-`
+
+주의:
+- recommendations는 반드시 10개만 생성하세요.
+- keyword는 실제 검색창에 입력할 법한 자연스럽고 간결한 한국어 표현으로 작성하세요.
+- 실제 검색처럼 자연스러운 표현을 사용하세요.
+- 단순 검색량 중심 키워드보다 사용자의 상황, 목적, 고민, 전환 가능성이 드러나는 키워드를 우선하세요.
+- 생성형 AI가 서비스의 특징, 위치, 강점, 고객 니즈를 함께 이해하기 쉬운 키워드를 우선하세요.
+- 가격, 후기, 추천, 유지기간 같은 핵심 속성어는 사용할 수 있지만 동일한 패턴만 반복하지 마세요.
+- intent는 아래 중 가장 적합한 하나를 사용하세요.
+
+- 정보탐색형
+- 질문형
+- 비교형
+- 문제해결형
+- 구매검토형
+- 방법탐색형
+- 후기탐색형
+- 지역/상황형
+- 예약/전환형
+
+- reason은 왜 이 키워드가 검색 의도, AI 연관성, 전환 가능성 관점에서 유리한지 설명하세요.
+- aiScore는 추천 순위에 대한 종합 점수를 1~100 정수로 작성하세요.
+- blogSignal, searchSignal, placeSignal, finalJudgement는 서로 다른 관점의 근거를 작성하세요.
+- blogSignal을 제외한 항목에는 "상위 블로그", "블로그 제목", "블로그 요약"이라는 표현을 반복하지 마세요.
+`;
 }
 
 function parseJsonPayload(text: string) {
@@ -96,6 +329,15 @@ function normalizeKeywordPayload(keyword: string, payload: Partial<KeywordPayloa
           keyword: toSafeText(item?.keyword),
           intent: toSafeText(item?.intent),
           reason: toSafeText(item?.reason),
+          aiScore: toSafeScore(item?.aiScore),
+          blogSignal:
+            toSafeText(item?.blogSignal) || '네이버 콘텐츠에서 관련 표현과 사용자 관심사를 확인했습니다.',
+          searchSignal:
+            toSafeText(item?.searchSignal) || '검색 의도와 AI 검색 연관성을 기준으로 평가했습니다.',
+          placeSignal:
+            toSafeText(item?.placeSignal) || '지역성과 방문 전환 가능성을 함께 검토했습니다.',
+          finalJudgement:
+            toSafeText(item?.finalJudgement) || '여러 검색 신호를 종합해 우선순위를 산정했습니다.',
         }))
         .filter((item) => item.keyword && item.intent && item.reason)
         .slice(0, 10)
@@ -120,4 +362,12 @@ function toSafeRank(value: unknown, index: number) {
 
 function toSafeText(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function toSafeScore(value: unknown) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 70
+  }
+
+  return Math.min(Math.max(Math.round(value), 1), 100)
 }

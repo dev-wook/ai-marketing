@@ -9,6 +9,11 @@ type KeywordRecommendation = {
   keyword: string
   intent: string
   reason: string
+  aiScore: number
+  blogSignal: string
+  searchSignal: string
+  placeSignal: string
+  finalJudgement: string
 }
 
 type KeywordResponse = {
@@ -18,12 +23,14 @@ type KeywordResponse = {
 
 const loadingSteps = [
   '검색 의도를 분석하고 있어요',
-  '답변형 키워드를 추출하고 있어요',
-  '상위 노출에 유리한 조합을 정리하고 있어요',
-  '추천 키워드 10개를 선별하고 있어요',
+  'AI가 중요하게 보는 주제어를 추출하고 있어요',
+  '상위 콘텐츠의 반복 신호를 검토하고 있어요',
+  '노출에 도움이 되는 키워드 10개를 선별하고 있어요',
 ]
 
-const examples = ['속눈썹펌', '다이어트 도시락', '스마트스토어 상세페이지']
+const examples = ['노원 속눈썹펌', '성수 감성카페', '강남 피부관리']
+const recentKeywordStorageKey = 'aiva:recent-keywords'
+const maxRecentKeywordCount = 5
 
 export function MarketingWorkspace() {
   const [view, setView] = useState<ViewKey>('home')
@@ -39,7 +46,7 @@ export function MarketingWorkspace() {
       <div className="min-h-screen bg-[radial-gradient(circle_at_28%_20%,rgba(0,200,255,0.22),transparent_32%),radial-gradient(circle_at_76%_28%,rgba(184,54,255,0.24),transparent_34%),linear-gradient(135deg,#080b14_0%,#0b1020_48%,#090713_100%)]">
         <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-5 md:px-8">
           <header className="relative z-20 flex items-center justify-between">
-            <BrandHeader />
+            <BrandHeader onClick={() => openView('home')} />
             <div className="relative">
               <button
                 type="button"
@@ -66,7 +73,7 @@ export function MarketingWorkspace() {
                   <MenuButton
                     active={view === 'keyword'}
                     eyebrow="Live"
-                    label="AI 추천 키워드"
+                    label="AI 검색 노출 키워드 분석"
                     onClick={() => openView('keyword')}
                   />
                   <MenuButton eyebrow="Soon" label="AI 블로그 포스팅" disabled />
@@ -78,7 +85,7 @@ export function MarketingWorkspace() {
 
           <section className="min-w-0 flex-1 py-6 lg:py-8">
             {view === 'home' ? <HomeView onOpenKeyword={() => openView('keyword')} /> : null}
-            {view === 'keyword' ? <KeywordTool onBack={() => openView('home')} /> : null}
+            {view === 'keyword' ? <KeywordTool /> : null}
           </section>
         </div>
       </div>
@@ -86,15 +93,20 @@ export function MarketingWorkspace() {
   )
 }
 
-function BrandHeader() {
+function BrandHeader({ onClick }: { onClick: () => void }) {
   return (
-    <div className="flex items-center gap-3">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-md text-left transition hover:opacity-85 focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/20"
+      aria-label="AIVA 메인 화면으로 이동"
+    >
       <AivaLogoImage className="h-12 w-12" />
       <div>
         <h1 className="text-xl font-black tracking-[0.16em]">AIVA</h1>
         <p className="text-xs font-bold text-slate-400">AI Marketing Platform</p>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -133,12 +145,12 @@ function MenuButton({
 function HomeView({ onOpenKeyword }: { onOpenKeyword: () => void }) {
   return (
     <div className="grid min-h-[calc(100vh-4rem)] content-center gap-8">
-      <section className="max-w-3xl">
+      <section className="max-w-7xl">
         <AivaLogoImage className="mb-7 h-24 w-24" />
         <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200/80">
           AIVA — AI Marketing Platform
         </p>
-        <h2 className="mt-4 text-4xl font-black leading-tight md:text-6xl">
+        <h2 className="mt-4 text-4xl font-black leading-tight md:text-6xl xl:text-[4.45rem]">
           브랜드 성장을 위한 AI 마케팅 플랫폼
         </h2>
         <p className="mt-5 max-w-2xl text-base font-semibold leading-8 text-slate-300">
@@ -156,9 +168,9 @@ function HomeView({ onOpenKeyword }: { onOpenKeyword: () => void }) {
           <span className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
             Available
           </span>
-          <h3 className="mt-3 text-2xl font-black">AI 추천 키워드</h3>
+          <h3 className="mt-3 text-2xl font-black">AI 검색 노출 키워드 분석</h3>
           <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-300">
-            키워드 하나로 AEO 상위 노출에 유리한 추천 키워드 10개를 실시간 분석합니다.
+            블로그와 플레이스 노출에 반영할 핵심 키워드와 활용 포인트를 분석합니다.
           </p>
           <span className="mt-5 inline-flex rounded-md bg-white px-4 py-3 text-sm font-black text-[#090b14] transition group-hover:bg-cyan-100">
             시작하기
@@ -167,7 +179,7 @@ function HomeView({ onOpenKeyword }: { onOpenKeyword: () => void }) {
 
         <PlannedFeature
           title="AI 블로그 포스팅"
-          description="AEO 기반으로 검색 의도, 질문형 키워드, FAQ 흐름을 반영한 블로그 콘텐츠를 작성합니다."
+          description="AI 검색 노출 키워드와 검색 의도, 질문형 키워드, FAQ 흐름을 반영한 블로그 콘텐츠를 작성합니다."
         />
         <PlannedFeature
           title="AI 모델 이미지 생성"
@@ -193,12 +205,17 @@ function PlannedFeature({ title, description }: { title: string; description: st
   )
 }
 
-function KeywordTool({ onBack }: { onBack: () => void }) {
+function KeywordTool() {
   const [keyword, setKeyword] = useState('')
+  const [recentKeywords, setRecentKeywords] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [result, setResult] = useState<KeywordResponse | null>(null)
   const [loadingStep, setLoadingStep] = useState(0)
+
+  useEffect(() => {
+    setRecentKeywords(readRecentKeywords())
+  }, [])
 
   useEffect(() => {
     if (!isLoading) {
@@ -214,6 +231,10 @@ function KeywordTool({ onBack }: { onBack: () => void }) {
   }, [isLoading])
 
   const canSubmit = useMemo(() => keyword.trim().length > 0 && !isLoading, [isLoading, keyword])
+
+  const removeRecentKeyword = (keywordToRemove: string) => {
+    setRecentKeywords(deleteRecentKeyword(keywordToRemove))
+  }
 
   const submitKeyword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -243,6 +264,7 @@ function KeywordTool({ onBack }: { onBack: () => void }) {
       }
 
       setResult(body as KeywordResponse)
+      setRecentKeywords(saveRecentKeyword(nextKeyword))
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '키워드 분석에 실패했습니다.')
     } finally {
@@ -252,24 +274,16 @@ function KeywordTool({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-center py-6">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-6 w-fit rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-black text-slate-300 transition hover:border-cyan-300/45 hover:text-white"
-      >
-        메인으로
-      </button>
-
       <section className="text-center">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
-          AEO Keyword Finder
+          AI Search Keyword Analysis
         </p>
         <h2 className="mt-3 text-3xl font-black tracking-normal md:text-5xl">
-          상위 노출에 유리한 키워드 10개를 찾아보세요
+          AI 검색 노출에 중요한 키워드를 분석하세요
         </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-base font-semibold leading-7 text-slate-300">
-          키워드 하나만 입력하면 AI가 검색 의도와 답변형 콘텐츠 관점에서 추천 키워드를
-          실시간으로 분석합니다.
+        <p className="mx-auto mt-4 max-w-6xl text-base font-semibold leading-7 text-slate-300 xl:whitespace-nowrap">
+          입력한 키워드를 기준으로 AI가 중요하게 판단할 만한 주제어, 검색 의도, 블로그와
+          플레이스 활용 포인트를 분석합니다.
         </p>
 
         <form
@@ -283,7 +297,7 @@ function KeywordTool({ onBack }: { onBack: () => void }) {
                 setKeyword(event.target.value)
                 setErrorMessage('')
               }}
-              placeholder="예: 속눈썹펌"
+              placeholder="예: 노원 속눈썹펌"
               className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
               disabled={isLoading}
             />
@@ -292,23 +306,35 @@ function KeywordTool({ onBack }: { onBack: () => void }) {
               disabled={!canSubmit}
               className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {isLoading ? '분석 중' : result ? '다시 분석하기' : '추천 키워드 찾기'}
+              {isLoading ? '분석 중' : result ? '다시 분석하기' : '키워드 분석하기'}
             </button>
           </div>
         </form>
 
-        <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {examples.map((example) => (
-            <button
-              key={example}
-              type="button"
-              onClick={() => setKeyword(example)}
+        <div className="mx-auto mt-5 grid max-w-3xl gap-3 text-left">
+          {recentKeywords.length > 0 ? (
+            <KeywordChipGroup
+              label="최근 검색"
+              tone="recent"
+              keywords={recentKeywords}
               disabled={isLoading}
-              className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-black text-slate-300 transition hover:border-cyan-300/45 hover:text-white disabled:opacity-50"
-            >
-              {example}
-            </button>
-          ))}
+              onSelect={(nextKeyword) => {
+                setKeyword(nextKeyword)
+                setErrorMessage('')
+              }}
+              onRemove={removeRecentKeyword}
+            />
+          ) : null}
+          <KeywordChipGroup
+            label="예시 키워드"
+            tone="example"
+            keywords={examples}
+            disabled={isLoading}
+            onSelect={(nextKeyword) => {
+              setKeyword(nextKeyword)
+              setErrorMessage('')
+            }}
+          />
         </div>
 
         {errorMessage ? (
@@ -324,6 +350,78 @@ function KeywordTool({ onBack }: { onBack: () => void }) {
   )
 }
 
+function KeywordChipGroup({
+  disabled,
+  keywords,
+  label,
+  onRemove,
+  onSelect,
+  tone,
+}: {
+  disabled: boolean
+  keywords: string[]
+  label: string
+  onRemove?: (keyword: string) => void
+  onSelect: (keyword: string) => void
+  tone: 'recent' | 'example'
+}) {
+  return (
+    <div
+      className={`rounded-md border px-3 py-3 ${
+        tone === 'recent' ? 'border-cyan-300/20 bg-cyan-300/[0.05]' : 'border-white/10 bg-white/[0.03]'
+      }`}
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <span
+          className={`w-20 shrink-0 text-xs font-black uppercase tracking-[0.16em] ${
+            tone === 'recent' ? 'text-cyan-200/80' : 'text-slate-500'
+          }`}
+        >
+          {label}
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {keywords.map((item) =>
+            tone === 'recent' ? (
+              <span
+                key={`${label}-${item}`}
+                className="inline-flex overflow-hidden rounded-md border border-cyan-300/25 bg-cyan-300/10 text-sm font-black text-cyan-50"
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelect(item)}
+                  disabled={disabled}
+                  className="px-3 py-2 transition hover:bg-cyan-300/12 disabled:opacity-50"
+                >
+                  {item}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemove?.(item)}
+                  disabled={disabled}
+                  aria-label={`${item} 최근 검색 삭제`}
+                  className="grid w-8 place-items-center border-l border-cyan-300/20 text-cyan-100/70 transition hover:bg-cyan-300/15 hover:text-white disabled:opacity-50"
+                >
+                  ×
+                </button>
+              </span>
+            ) : (
+              <button
+                key={`${label}-${item}`}
+                type="button"
+                onClick={() => onSelect(item)}
+                disabled={disabled}
+                className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-black text-slate-300 transition hover:border-white/25 hover:text-white disabled:opacity-50"
+              >
+                {item}
+              </button>
+            ),
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function KeywordLoadingPanel({ step }: { step: number }) {
   return (
     <section className="mx-auto mt-9 w-full max-w-3xl rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
@@ -332,7 +430,7 @@ function KeywordLoadingPanel({ step }: { step: number }) {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
             Analyzing
           </p>
-          <h3 className="mt-2 text-2xl font-black">AEO 키워드를 분석하는 중입니다</h3>
+          <h3 className="mt-2 text-2xl font-black">AI 검색 노출 키워드를 분석하는 중입니다</h3>
         </div>
         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-cyan-300/30 bg-cyan-300/10">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-200/30 border-t-cyan-200" />
@@ -364,13 +462,75 @@ function KeywordLoadingPanel({ step }: { step: number }) {
   )
 }
 
+function readRecentKeywords() {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(recentKeywordStorageKey) ?? '[]')
+
+    return normalizeRecentKeywords(parsed)
+  } catch {
+    return []
+  }
+}
+
+function saveRecentKeyword(keyword: string) {
+  const nextKeywords = normalizeRecentKeywords([keyword, ...readRecentKeywords()])
+
+  window.localStorage.setItem(recentKeywordStorageKey, JSON.stringify(nextKeywords))
+
+  return nextKeywords
+}
+
+function deleteRecentKeyword(keyword: string) {
+  const keyToRemove = keyword.trim().toLowerCase()
+  const nextKeywords = readRecentKeywords().filter((item) => item.toLowerCase() !== keyToRemove)
+
+  window.localStorage.setItem(recentKeywordStorageKey, JSON.stringify(nextKeywords))
+
+  return nextKeywords
+}
+
+function normalizeRecentKeywords(value: unknown) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const seen = new Set<string>()
+  const keywords: string[] = []
+
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      continue
+    }
+
+    const keyword = item.trim()
+    const key = keyword.toLowerCase()
+
+    if (!keyword || seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    keywords.push(keyword)
+
+    if (keywords.length >= maxRecentKeywordCount) {
+      break
+    }
+  }
+
+  return keywords
+}
+
 function KeywordResult({ result }: { result: KeywordResponse }) {
   return (
-    <section className="mx-auto mt-9 w-full max-w-5xl rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
+    <section className="mx-auto mt-9 w-full max-w-6xl rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
       <div className="flex flex-col gap-3 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">Result</p>
-          <h3 className="mt-2 text-2xl font-black">AEO 추천 키워드 10개</h3>
+          <h3 className="mt-2 text-2xl font-black">AI 검색 노출 키워드 분석 결과</h3>
         </div>
         <span className="w-fit rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-black text-slate-300">
           기준 키워드: {result.keyword}
@@ -381,27 +541,79 @@ function KeywordResult({ result }: { result: KeywordResponse }) {
         {result.recommendations.map((item) => (
           <article
             key={`${item.rank}-${item.keyword}`}
-            className="grid gap-4 rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:grid-cols-[56px_minmax(180px,0.8fr)_minmax(120px,0.5fr)_minmax(0,1.3fr)] md:items-start"
+            className="rounded-md border border-white/10 bg-[#080c17]/85 p-4"
           >
-            <div className="grid h-10 w-10 place-items-center rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 text-sm font-black text-[#070a12]">
-              {item.rank}
+            <div className="grid gap-4 lg:grid-cols-[56px_minmax(180px,0.8fr)_minmax(120px,0.45fr)_minmax(0,1fr)_150px] lg:items-start">
+              <div className="grid h-10 w-10 place-items-center rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 text-sm font-black text-[#070a12]">
+                {item.rank}
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                  Keyword
+                </p>
+                <h4 className="mt-1 text-lg font-black text-white">{item.keyword}</h4>
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                  Intent
+                </p>
+                <p className="mt-1 font-black text-cyan-100">{item.intent}</p>
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Why</p>
+                <p className="mt-1 font-semibold leading-7 text-slate-300">{item.reason}</p>
+              </div>
+              <div className="rounded-md border border-cyan-300/20 bg-cyan-300/8 p-3">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/75">
+                  AI Score
+                </p>
+                <div className="mt-1 flex items-end gap-1">
+                  <span className="text-3xl font-black text-cyan-100">{item.aiScore}</span>
+                  <span className="pb-1 text-xs font-black text-slate-500">/ 100</span>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-fuchsia-400"
+                    style={{ width: `${item.aiScore}%` }}
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Keyword</p>
-              <h4 className="mt-1 text-lg font-black text-white">{item.keyword}</h4>
-            </div>
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Intent</p>
-              <p className="mt-1 font-black text-cyan-100">{item.intent}</p>
-            </div>
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Why</p>
-              <p className="mt-1 font-semibold leading-7 text-slate-300">{item.reason}</p>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <SignalPanel label="Blog" tone="cyan" text={item.blogSignal} />
+              <SignalPanel label="Search" tone="blue" text={item.searchSignal} />
+              <SignalPanel label="Place" tone="fuchsia" text={item.placeSignal} />
+              <SignalPanel label="Final" tone="white" text={item.finalJudgement} />
             </div>
           </article>
         ))}
       </div>
     </section>
+  )
+}
+
+function SignalPanel({
+  label,
+  tone,
+  text,
+}: {
+  label: string
+  tone: 'cyan' | 'blue' | 'fuchsia' | 'white'
+  text: string
+}) {
+  const toneClass = {
+    cyan: 'border-cyan-300/20 bg-cyan-300/[0.06] text-cyan-100',
+    blue: 'border-blue-300/20 bg-blue-300/[0.06] text-blue-100',
+    fuchsia: 'border-fuchsia-300/20 bg-fuchsia-300/[0.06] text-fuchsia-100',
+    white: 'border-white/10 bg-white/[0.045] text-white',
+  }[tone]
+
+  return (
+    <div className={`rounded-md border p-3 ${toneClass}`}>
+      <p className="text-[11px] font-black uppercase tracking-[0.16em] opacity-75">{label}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">{text}</p>
+    </div>
   )
 }
 
