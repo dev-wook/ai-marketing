@@ -28,9 +28,10 @@ const loadingSteps = [
   '노출에 도움이 되는 키워드 10개를 선별하고 있어요',
 ]
 
-const examples = ['노원 속눈썹펌', '성수 감성카페', '강남 피부관리']
 const recentKeywordStorageKey = 'aiva:recent-keywords'
+const keywordCooldownStorageKey = 'aiva:keyword-analysis-last-success-at'
 const maxRecentKeywordCount = 5
+const keywordCooldownSeconds = 30
 
 export function MarketingWorkspace() {
   const [view, setView] = useState<ViewKey>('home')
@@ -212,9 +213,19 @@ function KeywordTool() {
   const [errorMessage, setErrorMessage] = useState('')
   const [result, setResult] = useState<KeywordResponse | null>(null)
   const [loadingStep, setLoadingStep] = useState(0)
+  const [cooldownRemaining, setCooldownRemaining] = useState(0)
 
   useEffect(() => {
     setRecentKeywords(readRecentKeywords())
+    setCooldownRemaining(readKeywordCooldownRemaining())
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setCooldownRemaining(readKeywordCooldownRemaining())
+    }, 1000)
+
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -230,7 +241,10 @@ function KeywordTool() {
     return () => window.clearInterval(timer)
   }, [isLoading])
 
-  const canSubmit = useMemo(() => keyword.trim().length > 0 && !isLoading, [isLoading, keyword])
+  const canSubmit = useMemo(
+    () => keyword.trim().length > 0 && !isLoading && cooldownRemaining === 0,
+    [cooldownRemaining, isLoading, keyword],
+  )
 
   const removeRecentKeyword = (keywordToRemove: string) => {
     setRecentKeywords(deleteRecentKeyword(keywordToRemove))
@@ -242,6 +256,11 @@ function KeywordTool() {
     const nextKeyword = keyword.trim()
     if (!nextKeyword) {
       setErrorMessage('분석할 키워드를 입력해주세요.')
+      return
+    }
+
+    if (cooldownRemaining > 0) {
+      setErrorMessage(`AI 분석은 ${cooldownRemaining}초 후 다시 이용할 수 있습니다.`)
       return
     }
 
@@ -265,6 +284,7 @@ function KeywordTool() {
 
       setResult(body as KeywordResponse)
       setRecentKeywords(saveRecentKeyword(nextKeyword))
+      setCooldownRemaining(saveKeywordCooldownStart())
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '키워드 분석에 실패했습니다.')
     } finally {
@@ -306,16 +326,27 @@ function KeywordTool() {
               disabled={!canSubmit}
               className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {isLoading ? '분석 중' : result ? '다시 분석하기' : '키워드 분석하기'}
+              {isLoading
+                ? '분석 중'
+                : cooldownRemaining > 0
+                  ? `${cooldownRemaining}초 후 가능`
+                  : result
+                    ? '다시 분석하기'
+                    : '키워드 분석하기'}
             </button>
           </div>
         </form>
 
-        <div className="mx-auto mt-5 grid max-w-3xl gap-3 text-left">
-          {recentKeywords.length > 0 ? (
+        {cooldownRemaining > 0 && !isLoading ? (
+          <p className="mx-auto mt-3 max-w-3xl rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] px-4 py-3 text-sm font-bold text-cyan-100">
+            AI 분석이 완료되었습니다. 다음 분석은 {cooldownRemaining}초 후 다시 이용할 수 있습니다.
+          </p>
+        ) : null}
+
+        {recentKeywords.length > 0 ? (
+          <div className="mx-auto mt-5 grid max-w-3xl gap-3 text-left">
             <KeywordChipGroup
               label="최근 검색"
-              tone="recent"
               keywords={recentKeywords}
               disabled={isLoading}
               onSelect={(nextKeyword) => {
@@ -324,18 +355,8 @@ function KeywordTool() {
               }}
               onRemove={removeRecentKeyword}
             />
-          ) : null}
-          <KeywordChipGroup
-            label="예시 키워드"
-            tone="example"
-            keywords={examples}
-            disabled={isLoading}
-            onSelect={(nextKeyword) => {
-              setKeyword(nextKeyword)
-              setErrorMessage('')
-            }}
-          />
-        </div>
+          </div>
+        ) : null}
 
         {errorMessage ? (
           <p className="mx-auto mt-5 max-w-xl rounded-md border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">
@@ -356,66 +377,44 @@ function KeywordChipGroup({
   label,
   onRemove,
   onSelect,
-  tone,
 }: {
   disabled: boolean
   keywords: string[]
   label: string
   onRemove?: (keyword: string) => void
   onSelect: (keyword: string) => void
-  tone: 'recent' | 'example'
 }) {
   return (
-    <div
-      className={`rounded-md border px-3 py-3 ${
-        tone === 'recent' ? 'border-cyan-300/20 bg-cyan-300/[0.05]' : 'border-white/10 bg-white/[0.03]'
-      }`}
-    >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <span
-          className={`w-20 shrink-0 text-xs font-black uppercase tracking-[0.16em] ${
-            tone === 'recent' ? 'text-cyan-200/80' : 'text-slate-500'
-          }`}
-        >
+    <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.05] px-3 py-3">
+      <div className="grid gap-2">
+        <span className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/80">
           {label}
         </span>
-        <div className="flex flex-wrap gap-2">
-          {keywords.map((item) =>
-            tone === 'recent' ? (
-              <span
-                key={`${label}-${item}`}
-                className="inline-flex overflow-hidden rounded-md border border-cyan-300/25 bg-cyan-300/10 text-sm font-black text-cyan-50"
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelect(item)}
-                  disabled={disabled}
-                  className="px-3 py-2 transition hover:bg-cyan-300/12 disabled:opacity-50"
-                >
-                  {item}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRemove?.(item)}
-                  disabled={disabled}
-                  aria-label={`${item} 최근 검색 삭제`}
-                  className="grid w-8 place-items-center border-l border-cyan-300/20 text-cyan-100/70 transition hover:bg-cyan-300/15 hover:text-white disabled:opacity-50"
-                >
-                  ×
-                </button>
-              </span>
-            ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {keywords.map((item) => (
+            <span
+              key={`${label}-${item}`}
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)_36px] overflow-hidden rounded-md border border-cyan-300/25 bg-cyan-300/10 text-sm font-black text-cyan-50"
+            >
               <button
-                key={`${label}-${item}`}
                 type="button"
                 onClick={() => onSelect(item)}
                 disabled={disabled}
-                className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-black text-slate-300 transition hover:border-white/25 hover:text-white disabled:opacity-50"
+                className="min-w-0 truncate px-3 py-2 text-center transition hover:bg-cyan-300/12 disabled:opacity-50"
               >
                 {item}
               </button>
-            ),
-          )}
+              <button
+                type="button"
+                onClick={() => onRemove?.(item)}
+                disabled={disabled}
+                aria-label={`${item} 최근 검색 삭제`}
+                className="grid w-8 place-items-center border-l border-cyan-300/20 text-cyan-100/70 transition hover:bg-cyan-300/15 hover:text-white disabled:opacity-50"
+              >
+                ×
+              </button>
+            </span>
+          ))}
         </div>
       </div>
     </div>
@@ -491,6 +490,28 @@ function deleteRecentKeyword(keyword: string) {
   window.localStorage.setItem(recentKeywordStorageKey, JSON.stringify(nextKeywords))
 
   return nextKeywords
+}
+
+function readKeywordCooldownRemaining() {
+  if (typeof window === 'undefined') {
+    return 0
+  }
+
+  const lastSuccessAt = Number(window.localStorage.getItem(keywordCooldownStorageKey) ?? 0)
+
+  if (!Number.isFinite(lastSuccessAt) || lastSuccessAt <= 0) {
+    return 0
+  }
+
+  const elapsedSeconds = Math.floor((Date.now() - lastSuccessAt) / 1000)
+
+  return Math.max(keywordCooldownSeconds - elapsedSeconds, 0)
+}
+
+function saveKeywordCooldownStart() {
+  window.localStorage.setItem(keywordCooldownStorageKey, String(Date.now()))
+
+  return keywordCooldownSeconds
 }
 
 function normalizeRecentKeywords(value: unknown) {
@@ -581,8 +602,8 @@ function KeywordResult({ result }: { result: KeywordResponse }) {
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <SignalPanel label="Blog" tone="cyan" text={item.blogSignal} />
               <SignalPanel label="Search" tone="blue" text={item.searchSignal} />
+              <SignalPanel label="Blog" tone="cyan" text={item.blogSignal} />
               <SignalPanel label="Place" tone="fuchsia" text={item.placeSignal} />
               <SignalPanel label="Final" tone="white" text={item.finalJudgement} />
             </div>
