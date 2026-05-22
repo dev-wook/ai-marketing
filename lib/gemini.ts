@@ -12,70 +12,37 @@ export class GeminiApiError extends Error {
   status: number
   statusText: string
   body: string
-  attempt: number
-  maxAttempts: number
 
   constructor(input: {
     status: number
     statusText: string
     body: string
     message: string
-    attempt: number
-    maxAttempts: number
   }) {
     super(input.message)
     this.name = 'GeminiApiError'
     this.status = input.status
     this.statusText = input.statusText
     this.body = input.body
-    this.attempt = input.attempt
-    this.maxAttempts = input.maxAttempts
   }
 }
 
-const GEMINI_MAX_ATTEMPTS = 3
+const defaultGeminiTextModel = 'gemini-3.5-flash'
 
 export async function generateGeminiText(prompt: string, useGoogleSearch = false) {
   const apiKey = process.env.GEMINI_API_KEY
-  const model = process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.5-flash'
+  const model = process.env.GEMINI_TEXT_MODEL ?? defaultGeminiTextModel
 
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured.')
   }
 
-  let lastError: unknown
-
-  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      return await requestGeminiText({
-        apiKey,
-        model,
-        prompt,
-        useGoogleSearch,
-        attempt,
-        maxAttempts: GEMINI_MAX_ATTEMPTS,
-      })
-    } catch (error) {
-      lastError = error
-
-      if (!shouldRetryGeminiError(error) || attempt === GEMINI_MAX_ATTEMPTS) {
-        throw error
-      }
-
-      console.warn('Gemini API retry scheduled', {
-        attempt,
-        nextAttempt: attempt + 1,
-        maxAttempts: GEMINI_MAX_ATTEMPTS,
-        model,
-        useGoogleSearch,
-        reason: toRetryReason(error),
-      })
-
-      await wait(getRetryDelayMs(attempt))
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Gemini API request failed.')
+  return requestGeminiText({
+    apiKey,
+    model,
+    prompt,
+    useGoogleSearch,
+  })
 }
 
 async function requestGeminiText({
@@ -83,22 +50,19 @@ async function requestGeminiText({
   model,
   prompt,
   useGoogleSearch,
-  attempt,
-  maxAttempts,
 }: {
   apiKey: string
   model: string
   prompt: string
   useGoogleSearch: boolean
-  attempt: number
-  maxAttempts: number
 }) {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
         contents: [
@@ -119,8 +83,6 @@ async function requestGeminiText({
       statusText: response.statusText,
       model,
       useGoogleSearch,
-      attempt,
-      maxAttempts,
       body: safelyParseJson(errorBody),
     })
 
@@ -128,8 +90,6 @@ async function requestGeminiText({
       status: response.status,
       statusText: response.statusText,
       body: errorBody,
-      attempt,
-      maxAttempts,
       message: `Gemini API request failed with status ${response.status}`,
     })
   }
@@ -142,45 +102,6 @@ async function requestGeminiText({
       .filter(Boolean)
       .join('\n') ?? ''
   )
-}
-
-function shouldRetryGeminiError(error: unknown) {
-  if (error instanceof GeminiApiError) {
-    return [408, 409, 429, 500, 502, 503, 504].includes(error.status)
-  }
-
-  return error instanceof TypeError
-}
-
-function getRetryDelayMs(attempt: number) {
-  return attempt * 700
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
-function toRetryReason(error: unknown) {
-  if (error instanceof GeminiApiError) {
-    return {
-      type: error.name,
-      status: error.status,
-      statusText: error.statusText,
-    }
-  }
-
-  if (error instanceof Error) {
-    return {
-      type: error.name,
-      message: error.message,
-    }
-  }
-
-  return {
-    type: 'unknown',
-  }
 }
 
 function safelyParseJson(value: string) {

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 export async function GET() {
   return NextResponse.json({
-    textModel: process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.5-flash',
+    textModel: process.env.GEMINI_TEXT_MODEL ?? 'gemini-3.5-flash',
     freeTierMode: true,
     apiKeyConfigured: Boolean(process.env.GEMINI_API_KEY),
     statusMessage: process.env.GEMINI_API_KEY
