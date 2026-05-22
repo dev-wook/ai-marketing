@@ -164,35 +164,33 @@ export function BlogPostingTool() {
   }
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl content-start gap-6 py-6">
+    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl content-start gap-4 py-4 md:gap-6 md:py-6">
       <section className="text-center">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
           Blog Draft
         </p>
-        <h2 className="mt-3 text-3xl font-black tracking-normal md:text-5xl">
+        <h2 className="mt-3 text-2xl font-black tracking-normal md:text-5xl">
           AI 블로그 원고를 작성하세요
         </h2>
-        <p className="mx-auto mt-4 max-w-4xl text-base font-semibold leading-7 text-slate-300">
+        <p className="mx-auto mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-300 md:mt-4 md:text-base md:leading-7">
           키워드를 입력하면 필요한 질문을 단계별로 드리고, 답변에 맞춘 블로그 원고를
           만들어드립니다.
         </p>
       </section>
 
-      <StepProgress step={step} />
-
-      <section className="rounded-md border border-white/10 bg-white/[0.06] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
-        <form onSubmit={submitKeyword} className="flex flex-col gap-3 md:flex-row">
+      <section className="rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl md:p-4">
+        <form onSubmit={submitKeyword} className="flex flex-col gap-2 md:flex-row md:gap-3">
           <input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
             placeholder="예: 노원 속눈썹펌"
-            className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+            className="min-h-12 flex-1 rounded-md border border-white/10 bg-[#090d18] px-3 text-base font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 md:min-h-14 md:px-4 md:text-lg"
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading}
-            className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+            className="min-h-12 rounded-md bg-white px-5 text-sm font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45 md:min-h-14 md:px-6 md:text-base"
           >
             {isLoading && step === 'input' ? '확인 중' : '글쓰기 시작'}
           </button>
@@ -200,7 +198,7 @@ export function BlogPostingTool() {
         {isLoading && step === 'input' ? (
           <LoadingProgress
             title="관련 콘텐츠를 확인하고 있습니다."
-            description="상위 블로그 30개를 참고해 원고 방향을 정리하고 맞춤 질문을 준비합니다."
+            description="원고 방향을 정리하고 맞춤 질문을 준비합니다."
           />
         ) : null}
       </section>
@@ -230,13 +228,13 @@ export function BlogPostingTool() {
             onPrevious={() => setCurrentQuestionIndex((current) => Math.max(current - 1, 0))}
           />
 
-          <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-5">
+          <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
                   Content Direction
                 </p>
-                <h3 className="mt-2 text-2xl font-black">콘텐츠 방향 요약</h3>
+                <h3 className="mt-2 text-xl font-black md:text-2xl">콘텐츠 방향 요약</h3>
                 <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">
                   답변 {answeredCount}/{analysis.questions.length}개가 반영되었습니다. 모든 질문이
                   완료되면 이 방향으로 원고를 생성할 수 있습니다.
@@ -259,7 +257,7 @@ export function BlogPostingTool() {
                 type="button"
                 onClick={generateDraft}
                 disabled={!isInterviewComplete || isLoading}
-                className="min-h-12 rounded-md bg-cyan-100 px-5 text-sm font-black text-[#070a12] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
+                className="min-h-12 rounded-md bg-cyan-100 px-5 text-sm font-black text-[#070a12] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45 lg:min-w-48"
               >
                 {isLoading && step === 'interview' ? '원고 생성 중' : '이 방향으로 원고 만들기'}
               </button>
@@ -304,32 +302,6 @@ function LoadingProgress({ description, title }: { description: string; title: s
   )
 }
 
-function StepProgress({ step }: { step: StepKey }) {
-  const steps: Array<{ key: StepKey; label: string }> = [
-    { key: 'input', label: '키워드' },
-    { key: 'interview', label: '인터뷰' },
-    { key: 'draft', label: '원고' },
-  ]
-  const currentIndex = steps.findIndex((item) => item.key === step)
-
-  return (
-    <div className="grid grid-cols-3 gap-2">
-      {steps.map((item, index) => (
-        <div
-          key={item.key}
-          className={`rounded-md border px-3 py-3 text-center text-xs font-black uppercase tracking-[0.14em] ${
-            index <= currentIndex
-              ? 'border-cyan-300/35 bg-cyan-300/10 text-cyan-100'
-              : 'border-white/10 bg-white/[0.035] text-slate-500'
-          }`}
-        >
-          {item.label}
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function PatternReportPanel({
   report,
   sources,
@@ -338,20 +310,20 @@ function PatternReportPanel({
   sources: BlogSourceSummary[]
 }) {
   return (
-    <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-5">
+    <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:p-5">
       <div className="flex flex-col gap-3 border-b border-white/10 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
             Reference
           </p>
-          <h3 className="mt-2 text-2xl font-black">참고 콘텐츠 요약</h3>
+          <h3 className="mt-2 text-xl font-black md:text-2xl">참고 콘텐츠 요약</h3>
         </div>
         <span className="w-fit rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-black text-slate-300">
-          원문 분석 {sources.length}개
+          원문 분석 완료
         </span>
       </div>
       <p className="mt-4 text-sm font-semibold leading-7 text-slate-300">{report.summary}</p>
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-4 grid gap-3 md:mt-5 md:grid-cols-2 xl:grid-cols-5">
         <ReportList title="핵심 용어" items={report.frequentTerms} />
         <ReportList title="고객 니즈" items={report.customerNeeds} />
         <ReportList title="글 구성" items={report.contentPatterns} />
@@ -374,7 +346,7 @@ function PatternReportPanel({
               <span className="mr-2 font-black text-cyan-200">{source.rank}</span>
               {source.title}
               <span className="ml-2 text-xs text-slate-500">
-                {source.extracted ? `본문 ${source.textLength.toLocaleString()}자 분석` : '요약 분석'}
+                {source.extracted ? '본문 분석' : '요약 분석'}
               </span>
             </a>
           ))}
@@ -387,7 +359,7 @@ function PatternReportPanel({
 function ReportList({ items, title }: { items: string[]; title: string }) {
   return (
     <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
-        <p className="text-[11px] font-black tracking-[0.08em] text-cyan-200/75">
+      <p className="text-[11px] font-black tracking-[0.08em] text-cyan-200/75">
         {title}
       </p>
       <ul className="mt-3 grid gap-2 text-sm font-semibold leading-6 text-slate-300">
@@ -421,28 +393,50 @@ function InterviewPanel({
   const isOptionAnswer = question.options.some((option) => option.label === selectedAnswer)
 
   return (
-    <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
+    <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:p-5">
+      <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start">
+        <div className="min-w-0">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
             Interview {currentQuestionIndex + 1} / {questions.length}
           </p>
-          <h3 className="mt-2 text-xl font-black">{question.question}</h3>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">{question.reason}</p>
+          <h3 className="mt-2 text-lg font-black leading-7 md:text-xl">{question.question}</h3>
+          <p className="mt-2 text-xs font-semibold leading-5 text-slate-400 md:text-sm md:leading-6">
+            {question.reason}
+          </p>
         </div>
-        <div className="flex min-w-32 items-center gap-1">
-          {questions.map((item, index) => (
-            <span
-              key={item.id}
-              className={`h-1.5 flex-1 rounded-full ${
-                index <= currentQuestionIndex ? 'bg-cyan-300' : 'bg-white/10'
-              }`}
-            />
-          ))}
+        <div className="grid gap-3 md:min-w-56">
+          <div className="flex items-center gap-1">
+            {questions.map((item, index) => (
+              <span
+                key={item.id}
+                className={`h-1.5 flex-1 rounded-full ${
+                  index <= currentQuestionIndex ? 'bg-cyan-300' : 'bg-white/10'
+                }`}
+              />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onPrevious}
+              disabled={disabled || isFirstQuestion}
+              className="min-h-10 rounded-md border border-white/10 px-4 text-sm font-black text-slate-200 transition hover:border-cyan-300/35 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              이전
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={disabled || isLastQuestion || !selectedAnswer.trim()}
+              className="min-h-10 rounded-md bg-white px-4 text-sm font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              다음
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-2 md:mt-5 md:grid-cols-2 md:gap-3 xl:grid-cols-4">
         {question.options.map((option) => {
           const isActive = selectedAnswer === option.label
 
@@ -452,14 +446,14 @@ function InterviewPanel({
               type="button"
               onClick={() => onAnswerChange(question.id, option.label)}
               disabled={disabled}
-              className={`rounded-md border p-4 text-left transition ${
+              className={`rounded-md border p-3 text-left transition md:p-4 ${
                 isActive
                   ? 'border-cyan-300/60 bg-cyan-300/12'
                   : 'border-white/10 bg-white/[0.04] hover:border-cyan-300/35 hover:bg-white/[0.07]'
               }`}
             >
               <span className="text-sm font-black text-white">{option.label}</span>
-              <span className="mt-2 block text-sm font-semibold leading-6 text-slate-400">
+              <span className="mt-2 block text-xs font-semibold leading-5 text-slate-400 md:text-sm md:leading-6">
                 {option.description}
               </span>
             </button>
@@ -471,28 +465,9 @@ function InterviewPanel({
         value={isOptionAnswer ? '' : selectedAnswer}
         onChange={(event) => onAnswerChange(question.id, event.target.value)}
         placeholder="직접 입력"
-        className="mt-3 min-h-12 w-full rounded-md border border-white/10 bg-[#090d18] px-4 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+        className="mt-3 min-h-11 w-full rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 md:min-h-12 md:px-4"
         disabled={disabled}
       />
-
-      <div className="mt-5 flex flex-col gap-3 md:flex-row md:justify-between">
-        <button
-          type="button"
-          onClick={onPrevious}
-          disabled={disabled || isFirstQuestion}
-          className="min-h-11 rounded-md border border-white/10 px-5 text-sm font-black text-slate-200 transition hover:border-cyan-300/35 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          이전
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={disabled || isLastQuestion || !selectedAnswer.trim()}
-          className="min-h-11 rounded-md bg-white px-5 text-sm font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          다음 질문
-        </button>
-      </div>
     </section>
   )
 }
@@ -542,12 +517,12 @@ function DraftPanel({
   }
 
   return (
-    <section className="rounded-md border border-white/10 bg-white/[0.07] p-5 shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
+    <section className="rounded-md border border-white/10 bg-white/[0.07] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl md:p-5">
       <div className="border-b border-white/10 pb-4">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
           Draft
         </p>
-        <h3 className="mt-2 text-2xl font-black">블로그 원고</h3>
+        <h3 className="mt-2 text-xl font-black md:text-2xl">블로그 원고</h3>
         <p className="mt-3 text-sm font-semibold leading-6 text-slate-300">{directionSummary}</p>
       </div>
 
@@ -593,7 +568,7 @@ function DraftPanel({
               type="button"
               onClick={onRevise}
               disabled={isLoading}
-              className="min-h-12 rounded-md border border-white/10 px-5 text-sm font-black text-slate-100 transition hover:border-cyan-300/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-45"
+              className="min-h-12 rounded-md border border-white/10 px-5 text-sm font-black text-slate-100 transition hover:border-cyan-300/40 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-45 md:min-w-36"
             >
               {isLoading ? '수정 중' : '피드백 반영'}
             </button>
@@ -616,7 +591,7 @@ function RichDraftEditor({
       contentEditable
       suppressContentEditableWarning
       onBlur={(event) => onDraftChange(sanitizeHtml(event.currentTarget.innerHTML))}
-      className="blog-draft-editor min-h-[520px] overflow-auto bg-white p-7 text-[#141923] outline-none"
+      className="blog-draft-editor min-h-[420px] overflow-auto bg-white p-4 text-[#141923] outline-none md:min-h-[520px] md:p-7"
       dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
     />
   )

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { generateBlogDraft } from '@/features/blog-posting/server/blog-posting'
+import { toBlogPostingErrorResponse } from '@/features/blog-posting/server/errors'
 import type {
   BlogInterviewAnswer,
   BlogPatternReport,
@@ -29,16 +30,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(payload)
   } catch (error) {
-    if (error instanceof Error) {
-      console.error('Blog draft generation error', {
-        message: error.message,
-        stack: error.stack,
-      })
-    }
+    const { debug, message, status } = toBlogPostingErrorResponse(error)
 
-    return NextResponse.json(
-      { message: error instanceof Error ? error.message : '블로그 초안 생성에 실패했습니다.' },
-      { status: 500 },
-    )
+    return NextResponse.json({ debug, message }, { status })
   }
 }

@@ -29,8 +29,8 @@ export function HomeView({
           onClick={onOpenKeyword}
           className="group rounded-md border border-cyan-300/35 bg-cyan-300/10 p-5 text-left shadow-[0_0_34px_rgba(34,211,238,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-200/70 hover:bg-cyan-300/14"
         >
-          <span className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
-            Available
+          <span className="text-xs font-black tracking-[0.12em] text-cyan-200">
+            서비스 오픈(Beta)
           </span>
           <h3 className="mt-3 text-2xl font-black">AI 검색 노출 키워드 분석</h3>
           <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-300">
@@ -46,8 +46,8 @@ export function HomeView({
           onClick={onOpenBlogPosting}
           className="group rounded-md border border-cyan-300/35 bg-cyan-300/10 p-5 text-left shadow-[0_0_34px_rgba(34,211,238,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-200/70 hover:bg-cyan-300/14"
         >
-          <span className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
-            Available
+          <span className="text-xs font-black tracking-[0.12em] text-cyan-200">
+            서비스 오픈(Beta)
           </span>
           <h3 className="mt-3 text-2xl font-black">AI 블로그 원고 작성</h3>
           <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-300">
@@ -69,8 +69,8 @@ export function HomeView({
 function PlannedFeature({ title, description }: { title: string; description: string }) {
   return (
     <article className="rounded-md border border-white/10 bg-white/[0.035] p-5 text-left">
-      <span className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-200/70">
-        개발예정
+      <span className="text-xs font-black tracking-[0.12em] text-fuchsia-200/70">
+        준비 중
       </span>
       <h3 className="mt-3 text-2xl font-black text-white/85">{title}</h3>
       <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-400">{description}</p>

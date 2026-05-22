@@ -66,6 +66,21 @@ export function MarketingWorkspace() {
           </header>
 
           <section className="min-w-0 flex-1 py-6 lg:py-8">
+            {view !== 'home' ? (
+              <button
+                type="button"
+                onClick={() => openView('home')}
+                aria-label="메인으로 돌아가기"
+                className="mb-2 inline-grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.045] text-slate-100 shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-x-0.5 hover:border-cyan-300/45 hover:bg-cyan-300/10 focus:outline-none focus:ring-4 focus:ring-cyan-300/15 md:mb-3"
+              >
+                <span
+                  aria-hidden="true"
+                  className="block h-3 w-3 rotate-45 border-b-2 border-l-2 border-current"
+                >
+                  <span className="sr-only">메인으로</span>
+                </span>
+              </button>
+            ) : null}
             {view === 'home' ? (
               <HomeView
                 onOpenBlogPosting={() => openView('blog')}

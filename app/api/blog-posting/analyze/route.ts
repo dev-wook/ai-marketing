@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { analyzeBlogPatterns } from '@/features/blog-posting/server/blog-posting'
+import { toBlogPostingErrorResponse } from '@/features/blog-posting/server/errors'
 
 type BlogPatternAnalyzeRequest = {
   keyword?: string
@@ -18,16 +19,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(payload)
   } catch (error) {
-    if (error instanceof Error) {
-      console.error('Blog pattern analysis error', {
-        message: error.message,
-        stack: error.stack,
-      })
-    }
+    const { debug, message, status } = toBlogPostingErrorResponse(error)
 
-    return NextResponse.json(
-      { message: '블로그 패턴 분석 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.' },
-      { status: 500 },
-    )
+    return NextResponse.json({ debug, message }, { status })
   }
 }
