@@ -33,7 +33,6 @@ export function toNaverBlogSearchContext(response: NaverBlogSearchResponse, maxI
       const parts = [
         `${index + 1}. ${item.title}`,
         item.description ? `요약: ${item.description}` : '',
-        item.postDate ? `작성일: ${item.postDate}` : '',
       ].filter(Boolean)
 
       return parts.join(' / ')

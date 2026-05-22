@@ -56,11 +56,10 @@ export function KeywordResult({ result }: { result: KeywordResponse }) {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <SignalPanel label="Search" tone="blue" text={item.searchSignal} />
-              <SignalPanel label="Blog" tone="cyan" text={item.blogSignal} />
-              <SignalPanel label="Place" tone="fuchsia" text={item.placeSignal} />
-              <SignalPanel label="Final" tone="white" text={item.finalJudgement} />
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <SignalPanel label="Search" accent="text-blue-200/80" text={item.searchSignal} />
+              <SignalPanel label="Blog" accent="text-cyan-200/80" text={item.blogSignal} />
+              <SignalPanel label="Final" accent="text-white/80" text={item.finalJudgement} />
             </div>
           </article>
         ))}
@@ -70,25 +69,18 @@ export function KeywordResult({ result }: { result: KeywordResponse }) {
 }
 
 function SignalPanel({
+  accent,
   label,
-  tone,
   text,
 }: {
+  accent: string
   label: string
-  tone: 'cyan' | 'blue' | 'fuchsia' | 'white'
   text: string
 }) {
-  const toneClass = {
-    cyan: 'border-cyan-300/20 bg-cyan-300/[0.06] text-cyan-100',
-    blue: 'border-blue-300/20 bg-blue-300/[0.06] text-blue-100',
-    fuchsia: 'border-fuchsia-300/20 bg-fuchsia-300/[0.06] text-fuchsia-100',
-    white: 'border-white/10 bg-white/[0.045] text-white',
-  }[tone]
-
   return (
-    <div className={`rounded-md border p-3 ${toneClass}`}>
-      <p className="text-[11px] font-black uppercase tracking-[0.16em] opacity-75">{label}</p>
-      <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">{text}</p>
+    <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+      <p className={`text-[11px] font-black uppercase tracking-[0.16em] ${accent}`}>{label}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-200/90">{text}</p>
     </div>
   )
 }

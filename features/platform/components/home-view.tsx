@@ -1,6 +1,12 @@
 import { AivaLogoImage } from './aiva-logo-image'
 
-export function HomeView({ onOpenKeyword }: { onOpenKeyword: () => void }) {
+export function HomeView({
+  onOpenBlogPosting,
+  onOpenKeyword,
+}: {
+  onOpenBlogPosting: () => void
+  onOpenKeyword: () => void
+}) {
   return (
     <div className="grid min-h-[calc(100vh-4rem)] content-center gap-8">
       <section className="max-w-7xl">
@@ -28,17 +34,29 @@ export function HomeView({ onOpenKeyword }: { onOpenKeyword: () => void }) {
           </span>
           <h3 className="mt-3 text-2xl font-black">AI 검색 노출 키워드 분석</h3>
           <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-300">
-            블로그와 플레이스 노출에 반영할 핵심 키워드와 활용 포인트를 분석합니다.
+            검색 의도와 상위 블로그 흐름에 반영할 핵심 키워드와 활용 포인트를 분석합니다.
           </p>
           <span className="mt-5 inline-flex rounded-md bg-white px-4 py-3 text-sm font-black text-[#090b14] transition group-hover:bg-cyan-100">
             시작하기
           </span>
         </button>
 
-        <PlannedFeature
-          title="AI 블로그 포스팅"
-          description="AI 검색 노출 키워드와 검색 의도, 질문형 키워드, FAQ 흐름을 반영한 블로그 콘텐츠를 작성합니다."
-        />
+        <button
+          type="button"
+          onClick={onOpenBlogPosting}
+          className="group rounded-md border border-cyan-300/35 bg-cyan-300/10 p-5 text-left shadow-[0_0_34px_rgba(34,211,238,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-200/70 hover:bg-cyan-300/14"
+        >
+          <span className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
+            Available
+          </span>
+          <h3 className="mt-3 text-2xl font-black">AI 블로그 원고 작성</h3>
+          <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-300">
+            키워드와 맞춤형 질문 답변을 바탕으로 AI 최적화 블로그 원고를 작성합니다.
+          </p>
+          <span className="mt-5 inline-flex rounded-md bg-white px-4 py-3 text-sm font-black text-[#090b14] transition group-hover:bg-cyan-100">
+            시작하기
+          </span>
+        </button>
         <PlannedFeature
           title="AI 모델 이미지 생성"
           description="브랜드, 상품, 캠페인에 어울리는 AI 모델 이미지를 제작합니다."

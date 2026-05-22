@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
 import { KeywordTool } from '@/features/keyword-analysis/components/keyword-tool'
 import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
 import { MenuButton } from './menu-button'
 
-type ViewKey = 'home' | 'keyword'
+type ViewKey = 'home' | 'keyword' | 'blog'
 
 export function MarketingWorkspace() {
   const [view, setView] = useState<ViewKey>('home')
@@ -52,7 +53,12 @@ export function MarketingWorkspace() {
                     label="AI 검색 노출 키워드 분석"
                     onClick={() => openView('keyword')}
                   />
-                  <MenuButton eyebrow="Soon" label="AI 블로그 포스팅" disabled />
+                  <MenuButton
+                    active={view === 'blog'}
+                    eyebrow="Live"
+                    label="AI 블로그 원고 작성"
+                    onClick={() => openView('blog')}
+                  />
                   <MenuButton eyebrow="Soon" label="AI 모델 이미지 생성" disabled />
                 </nav>
               ) : null}
@@ -60,8 +66,14 @@ export function MarketingWorkspace() {
           </header>
 
           <section className="min-w-0 flex-1 py-6 lg:py-8">
-            {view === 'home' ? <HomeView onOpenKeyword={() => openView('keyword')} /> : null}
+            {view === 'home' ? (
+              <HomeView
+                onOpenBlogPosting={() => openView('blog')}
+                onOpenKeyword={() => openView('keyword')}
+              />
+            ) : null}
             {view === 'keyword' ? <KeywordTool /> : null}
+            {view === 'blog' ? <BlogPostingTool /> : null}
           </section>
         </div>
       </div>

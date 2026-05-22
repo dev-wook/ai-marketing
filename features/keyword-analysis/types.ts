@@ -6,7 +6,6 @@ export type KeywordRecommendation = {
   aiScore: number
   blogSignal: string
   searchSignal: string
-  placeSignal: string
   finalJudgement: string
 }
 

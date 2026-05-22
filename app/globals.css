@@ -37,3 +37,73 @@ textarea {
     transform: translateX(160%);
   }
 }
+
+.blog-draft-editor article {
+  display: grid;
+  gap: 20px;
+}
+
+.blog-draft-editor section {
+  display: grid;
+  gap: 14px;
+  padding: 10px 0;
+}
+
+.blog-draft-editor h1 {
+  margin: 0 0 18px;
+  color: #0f172a;
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.blog-draft-editor h2 {
+  margin: 28px 0 6px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #dbeafe;
+  color: #155e75;
+  font-size: 25px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.blog-draft-editor h3 {
+  margin: 18px 0 4px;
+  color: #1e293b;
+  font-size: 20px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.blog-draft-editor p {
+  margin: 0;
+  color: #334155;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.95;
+}
+
+.blog-draft-editor ul,
+.blog-draft-editor ol {
+  margin: 0;
+  padding-left: 24px;
+  color: #334155;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.9;
+}
+
+.blog-draft-editor li + li {
+  margin-top: 8px;
+}
+
+.blog-draft-editor strong {
+  color: #0f172a;
+  font-weight: 900;
+}
+
+.blog-draft-editor em {
+  color: #0369a1;
+  font-style: normal;
+  font-weight: 800;
+}

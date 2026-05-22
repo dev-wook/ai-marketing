@@ -126,8 +126,8 @@ export function KeywordTool() {
           AI 검색 노출에 중요한 키워드를 분석하세요
         </h2>
         <p className="mx-auto mt-4 max-w-6xl text-base font-semibold leading-7 text-slate-300 xl:whitespace-nowrap">
-          입력한 키워드를 기준으로 AI가 중요하게 판단할 만한 주제어, 검색 의도, 블로그와
-          플레이스 활용 포인트를 분석합니다.
+          입력한 키워드를 기준으로 AI가 중요하게 판단할 만한 주제어, 검색 의도, 블로그 활용
+          포인트를 분석합니다.
         </p>
 
         <form

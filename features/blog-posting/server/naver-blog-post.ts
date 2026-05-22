@@ -44,7 +44,7 @@ export async function generateNaverBlogPost(
     serviceName,
     keyBenefits: normalizeBenefits(input.keyBenefits),
   })
-  const generatedContent = await generateGeminiText(toGeminiPromptText(sourcePrompt), true)
+  const generatedContent = await generateGeminiText(toGeminiPromptText(sourcePrompt))
 
   return {
     ok: true,
@@ -73,7 +73,7 @@ function createNaverBlogPrompt(input: { serviceName: string; keyBenefits: string
     },
     brandContext: lasopBeautyProfile,
     searchGuidance: [
-      'Google Search grounding을 사용해 입력 시술명과 관련된 최근 상위 블로그 콘텐츠 흐름을 여러 개 참고한다.',
+      '입력 시술명과 관련된 검색 의도, 후기/첫방문/유지기간/주의사항/가격대 등 실제 검색자가 궁금해하는 축을 기준으로 콘텐츠 흐름을 설계한다.',
       '검색 질의는 시술명, 고객 검색 의도, 후기/첫방문/유지기간/주의사항/가격대 등 실제 검색자가 궁금해하는 축으로 구성한다.',
       '검색 결과를 바탕으로 포스팅 주제, 핵심 키워드, 타깃 고객, 고객 고민, FAQ를 자동으로 정의한다.',
       '톤앤매너는 AEO/GEO에 적합하되 너무 딱딱하지 않게, 실제 샵 상담자가 블로그에서 차분히 설명하는 친근한 말투로 자동 설정한다.',
@@ -97,8 +97,8 @@ function createNaverBlogPrompt(input: { serviceName: string; keyBenefits: string
 function toGeminiPromptText(sourcePrompt: Record<string, unknown>) {
   return `
 아래 JSON 지시사항을 정확히 따르세요.
-작성 전에 Google Search grounding을 사용해 입력 시술명과 관련된 상위 블로그 콘텐츠 여러 개의 흐름을 참고하세요.
-참고한 검색 결과는 문장 복사용이 아니라 포스팅 주제 선정, 검색 의도, 제목 패턴, FAQ 흐름, CTA 흐름 파악용입니다.
+작성 전에 입력 시술명과 관련된 검색 의도, 제목 패턴, FAQ 흐름, CTA 흐름을 먼저 설계하세요.
+참고 맥락은 문장 복사용이 아니라 포스팅 주제 선정, 검색 의도, 제목 패턴, FAQ 흐름, CTA 흐름 파악용입니다.
 사용자는 시술명과 강조 키워드만 제공합니다. 주제, 타깃 고객, 톤앤매너, 본문 구조는 검색 결과와 AEO/GEO 기준에 맞게 자동 설계하세요.
 말투는 너무 딱딱한 설명문이 아니라, 실제 샵 담당자가 네이버 블로그에 올리는 친근한 상담형 문체로 작성하세요.
 네이버 플레이스 상위노출을 직접 보장한다고 쓰지 말고, 고객 질문을 해결하고 브랜드 신뢰도를 높이는 정보성 포스팅으로 작성하세요.
