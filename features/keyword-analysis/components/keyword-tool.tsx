@@ -197,14 +197,14 @@ export function KeywordTool() {
 
 function KeywordErrorMessage({ log, message }: { log: string; message: string }) {
   return (
-    <div className="mx-auto mt-5 max-w-3xl rounded-md border border-red-400/35 bg-red-500/10 text-left text-sm text-red-100">
+    <div className="mx-auto mt-5 min-w-0 max-w-3xl rounded-md border border-red-400/35 bg-red-500/10 text-left text-sm text-red-100">
       <p className="px-4 py-3 font-bold">{message}</p>
       {log ? (
-        <details className="border-t border-red-300/20">
+        <details className="min-w-0 border-t border-red-300/20">
           <summary className="cursor-pointer px-4 py-3 font-black text-red-50 transition hover:bg-red-400/10">
             실패 로그 더보기
           </summary>
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-red-300/15 bg-black/25 px-4 py-3 font-mono text-xs leading-5 text-red-50/85">
+          <pre className="max-h-72 max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all border-t border-red-300/15 bg-black/25 px-4 py-3 font-mono text-xs leading-5 text-red-50/85 [overflow-wrap:anywhere]">
             {log}
           </pre>
         </details>

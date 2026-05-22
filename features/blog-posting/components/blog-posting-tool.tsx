@@ -13,6 +13,7 @@ type StepKey = 'input' | 'interview' | 'draft'
 
 type ApiErrorBody = {
   message?: string
+  debug?: unknown
 }
 
 export function BlogPostingTool() {
@@ -25,6 +26,7 @@ export function BlogPostingTool() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [errorLog, setErrorLog] = useState('')
 
   const interviewAnswers = useMemo(() => {
     if (!analysis) {
@@ -52,11 +54,13 @@ export function BlogPostingTool() {
 
     if (!nextKeyword) {
       setErrorMessage('분석할 키워드를 입력해주세요.')
+      setErrorLog('')
       return
     }
 
     setIsLoading(true)
     setErrorMessage('')
+    setErrorLog('')
     setAnalysis(null)
     setDraftResult(null)
     setAnswers({})
@@ -71,7 +75,10 @@ export function BlogPostingTool() {
       const body = (await response.json()) as BlogPatternAnalysisResponse | ApiErrorBody
 
       if (!response.ok) {
-        throw new Error((body as ApiErrorBody).message ?? '블로그 글쓰기 준비에 실패했습니다.')
+        const errorBody = body as ApiErrorBody
+
+        setErrorLog(toReadableErrorLog(errorBody.debug))
+        throw new Error(errorBody.message ?? '블로그 글쓰기 준비에 실패했습니다.')
       }
 
       setAnalysis(body as BlogPatternAnalysisResponse)
@@ -92,11 +99,13 @@ export function BlogPostingTool() {
   const generateDraft = async () => {
     if (!analysis || !isInterviewComplete) {
       setErrorMessage('인터뷰 답변을 모두 완료해주세요.')
+      setErrorLog('')
       return
     }
 
     setIsLoading(true)
     setErrorMessage('')
+    setErrorLog('')
 
     try {
       const response = await fetch('/api/blog-posting/draft', {
@@ -111,7 +120,10 @@ export function BlogPostingTool() {
       const body = (await response.json()) as BlogDraftResponse | ApiErrorBody
 
       if (!response.ok) {
-        throw new Error((body as ApiErrorBody).message ?? '블로그 초안 생성에 실패했습니다.')
+        const errorBody = body as ApiErrorBody
+
+        setErrorLog(toReadableErrorLog(errorBody.debug))
+        throw new Error(errorBody.message ?? '블로그 초안 생성에 실패했습니다.')
       }
 
       setDraftResult(body as BlogDraftResponse)
@@ -130,11 +142,13 @@ export function BlogPostingTool() {
 
     if (!feedback.trim()) {
       setErrorMessage('수정 요청 내용을 입력해주세요.')
+      setErrorLog('')
       return
     }
 
     setIsLoading(true)
     setErrorMessage('')
+    setErrorLog('')
 
     try {
       const response = await fetch('/api/blog-posting/revise', {
@@ -151,7 +165,10 @@ export function BlogPostingTool() {
       const body = (await response.json()) as BlogDraftResponse | ApiErrorBody
 
       if (!response.ok) {
-        throw new Error((body as ApiErrorBody).message ?? '블로그 초안 수정에 실패했습니다.')
+        const errorBody = body as ApiErrorBody
+
+        setErrorLog(toReadableErrorLog(errorBody.debug))
+        throw new Error(errorBody.message ?? '블로그 초안 수정에 실패했습니다.')
       }
 
       setDraftResult(body as BlogDraftResponse)
@@ -164,7 +181,7 @@ export function BlogPostingTool() {
   }
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl content-start gap-4 py-4 md:gap-6 md:py-6">
+    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-start gap-4 py-4 md:gap-6 md:py-6">
       <section className="text-center">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
           Blog Draft
@@ -178,19 +195,23 @@ export function BlogPostingTool() {
         </p>
       </section>
 
-      <section className="rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl md:p-4">
-        <form onSubmit={submitKeyword} className="flex flex-col gap-2 md:flex-row md:gap-3">
+      <section className="mx-auto w-full max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+        <form onSubmit={submitKeyword} className="flex flex-col gap-3 md:flex-row">
           <input
             value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
+            onChange={(event) => {
+              setKeyword(event.target.value)
+              setErrorMessage('')
+              setErrorLog('')
+            }}
             placeholder="예: 노원 속눈썹펌"
-            className="min-h-12 flex-1 rounded-md border border-white/10 bg-[#090d18] px-3 text-base font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 md:min-h-14 md:px-4 md:text-lg"
+            className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading}
-            className="min-h-12 rounded-md bg-white px-5 text-sm font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45 md:min-h-14 md:px-6 md:text-base"
+            className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {isLoading && step === 'input' ? '확인 중' : '글쓰기 시작'}
           </button>
@@ -204,9 +225,7 @@ export function BlogPostingTool() {
       </section>
 
       {errorMessage ? (
-        <div className="rounded-md border border-red-300/20 bg-red-400/10 px-4 py-3 text-sm font-bold text-red-100">
-          {errorMessage}
-        </div>
+        <BlogErrorMessage message={errorMessage} log={errorLog} />
       ) : null}
 
       {analysis ? (
@@ -272,9 +291,6 @@ export function BlogPostingTool() {
           draft={draftResult.draft}
           feedback={feedback}
           isLoading={isLoading}
-          onDraftChange={(draft) =>
-            setDraftResult((current) => (current ? { ...current, draft } : current))
-          }
           onFeedbackChange={setFeedback}
           onRevise={reviseDraft}
         />
@@ -298,6 +314,24 @@ function LoadingProgress({ description, title }: { description: string; title: s
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
         <div className="h-full w-2/5 animate-[keyword-progress_1.25s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
       </div>
+    </div>
+  )
+}
+
+function BlogErrorMessage({ log, message }: { log: string; message: string }) {
+  return (
+    <div className="mx-auto min-w-0 max-w-3xl rounded-md border border-red-400/35 bg-red-500/10 text-left text-sm text-red-100">
+      <p className="px-4 py-3 font-bold">{message}</p>
+      {log ? (
+        <details className="min-w-0 border-t border-red-300/20">
+          <summary className="cursor-pointer px-4 py-3 font-black text-red-50 transition hover:bg-red-400/10">
+            실패 로그 더보기
+          </summary>
+          <pre className="max-h-72 max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all border-t border-red-300/15 bg-black/25 px-4 py-3 font-mono text-xs leading-5 text-red-50/85 [overflow-wrap:anywhere]">
+            {log}
+          </pre>
+        </details>
+      ) : null}
     </div>
   )
 }
@@ -477,7 +511,6 @@ function DraftPanel({
   draft,
   feedback,
   isLoading,
-  onDraftChange,
   onFeedbackChange,
   onRevise,
 }: {
@@ -485,7 +518,6 @@ function DraftPanel({
   draft: string
   feedback: string
   isLoading: boolean
-  onDraftChange: (value: string) => void
   onFeedbackChange: (value: string) => void
   onRevise: () => void
 }) {
@@ -531,7 +563,7 @@ function DraftPanel({
           <div>
             <p className="text-sm font-black text-white">네이버 블로그 붙여넣기용 원고</p>
             <p className="mt-1 text-sm font-semibold text-slate-400">
-              아래 원고를 수정한 뒤 복사해서 네이버 블로그 에디터에 붙여넣으세요.
+              아래 원고를 복사해서 네이버 블로그 에디터에 붙여넣으세요.
             </p>
           </div>
           <button
@@ -547,7 +579,7 @@ function DraftPanel({
             {copyMessage}
           </div>
         ) : null}
-        <RichDraftEditor html={htmlDraft} onDraftChange={onDraftChange} />
+        <DraftPreview html={htmlDraft} />
       </div>
 
       <div className="mt-5 grid gap-3">
@@ -560,8 +592,7 @@ function DraftPanel({
         />
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <p className="text-sm font-semibold text-slate-400">
-            추가 수정이 필요하면 피드백을 입력하고, 완료되면 원고를 복사해 네이버 블로그에
-            붙여넣으세요.
+            직접 수정 대신 피드백으로 다시 요청하면 원고를 새로 다듬어드립니다.
           </p>
           <div className="flex flex-col gap-3 md:flex-row">
             <button
@@ -579,22 +610,29 @@ function DraftPanel({
   )
 }
 
-function RichDraftEditor({
-  html,
-  onDraftChange,
-}: {
-  html: string
-  onDraftChange: (value: string) => void
-}) {
+function DraftPreview({ html }: { html: string }) {
   return (
     <div
-      contentEditable
-      suppressContentEditableWarning
-      onBlur={(event) => onDraftChange(sanitizeHtml(event.currentTarget.innerHTML))}
-      className="blog-draft-editor min-h-[420px] overflow-auto bg-white p-4 text-[#141923] outline-none md:min-h-[520px] md:p-7"
+      className="blog-draft-editor min-h-[420px] overflow-auto bg-white p-4 text-[#141923] md:min-h-[520px] md:p-7"
       dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
     />
   )
+}
+
+function toReadableErrorLog(value: unknown) {
+  if (!value) {
+    return ''
+  }
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
 }
 
 function toHtmlDraft(draft: string) {
