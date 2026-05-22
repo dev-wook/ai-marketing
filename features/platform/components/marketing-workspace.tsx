@@ -11,6 +11,10 @@ type ViewKey = 'home' | 'keyword' | 'blog'
 
 const pullRefreshThreshold = 84
 const pullRefreshMaxDistance = 118
+const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
+  keyword: '키워드 분석',
+  blog: '블로그 원고 작성',
+}
 
 export function MarketingWorkspace() {
   const [view, setView] = useState<ViewKey>('home')
@@ -53,7 +57,7 @@ export function MarketingWorkspace() {
 
       const dampedDistance = Math.min(distance * 0.62, pullRefreshMaxDistance)
 
-      if (dampedDistance > 10) {
+      if (dampedDistance > 2) {
         event.preventDefault()
       }
 
@@ -94,40 +98,73 @@ export function MarketingWorkspace() {
 
   const pullProgress = Math.min(pullDistance / pullRefreshThreshold, 1)
   const shouldShowPullRefresh = pullDistance > 0 || isRefreshing
+  const pullIndicatorHeight = Math.min(pullDistance, pullRefreshMaxDistance)
+  const isHomeView = view === 'home'
 
   return (
     <main className="min-h-screen bg-[#070a12] text-white">
       <div
         aria-hidden={!shouldShowPullRefresh}
-        className={`fixed left-1/2 top-3 z-50 -translate-x-1/2 transition duration-200 md:hidden ${
+        className={`fixed inset-x-0 top-0 z-50 overflow-hidden border-b border-cyan-300/10 bg-[linear-gradient(180deg,rgba(7,10,18,0.98),rgba(10,16,32,0.88))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition-opacity duration-150 md:hidden ${
           shouldShowPullRefresh ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         style={{
-          transform: `translate(-50%, ${Math.min(pullDistance * 0.22, 18)}px)`,
+          height: `${isRefreshing ? pullRefreshThreshold : pullIndicatorHeight}px`,
         }}
       >
-        <div className="flex min-h-11 items-center gap-3 rounded-full border border-cyan-300/30 bg-[#07111d]/88 px-4 text-xs font-black text-cyan-50 shadow-[0_18px_45px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+        <div className="flex h-full min-h-16 flex-col items-center justify-end gap-1 pb-3 text-cyan-100">
           <span
-            className={`grid h-6 w-6 place-items-center rounded-full border border-cyan-200/40 ${
+            className={`grid h-9 w-9 place-items-center rounded-full border border-cyan-300/35 bg-cyan-300/10 shadow-[0_0_30px_rgba(34,211,238,0.18)] ${
               isRefreshing ? 'animate-spin' : ''
             }`}
           >
             <span
-              className="block h-2.5 w-2.5 rounded-full bg-gradient-to-br from-cyan-200 to-fuchsia-300"
-              style={{ transform: `scale(${Math.max(0.55, pullProgress)})` }}
+              className="block h-3 w-3 border-b-2 border-r-2 border-current transition-transform duration-150"
+              style={{ transform: `rotate(45deg) scale(${Math.max(0.72, pullProgress)})` }}
             />
           </span>
-          {isRefreshing
-            ? '새로고침 중'
-            : pullProgress >= 1
-              ? '놓으면 새로고침'
-              : '아래로 당겨 새로고침'}
+          <span className="text-[11px] font-black tracking-[0.12em] text-cyan-100/80">
+            {isRefreshing
+              ? '새로고침 중'
+              : pullProgress >= 1
+                ? '놓으면 새로고침'
+                : '아래로 당겨 새로고침'}
+          </span>
         </div>
       </div>
       <div className="min-h-screen bg-[radial-gradient(circle_at_28%_20%,rgba(0,200,255,0.22),transparent_32%),radial-gradient(circle_at_76%_28%,rgba(184,54,255,0.24),transparent_34%),linear-gradient(135deg,#080b14_0%,#0b1020_48%,#090713_100%)]">
         <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-5 md:px-8">
-          <header className="sticky top-0 z-40 -mx-5 flex items-center justify-between border-b border-white/10 bg-[#070a12]/72 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl md:relative md:top-auto md:z-20 md:mx-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0">
-            <BrandHeader onClick={() => openView('home')} />
+          <header
+            className={`sticky top-0 z-40 -mx-5 items-center border-b border-white/10 bg-[#070a12]/72 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl md:relative md:top-auto md:z-20 md:mx-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
+              isHomeView
+                ? 'flex justify-between'
+                : 'grid grid-cols-[44px_minmax(0,1fr)_44px] gap-3'
+            }`}
+          >
+            {isHomeView ? (
+              <BrandHeader onClick={() => openView('home')} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => openView('home')}
+                aria-label="메인으로 돌아가기"
+                className="grid h-11 w-11 place-items-center rounded-md border border-white/10 bg-white/[0.045] text-slate-100 transition hover:border-cyan-300/45 hover:bg-cyan-300/10 focus:outline-none focus:ring-4 focus:ring-cyan-300/15"
+              >
+                <span
+                  aria-hidden="true"
+                  className="block h-3 w-3 rotate-45 border-b-2 border-l-2 border-current"
+                />
+              </button>
+            )}
+
+            {!isHomeView ? (
+              <div className="min-w-0 self-center text-center">
+                <p className="truncate text-base font-black tracking-[-0.01em] text-white md:text-lg">
+                  {viewTitles[view]}
+                </p>
+              </div>
+            ) : null}
+
             <div className="relative">
               <button
                 type="button"
@@ -170,21 +207,6 @@ export function MarketingWorkspace() {
           </header>
 
           <section className="min-w-0 flex-1 py-6 lg:py-8">
-            {view !== 'home' ? (
-              <button
-                type="button"
-                onClick={() => openView('home')}
-                aria-label="메인으로 돌아가기"
-                className="mb-2 inline-grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.045] text-slate-100 shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-x-0.5 hover:border-cyan-300/45 hover:bg-cyan-300/10 focus:outline-none focus:ring-4 focus:ring-cyan-300/15 md:mb-3"
-              >
-                <span
-                  aria-hidden="true"
-                  className="block h-3 w-3 rotate-45 border-b-2 border-l-2 border-current"
-                >
-                  <span className="sr-only">메인으로</span>
-                </span>
-              </button>
-            ) : null}
             {view === 'home' ? (
               <HomeView
                 onOpenBlogPosting={() => openView('blog')}
