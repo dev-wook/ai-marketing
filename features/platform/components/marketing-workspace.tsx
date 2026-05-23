@@ -11,6 +11,7 @@ type ViewKey = 'home' | 'keyword' | 'blog'
 
 const pullRefreshThreshold = 84
 const pullRefreshMaxDistance = 118
+const mobileHeaderHeight = 72
 const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   keyword: '키워드 분석',
   blog: '블로그 원고 작성',
@@ -99,17 +100,19 @@ export function MarketingWorkspace() {
   const pullProgress = Math.min(pullDistance / pullRefreshThreshold, 1)
   const shouldShowPullRefresh = pullDistance > 0 || isRefreshing
   const pullIndicatorHeight = Math.min(pullDistance, pullRefreshMaxDistance)
+  const activePullDistance = isRefreshing ? pullRefreshThreshold : pullIndicatorHeight
   const isHomeView = view === 'home'
 
   return (
     <main className="min-h-screen bg-[#070a12] text-white">
       <div
         aria-hidden={!shouldShowPullRefresh}
-        className={`fixed inset-x-0 top-0 z-50 overflow-hidden border-b border-cyan-300/10 bg-[linear-gradient(180deg,rgba(7,10,18,0.98),rgba(10,16,32,0.88))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition-opacity duration-150 md:hidden ${
+        className={`fixed inset-x-0 z-40 overflow-hidden border-b border-cyan-300/10 bg-[linear-gradient(180deg,rgba(7,10,18,0.98),rgba(10,16,32,0.88))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition-opacity duration-150 md:hidden ${
           shouldShowPullRefresh ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         style={{
-          height: `${isRefreshing ? pullRefreshThreshold : pullIndicatorHeight}px`,
+          top: `${mobileHeaderHeight}px`,
+          height: `${activePullDistance}px`,
         }}
       >
         <div className="flex h-full min-h-16 flex-col items-center justify-end gap-1 pb-3 text-cyan-100">
@@ -133,9 +136,9 @@ export function MarketingWorkspace() {
         </div>
       </div>
       <div className="min-h-screen bg-[radial-gradient(circle_at_28%_20%,rgba(0,200,255,0.22),transparent_32%),radial-gradient(circle_at_76%_28%,rgba(184,54,255,0.24),transparent_34%),linear-gradient(135deg,#080b14_0%,#0b1020_48%,#090713_100%)]">
-        <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-5 md:px-8">
+        <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-0 md:px-8 md:py-5">
           <header
-            className={`sticky top-0 z-40 -mx-5 items-center border-b border-white/10 bg-[#070a12]/72 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl md:relative md:top-auto md:z-20 md:mx-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
+            className={`sticky top-0 z-50 -mx-5 min-h-[72px] items-center border-b border-white/10 bg-[#070a12]/86 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl md:relative md:top-auto md:z-20 md:mx-0 md:min-h-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
               isHomeView
                 ? 'flex justify-between'
                 : 'grid grid-cols-[44px_minmax(0,1fr)_44px] gap-3'
@@ -206,7 +209,12 @@ export function MarketingWorkspace() {
             </div>
           </header>
 
-          <section className="min-w-0 flex-1 py-6 lg:py-8">
+          <section
+            className="min-w-0 flex-1 py-6 transition-transform duration-150 ease-out lg:py-8 md:translate-y-0"
+            style={{
+              transform: `translateY(${activePullDistance}px)`,
+            }}
+          >
             {view === 'home' ? (
               <HomeView
                 onOpenBlogPosting={() => openView('blog')}
