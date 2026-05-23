@@ -90,9 +90,10 @@ public/
 
 ## 검증
 
-변경 후 기본 검증은 아래 순서로 수행한다. 현재 프로젝트에는 ESLint 설정이 없으므로 lint는 설정을 추가한 뒤 활성화한다.
+변경 후 기본 검증은 아래 순서로 수행한다. 현재 프로젝트에는 ESLint 설정이 없으므로 lint는 설정을 추가한 뒤 활성화한다. Next.js route type은 빌드 모드 기준으로 먼저 생성한 뒤 타입 체크한다.
 
 ```bash
+/opt/homebrew/bin/node ./node_modules/.bin/next typegen
 ./node_modules/.bin/tsc --noEmit
 node ./node_modules/.bin/next build --webpack
 ```
