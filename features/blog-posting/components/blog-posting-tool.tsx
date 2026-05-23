@@ -182,52 +182,54 @@ export function BlogPostingTool() {
   }
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-start gap-4 py-4 md:gap-6 md:py-6">
+    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-center py-6">
       <section className="text-center">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
           Blog Draft
         </p>
-        <h2 className="mt-3 text-2xl font-black tracking-normal md:text-5xl">
+        <h2 className="mt-3 text-3xl font-black tracking-normal md:text-5xl">
           AI 블로그 원고를 작성하세요
         </h2>
-        <p className="mx-auto mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-300 md:mt-4 md:text-base md:leading-7">
+        <p className="mx-auto mt-4 max-w-6xl text-base font-semibold leading-7 text-slate-300">
           키워드를 입력하면 필요한 질문을 단계별로 드리고, 답변에 맞춘 블로그 원고를
           만들어드립니다.
         </p>
-      </section>
 
-      <section className="mx-auto w-full max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
-        <form onSubmit={submitKeyword} className="flex flex-col gap-3 md:flex-row">
-          <input
-            value={keyword}
-            onChange={(event) => {
-              setKeyword(event.target.value)
-              setErrorMessage('')
-              setErrorLog('')
-            }}
-            placeholder="예: 노원 속눈썹펌"
-            className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            disabled={!canSubmitKeyword}
-            className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {isLoading && step === 'input' ? '확인 중' : '글쓰기 시작'}
-          </button>
+        <form
+          onSubmit={submitKeyword}
+          className="mx-auto mt-8 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
+        >
+          <div className="flex flex-col gap-3 md:flex-row">
+            <input
+              value={keyword}
+              onChange={(event) => {
+                setKeyword(event.target.value)
+                setErrorMessage('')
+                setErrorLog('')
+              }}
+              placeholder="예: 노원 속눈썹펌"
+              className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              disabled={!canSubmitKeyword}
+              className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {isLoading && step === 'input' ? '확인 중' : '글쓰기 시작'}
+            </button>
+          </div>
         </form>
+
         {isLoading && step === 'input' ? (
           <LoadingProgress
             title="관련 콘텐츠를 확인하고 있습니다."
             description="원고 방향을 정리하고 맞춤 질문을 준비합니다."
           />
         ) : null}
-      </section>
 
-      {errorMessage ? (
-        <BlogErrorMessage message={errorMessage} log={errorLog} />
-      ) : null}
+        {errorMessage ? <BlogErrorMessage message={errorMessage} log={errorLog} /> : null}
+      </section>
 
       {analysis ? (
         <>
