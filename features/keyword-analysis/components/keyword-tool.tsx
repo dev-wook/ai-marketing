@@ -23,7 +23,11 @@ type KeywordErrorBody = {
   debug?: unknown
 }
 
-export function KeywordTool() {
+export function KeywordTool({
+  onStartBlogDraft,
+}: {
+  onStartBlogDraft: (keyword: string) => void
+}) {
   const [keyword, setKeyword] = useState('')
   const [recentKeywords, setRecentKeywords] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -190,7 +194,9 @@ export function KeywordTool() {
       </section>
 
       {isLoading ? <KeywordLoadingPanel step={loadingStep} /> : null}
-      {!isLoading && result ? <KeywordResult result={result} /> : null}
+      {!isLoading && result ? (
+        <KeywordResult onStartBlogDraft={onStartBlogDraft} result={result} />
+      ) : null}
     </div>
   )
 }

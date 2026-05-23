@@ -3,6 +3,8 @@ import { searchNaverBlog, toNaverBlogSearchContext } from '@/lib/naver'
 import type { KeywordPayload } from '../types'
 import { createKeywordPrompt } from './prompt'
 
+const keywordBlogReferenceCount = 30
+
 export async function recommendKeywords(keyword: string) {
   const naverSearchContext = await getNaverBlogContext(keyword)
   const generatedText = await generateGeminiText(createKeywordPrompt(keyword, naverSearchContext))
@@ -14,12 +16,12 @@ async function getNaverBlogContext(keyword: string) {
   try {
     const payload = await searchNaverBlog({
       query: keyword,
-      display: 20,
+      display: keywordBlogReferenceCount,
       start: 1,
       sort: 'sim',
     })
 
-    return toNaverBlogSearchContext(payload, 20)
+    return toNaverBlogSearchContext(payload, keywordBlogReferenceCount)
   } catch (error) {
     if (error instanceof Error) {
       console.error('Naver blog context skipped', {

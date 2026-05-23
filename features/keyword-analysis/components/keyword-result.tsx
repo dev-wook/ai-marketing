@@ -1,6 +1,12 @@
 import type { KeywordResponse } from '../types'
 
-export function KeywordResult({ result }: { result: KeywordResponse }) {
+export function KeywordResult({
+  onStartBlogDraft,
+  result,
+}: {
+  onStartBlogDraft: (keyword: string) => void
+  result: KeywordResponse
+}) {
   return (
     <section className="mx-auto mt-9 w-full max-w-6xl rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
       <div className="flex flex-col gap-3 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between">
@@ -56,10 +62,22 @@ export function KeywordResult({ result }: { result: KeywordResponse }) {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px]">
               <SignalPanel label="Search" accent="text-blue-200/80" text={item.searchSignal} />
               <SignalPanel label="Blog" accent="text-cyan-200/80" text={item.blogSignal} />
               <SignalPanel label="Final" accent="text-white/80" text={item.finalJudgement} />
+              <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-3">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-200/80">
+                  Next
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onStartBlogDraft(item.keyword)}
+                  className="mt-3 min-h-11 w-full rounded-md bg-cyan-100 px-4 text-sm font-black text-[#070a12] transition hover:bg-white"
+                >
+                  AI 블로그 원고 작성
+                </button>
+              </div>
             </div>
           </article>
         ))}

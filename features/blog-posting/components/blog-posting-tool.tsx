@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type {
   BlogDraftResponse,
   BlogInterviewAnswer,
@@ -16,8 +16,14 @@ type ApiErrorBody = {
   debug?: unknown
 }
 
-export function BlogPostingTool() {
-  const [keyword, setKeyword] = useState('')
+export function BlogPostingTool({
+  initialKeyword = '',
+  initialKeywordKey = 0,
+}: {
+  initialKeyword?: string
+  initialKeywordKey?: number
+}) {
+  const [keyword, setKeyword] = useState(initialKeyword)
   const [analysis, setAnalysis] = useState<BlogPatternAnalysisResponse | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [draftResult, setDraftResult] = useState<BlogDraftResponse | null>(null)
@@ -27,6 +33,16 @@ export function BlogPostingTool() {
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [errorLog, setErrorLog] = useState('')
+
+  useEffect(() => {
+    if (!initialKeyword) {
+      return
+    }
+
+    setKeyword(initialKeyword)
+    setErrorMessage('')
+    setErrorLog('')
+  }, [initialKeyword, initialKeywordKey])
 
   const interviewAnswers = useMemo(() => {
     if (!analysis) {
@@ -285,6 +301,12 @@ export function BlogPostingTool() {
               </button>
             </div>
           </section>
+          {isLoading && step === 'interview' ? (
+            <LoadingProgress
+              title="블로그 원고를 작성하고 있습니다."
+              description="선택한 답변과 참고 콘텐츠 흐름을 반영해 원고를 구성합니다."
+            />
+          ) : null}
         </>
       ) : null}
 

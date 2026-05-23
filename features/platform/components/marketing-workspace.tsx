@@ -9,6 +9,7 @@ import { MenuButton } from './menu-button'
 
 type ViewKey = 'home' | 'keyword' | 'blog'
 
+const refreshViewStorageKey = 'aiva-refresh-view'
 const pullRefreshThreshold = 84
 const pullRefreshMaxDistance = 118
 const mobileHeaderHeight = 72
@@ -19,6 +20,8 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
 
 export function MarketingWorkspace() {
   const [view, setView] = useState<ViewKey>('home')
+  const [blogInitialKeyword, setBlogInitialKeyword] = useState('')
+  const [blogInitialKeywordKey, setBlogInitialKeywordKey] = useState(0)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -29,6 +32,22 @@ export function MarketingWorkspace() {
     setView(nextView)
     setIsMenuOpen(false)
   }
+
+  const openBlogDraftWithKeyword = (keyword: string) => {
+    setBlogInitialKeyword(keyword)
+    setBlogInitialKeywordKey((current) => current + 1)
+    openView('blog')
+    window.scrollTo({ top: 0 })
+  }
+
+  useEffect(() => {
+    const savedView = window.sessionStorage.getItem(refreshViewStorageKey)
+
+    if (savedView === 'keyword' || savedView === 'blog') {
+      setView(savedView)
+      window.sessionStorage.removeItem(refreshViewStorageKey)
+    }
+  }, [])
 
   useEffect(() => {
     const isMobileViewport = () => window.matchMedia('(max-width: 767px)').matches
@@ -75,6 +94,7 @@ export function MarketingWorkspace() {
       setPullDistance((current) => {
         if (current >= pullRefreshThreshold) {
           setIsRefreshing(true)
+          window.sessionStorage.setItem(refreshViewStorageKey, view)
           window.setTimeout(() => window.location.reload(), 280)
 
           return pullRefreshThreshold
@@ -95,7 +115,7 @@ export function MarketingWorkspace() {
       window.removeEventListener('touchend', handleTouchEnd)
       window.removeEventListener('touchcancel', handleTouchEnd)
     }
-  }, [isRefreshing])
+  }, [isRefreshing, view])
 
   const pullProgress = Math.min(pullDistance / pullRefreshThreshold, 1)
   const shouldShowPullRefresh = pullDistance > 0 || isRefreshing
@@ -221,8 +241,15 @@ export function MarketingWorkspace() {
                 onOpenKeyword={() => openView('keyword')}
               />
             ) : null}
-            {view === 'keyword' ? <KeywordTool /> : null}
-            {view === 'blog' ? <BlogPostingTool /> : null}
+            {view === 'keyword' ? (
+              <KeywordTool onStartBlogDraft={openBlogDraftWithKeyword} />
+            ) : null}
+            {view === 'blog' ? (
+              <BlogPostingTool
+                initialKeyword={blogInitialKeyword}
+                initialKeywordKey={blogInitialKeywordKey}
+              />
+            ) : null}
           </section>
         </div>
       </div>
