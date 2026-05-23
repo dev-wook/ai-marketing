@@ -45,6 +45,7 @@ export function BlogPostingTool() {
   const isInterviewComplete = Boolean(
     analysis && analysis.questions.every((question) => answers[question.id]?.trim()),
   )
+  const canSubmitKeyword = useMemo(() => keyword.trim().length > 0 && !isLoading, [isLoading, keyword])
   const answeredCount = analysis
     ? analysis.questions.filter((question) => answers[question.id]?.trim()).length
     : 0
@@ -210,7 +211,7 @@ export function BlogPostingTool() {
           />
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={!canSubmitKeyword}
             className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {isLoading && step === 'input' ? '확인 중' : '글쓰기 시작'}

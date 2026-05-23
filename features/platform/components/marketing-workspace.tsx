@@ -117,14 +117,14 @@ export function MarketingWorkspace() {
       >
         <div className="flex h-full min-h-16 flex-col items-center justify-end gap-1 pb-3 text-cyan-100">
           <span
-            className={`grid h-9 w-9 place-items-center rounded-full border border-cyan-300/35 bg-cyan-300/10 shadow-[0_0_30px_rgba(34,211,238,0.18)] ${
-              isRefreshing ? 'animate-spin' : ''
-            }`}
+            className="grid h-9 w-9 place-items-center rounded-full border border-cyan-300/35 bg-cyan-300/10 shadow-[0_0_30px_rgba(34,211,238,0.18)]"
           >
             <span
-              className="block h-3 w-3 border-b-2 border-r-2 border-current transition-transform duration-150"
-              style={{ transform: `rotate(45deg) scale(${Math.max(0.72, pullProgress)})` }}
-            />
+              className="grid h-5 w-5 place-items-center transition-transform duration-150"
+              style={{ transform: `scale(${Math.max(0.72, pullProgress)})` }}
+            >
+              <span className="block h-5 w-5 animate-spin rounded-full border-2 border-cyan-100/30 border-t-cyan-100" />
+            </span>
           </span>
           <span className="text-[11px] font-black tracking-[0.12em] text-cyan-100/80">
             {isRefreshing
