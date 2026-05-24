@@ -12,6 +12,8 @@ export type BlogPatternReport = {
   frequentTerms: string[]
   customerNeeds: string[]
   contentPatterns: string[]
+  storytellingPatterns: string[]
+  humanTonePatterns: string[]
   aeoGeoPoints: string[]
   avoidPatterns: string[]
 }

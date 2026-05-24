@@ -85,6 +85,8 @@ function normalizeReport(report?: Partial<BlogPatternReport>): BlogPatternReport
     frequentTerms: toStringArray(report?.frequentTerms).slice(0, 10),
     customerNeeds: toStringArray(report?.customerNeeds).slice(0, 8),
     contentPatterns: toStringArray(report?.contentPatterns).slice(0, 8),
+    storytellingPatterns: toStringArray(report?.storytellingPatterns).slice(0, 8),
+    humanTonePatterns: toStringArray(report?.humanTonePatterns).slice(0, 8),
     aeoGeoPoints: toStringArray(report?.aeoGeoPoints).slice(0, 8),
     avoidPatterns: toStringArray(report?.avoidPatterns).slice(0, 6),
   }
@@ -105,14 +107,31 @@ function normalizeQuestions(
           (question) =>
             question.question && question.options.length >= 3 && question.options.length <= 4,
         )
-        .slice(0, 6)
+        .slice(0, 10)
     : []
 
-  if (normalized.length < 3) {
+  if (normalized.length < 5) {
     throw new Error('인터뷰 질문을 생성하지 못했습니다. 다시 시도해주세요.')
   }
 
-  return normalized
+  return ensureTopicQuestionFirst(normalized)
+}
+
+function ensureTopicQuestionFirst(questions: BlogInterviewQuestion[]) {
+  const topicIndex = questions.findIndex(
+    (question) =>
+      question.id === 'topic' ||
+      question.question.includes('주제') ||
+      question.options.some((option) => option.label.includes('주제')),
+  )
+
+  if (topicIndex <= 0) {
+    return questions
+  }
+
+  const topicQuestion = questions[topicIndex]
+
+  return [topicQuestion, ...questions.slice(0, topicIndex), ...questions.slice(topicIndex + 1)]
 }
 
 function normalizeOptions(

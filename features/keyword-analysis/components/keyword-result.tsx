@@ -59,25 +59,20 @@ export function KeywordResult({
                     style={{ width: `${item.aiScore}%` }}
                   />
                 </div>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px]">
-              <SignalPanel label="Search" accent="text-blue-200/80" text={item.searchSignal} />
-              <SignalPanel label="Blog" accent="text-cyan-200/80" text={item.blogSignal} />
-              <SignalPanel label="Final" accent="text-white/80" text={item.finalJudgement} />
-              <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-3">
-                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-200/80">
-                  Next
-                </p>
                 <button
                   type="button"
                   onClick={() => onStartBlogDraft(item.keyword)}
-                  className="mt-3 min-h-11 w-full rounded-md bg-cyan-100 px-4 text-sm font-black text-[#070a12] transition hover:bg-white"
+                  className="mt-4 inline-flex min-h-10 w-full items-center justify-center rounded-md border border-cyan-300/30 bg-cyan-300/[0.08] px-3 text-xs font-black text-cyan-50 transition hover:border-cyan-200/70 hover:bg-cyan-300/[0.14]"
                 >
-                  AI 블로그 원고 작성
+                  원고 작성
                 </button>
               </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <SignalPanel label="Search" accent="text-blue-200/80" text={item.searchSignal} />
+              <SignalPanel label="Blog" accent="text-cyan-200/80" text={item.blogSignal} />
+              <SignalPanel label="Final" accent="text-white/80" text={item.finalJudgement} />
             </div>
           </article>
         ))}

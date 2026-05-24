@@ -168,7 +168,9 @@ export function KeywordTool({
 
         {cooldownRemaining > 0 && !isLoading ? (
           <p className="mx-auto mt-3 max-w-3xl rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] px-4 py-3 text-sm font-bold text-cyan-100">
-            AI 분석이 완료되었습니다. 다음 분석은 {cooldownRemaining}초 후 다시 이용할 수 있습니다.
+            {result
+              ? `AI 분석이 완료되었습니다. 다음 분석은 ${cooldownRemaining}초 후 다시 이용할 수 있습니다.`
+              : `AI 분석은 ${cooldownRemaining}초 후 다시 이용할 수 있습니다.`}
           </p>
         ) : null}
 

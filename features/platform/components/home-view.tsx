@@ -1,5 +1,3 @@
-import { AivaLogoImage } from './aiva-logo-image'
-
 export function HomeView({
   onOpenBlogPosting,
   onOpenKeyword,
@@ -9,12 +7,11 @@ export function HomeView({
 }) {
   return (
     <div className="grid min-h-[calc(100vh-4rem)] content-center gap-8">
-      <section className="max-w-7xl">
-        <AivaLogoImage className="mb-7 h-24 w-24" />
+      <section className="max-w-5xl">
         <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200/80">
-          AIVA — AI Marketing Platform
+          AI Marketing Platform
         </p>
-        <h2 className="mt-4 text-4xl font-black leading-tight md:text-6xl xl:text-[4.45rem]">
+        <h2 className="mt-4 text-4xl font-black leading-tight md:text-6xl xl:text-[4.2rem]">
           브랜드 성장을 위한 AI 마케팅 플랫폼
         </h2>
         <p className="mt-5 max-w-2xl text-base font-semibold leading-8 text-slate-300">

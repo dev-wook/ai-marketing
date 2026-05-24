@@ -33,8 +33,10 @@
 ## 아키텍처 기준
 
 - `app/`은 페이지와 API route entry point만 둔다.
-- API route handler는 요청 파싱, 입력 검증, 서비스 호출, 응답 반환만 담당한다.
-- 기능별 UI, 타입, 저장소, 서버 로직은 `features/<feature-name>/` 아래에 둔다.
+- `app/api/**/route.ts`는 공개 API URL을 보존하는 entry point이며, 실제 구현은 `features/*/api/*-route.ts`를 re-export하는 얇은 파일로 유지한다.
+- 현재 Next.js route type 생성기가 `app/api` route group을 안정적으로 처리하지 못하므로 API URL 폴더에는 route group을 사용하지 않는다.
+- API route 구현은 요청 파싱, 입력 검증, 서비스 호출, 응답 반환만 담당한다.
+- 기능별 UI, API 구현, 타입, 저장소, 서버 로직은 `features/<feature-name>/` 아래에 둔다.
 - 외부 서비스 연동 코드는 `lib/<provider>.ts`에 둔다.
 - 프롬프트 생성, 응답 정규화, 도메인 판단 로직은 route handler 내부에 두지 않는다.
 - 클라이언트 localStorage 접근은 기능 단위 storage 모듈로 분리하고, 서버 렌더링 환경을 항상 방어한다.
@@ -44,17 +46,33 @@
 ```text
 app/
   api/
+    blog-posting/
+    gemini/
+    keywords/
+    marketing/
+    naver/
   layout.tsx
   page.tsx
-components/
-  marketing-workspace.tsx
 features/
+  blog-posting/
+    api/
+    components/
+    server/
+    types.ts
   keyword-analysis/
+    api/
     components/
     server/
     storage.ts
     types.ts
+  naver-search/
+    api/
+    server/
+  platform/
+    api/
+    components/
 lib/
+  api/
   gemini.ts
   naver.ts
 public/

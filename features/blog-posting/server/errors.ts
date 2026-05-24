@@ -1,4 +1,4 @@
-import { GeminiApiError } from '@/lib/gemini'
+import { GeminiApiError, getGeminiErrorMetadata } from '@/lib/gemini'
 
 export type BlogPostingErrorResponse = {
   status: number
@@ -9,6 +9,7 @@ export type BlogPostingErrorResponse = {
     statusText?: string
     message: string
     body?: unknown
+    metadata?: ReturnType<typeof getGeminiErrorMetadata>
     createdAt: string
   }
 }
@@ -21,6 +22,7 @@ export function toBlogPostingErrorResponse(error: unknown): BlogPostingErrorResp
       statusText: error.statusText,
       message: error.message,
       body: safelyParseJson(error.body),
+      metadata: getGeminiErrorMetadata(error),
       createdAt: new Date().toISOString(),
     }
 

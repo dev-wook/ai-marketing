@@ -22,6 +22,7 @@ export function MarketingWorkspace() {
   const [view, setView] = useState<ViewKey>('home')
   const [blogInitialKeyword, setBlogInitialKeyword] = useState('')
   const [blogInitialKeywordKey, setBlogInitialKeywordKey] = useState(0)
+  const [blogAutoAnalyzeKey, setBlogAutoAnalyzeKey] = useState(0)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -36,6 +37,7 @@ export function MarketingWorkspace() {
   const openBlogDraftWithKeyword = (keyword: string) => {
     setBlogInitialKeyword(keyword)
     setBlogInitialKeywordKey((current) => current + 1)
+    setBlogAutoAnalyzeKey((current) => current + 1)
     openView('blog')
     window.scrollTo({ top: 0 })
   }
@@ -246,8 +248,10 @@ export function MarketingWorkspace() {
             ) : null}
             {view === 'blog' ? (
               <BlogPostingTool
+                autoAnalyzeKey={blogAutoAnalyzeKey}
                 initialKeyword={blogInitialKeyword}
                 initialKeywordKey={blogInitialKeywordKey}
+                onAutoAnalyzeConsumed={() => setBlogAutoAnalyzeKey(0)}
               />
             ) : null}
           </section>

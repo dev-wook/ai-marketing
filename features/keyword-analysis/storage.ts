@@ -1,7 +1,7 @@
 const recentKeywordStorageKey = 'aiva:recent-keywords'
 const keywordCooldownStorageKey = 'aiva:keyword-analysis-last-success-at'
 const maxRecentKeywordCount = 5
-const keywordCooldownSeconds = 60
+const keywordCooldownSeconds = 30
 
 export function readRecentKeywords() {
   if (typeof window === 'undefined') {

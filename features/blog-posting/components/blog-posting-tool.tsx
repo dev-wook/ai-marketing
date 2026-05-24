@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type {
   BlogDraftResponse,
   BlogInterviewAnswer,
@@ -17,11 +17,15 @@ type ApiErrorBody = {
 }
 
 export function BlogPostingTool({
+  autoAnalyzeKey = 0,
   initialKeyword = '',
   initialKeywordKey = 0,
+  onAutoAnalyzeConsumed,
 }: {
+  autoAnalyzeKey?: number
   initialKeyword?: string
   initialKeywordKey?: number
+  onAutoAnalyzeConsumed?: () => void
 }) {
   const [keyword, setKeyword] = useState(initialKeyword)
   const [analysis, setAnalysis] = useState<BlogPatternAnalysisResponse | null>(null)
@@ -33,16 +37,7 @@ export function BlogPostingTool({
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [errorLog, setErrorLog] = useState('')
-
-  useEffect(() => {
-    if (!initialKeyword) {
-      return
-    }
-
-    setKeyword(initialKeyword)
-    setErrorMessage('')
-    setErrorLog('')
-  }, [initialKeyword, initialKeywordKey])
+  const lastAutoAnalyzeKeyRef = useRef(0)
 
   const interviewAnswers = useMemo(() => {
     if (!analysis) {
@@ -66,8 +61,8 @@ export function BlogPostingTool({
     ? analysis.questions.filter((question) => answers[question.id]?.trim()).length
     : 0
 
-  const analyzeKeyword = async () => {
-    const nextKeyword = keyword.trim()
+  const analyzeKeyword = async (requestedKeyword = keyword) => {
+    const nextKeyword = requestedKeyword.trim()
 
     if (!nextKeyword) {
       setErrorMessage('분석할 키워드를 입력해주세요.')
@@ -81,6 +76,7 @@ export function BlogPostingTool({
     setAnalysis(null)
     setDraftResult(null)
     setAnswers({})
+    setStep('input')
     setCurrentQuestionIndex(0)
 
     try {
@@ -107,6 +103,24 @@ export function BlogPostingTool({
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!initialKeyword) {
+      return
+    }
+
+    setKeyword(initialKeyword)
+    setErrorMessage('')
+    setErrorLog('')
+
+    if (autoAnalyzeKey <= 0 || lastAutoAnalyzeKeyRef.current === autoAnalyzeKey) {
+      return
+    }
+
+    lastAutoAnalyzeKeyRef.current = autoAnalyzeKey
+    onAutoAnalyzeConsumed?.()
+    void analyzeKeyword(initialKeyword)
+  }, [autoAnalyzeKey, initialKeyword, initialKeywordKey, onAutoAnalyzeConsumed])
 
   const submitKeyword = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -239,8 +253,8 @@ export function BlogPostingTool({
 
         {isLoading && step === 'input' ? (
           <LoadingProgress
-            title="관련 콘텐츠를 확인하고 있습니다."
-            description="원고 방향을 정리하고 맞춤 질문을 준비합니다."
+            title="상위 블로그 흐름을 참고하고 있습니다."
+            description="주제 후보와 원고 방향을 정리하고 맞춤 질문을 준비합니다."
           />
         ) : null}
 
@@ -266,7 +280,7 @@ export function BlogPostingTool({
             onPrevious={() => setCurrentQuestionIndex((current) => Math.max(current - 1, 0))}
           />
 
-          <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:p-5">
+          <section className="mt-5 rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
@@ -295,18 +309,19 @@ export function BlogPostingTool({
                 type="button"
                 onClick={generateDraft}
                 disabled={!isInterviewComplete || isLoading}
-                className="min-h-12 rounded-md bg-cyan-100 px-5 text-sm font-black text-[#070a12] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45 lg:min-w-48"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-cyan-100 px-5 text-sm font-black text-[#070a12] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45 lg:min-w-48"
               >
-                {isLoading && step === 'interview' ? '원고 생성 중' : '이 방향으로 원고 만들기'}
+                {isLoading && step === 'interview' ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#070a12]/25 border-t-[#070a12]" />
+                    원고 생성 중
+                  </>
+                ) : (
+                  '이 방향으로 원고 만들기'
+                )}
               </button>
             </div>
           </section>
-          {isLoading && step === 'interview' ? (
-            <LoadingProgress
-              title="블로그 원고를 작성하고 있습니다."
-              description="선택한 답변과 참고 콘텐츠 흐름을 반영해 원고를 구성합니다."
-            />
-          ) : null}
         </>
       ) : null}
 
@@ -326,14 +341,14 @@ export function BlogPostingTool({
 
 function LoadingProgress({ description, title }: { description: string; title: string }) {
   return (
-    <div className="mt-4 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-black text-cyan-100">{title}</p>
+    <div className="mx-auto mt-7 w-full max-w-3xl rounded-md border border-white/10 bg-white/[0.055] p-4 text-left shadow-[0_16px_36px_rgba(0,0,0,0.18)]">
+      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-cyan-100">{title.trim()}</p>
           <p className="mt-1 text-sm font-semibold text-slate-400">{description}</p>
         </div>
-        <span className="text-xs font-black tracking-[0.12em] text-cyan-200/70">
-          준비 중
+        <span className="w-fit rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] px-3 py-2 text-xs font-black tracking-[0.12em] text-cyan-200/80">
+          진행 중
         </span>
       </div>
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
@@ -368,28 +383,79 @@ function PatternReportPanel({
   report: BlogPatternReport
   sources: BlogSourceSummary[]
 }) {
+  const primaryStory = report.storytellingPatterns.slice(0, 2)
+  const primaryNeeds = report.customerNeeds.slice(0, 2)
+  const primaryTerms = report.frequentTerms.slice(0, 6)
+
   return (
-    <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:p-5">
+    <section className="mt-8 rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:mt-10 md:p-5">
       <div className="flex flex-col gap-3 border-b border-white/10 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
-            Reference
+            Direction
           </p>
-          <h3 className="mt-2 text-xl font-black md:text-2xl">참고 콘텐츠 요약</h3>
+          <h3 className="mt-2 text-xl font-black md:text-2xl">원고 방향 분석</h3>
         </div>
         <span className="w-fit rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-black text-slate-300">
-          원문 분석 완료
+          분석 완료
         </span>
       </div>
-      <p className="mt-4 text-sm font-semibold leading-7 text-slate-300">{report.summary}</p>
-      <div className="mt-4 grid gap-3 md:mt-5 md:grid-cols-2 xl:grid-cols-5">
-        <ReportList title="핵심 용어" items={report.frequentTerms} />
-        <ReportList title="고객 니즈" items={report.customerNeeds} />
-        <ReportList title="글 구성" items={report.contentPatterns} />
-        <ReportList title="반영 포인트" items={report.aeoGeoPoints} />
-        <ReportList title="피해야 할 표현" items={report.avoidPatterns} />
+
+      <div className="mt-4 rounded-md border border-cyan-300/15 bg-cyan-300/[0.045] p-4">
+        <p className="text-sm font-semibold leading-7 text-slate-200">{report.summary}</p>
       </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <InsightCard
+          title="추천 스토리 흐름"
+          description="상위 글에서 반복된 설득 흐름입니다."
+          items={primaryStory}
+        />
+        <InsightCard
+          title="독자 고민"
+          description="원고에서 먼저 풀어줘야 할 불안 요소입니다."
+          items={primaryNeeds}
+        />
+        <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+          <p className="text-[11px] font-black tracking-[0.08em] text-cyan-200/75">
+            활용 키워드
+          </p>
+          <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+            원고에 자연스럽게 섞을 핵심 표현입니다.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {primaryTerms.length > 0 ? (
+              primaryTerms.map((term) => (
+                <span
+                  key={term}
+                  className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-3 py-1 text-xs font-black text-cyan-100"
+                >
+                  {term}
+                </span>
+              ))
+            ) : (
+              <span className="text-sm font-semibold text-slate-400">-</span>
+            )}
+          </div>
+        </div>
+      </div>
+
       <details className="mt-4 rounded-md border border-white/10 bg-white/[0.035] p-4">
+        <summary className="cursor-pointer text-sm font-black text-cyan-100">
+          세부 분석 보기
+        </summary>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <ReportList title="핵심 용어" items={report.frequentTerms} />
+          <ReportList title="고객 니즈" items={report.customerNeeds} />
+          <ReportList title="스토리 흐름" items={report.storytellingPatterns} />
+          <ReportList title="사람 글 패턴" items={report.humanTonePatterns} />
+          <ReportList title="글 구성" items={report.contentPatterns} />
+          <ReportList title="반영 포인트" items={report.aeoGeoPoints} />
+          <ReportList title="피해야 할 표현" items={report.avoidPatterns} />
+        </div>
+      </details>
+
+      <details className="mt-3 rounded-md border border-white/10 bg-white/[0.035] p-4">
         <summary className="cursor-pointer text-sm font-black text-cyan-100">
           참고한 상위 블로그 보기
         </summary>
@@ -412,6 +478,34 @@ function PatternReportPanel({
         </div>
       </details>
     </section>
+  )
+}
+
+function InsightCard({
+  description,
+  items,
+  title,
+}: {
+  description: string
+  items: string[]
+  title: string
+}) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+      <p className="text-[11px] font-black tracking-[0.08em] text-cyan-200/75">{title}</p>
+      <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">{description}</p>
+      <div className="mt-3 grid gap-2">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <p key={item} className="text-sm font-semibold leading-6 text-slate-300">
+              {item}
+            </p>
+          ))
+        ) : (
+          <p className="text-sm font-semibold text-slate-400">-</p>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -452,7 +546,7 @@ function InterviewPanel({
   const isOptionAnswer = question.options.some((option) => option.label === selectedAnswer)
 
   return (
-    <section className="rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:p-5">
+    <section className="mt-5 rounded-md border border-white/10 bg-[#080c17]/80 p-4 md:p-5">
       <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start">
         <div className="min-w-0">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
@@ -574,7 +668,7 @@ function DraftPanel({
   }
 
   return (
-    <section className="rounded-md border border-white/10 bg-white/[0.07] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl md:p-5">
+    <section className="mt-8 rounded-md border border-white/10 bg-white/[0.07] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl md:mt-10 md:p-5">
       <div className="border-b border-white/10 pb-4">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
           Draft
@@ -638,7 +732,7 @@ function DraftPanel({
 function DraftPreview({ html }: { html: string }) {
   return (
     <div
-      className="blog-draft-editor min-h-[420px] overflow-auto bg-white p-4 text-[#141923] md:min-h-[520px] md:p-7"
+      className="blog-draft-editor min-h-[420px] overflow-auto p-4 text-[#141923] md:min-h-[520px] md:p-8"
       dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
     />
   )
