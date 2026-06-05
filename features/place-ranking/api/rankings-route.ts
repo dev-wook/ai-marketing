@@ -1,0 +1,51 @@
+import { NextResponse } from 'next/server'
+import { collectNaverPlaceRankings } from '../server/naver-place-rankings'
+
+type PlaceRankingRequest = {
+  keyword?: string
+  limit?: number
+}
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json()) as PlaceRankingRequest
+    const keyword = body.keyword?.trim() ?? ''
+
+    if (!keyword) {
+      return NextResponse.json({ message: '조회할 키워드를 입력해주세요.' }, { status: 400 })
+    }
+
+    const result = await collectNaverPlaceRankings({
+      keyword,
+      limit: body.limit,
+    })
+
+    return NextResponse.json(result)
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error('Naver place ranking error', {
+        message: error.message,
+        stack: error.stack,
+      })
+    }
+
+    return NextResponse.json(
+      {
+        message:
+          '네이버 플레이스 순위 조회 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.',
+        debug:
+          error instanceof Error
+            ? {
+                provider: 'naver-place-browser',
+                message: error.message,
+                createdAt: new Date().toISOString(),
+              }
+            : undefined,
+      },
+      { status: 500 },
+    )
+  }
+}

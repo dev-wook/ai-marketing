@@ -174,3 +174,17 @@ textarea {
     padding-left: 20px;
   }
 }
+
+@keyframes aiva-loading {
+  0% {
+    transform: translateX(-105%);
+  }
+
+  50% {
+    transform: translateX(95%);
+  }
+
+  100% {
+    transform: translateX(305%);
+  }
+}

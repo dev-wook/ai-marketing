@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
 import { KeywordTool } from '@/features/keyword-analysis/components/keyword-tool'
+import { PlaceRankingTool } from '@/features/place-ranking/components/place-ranking-tool'
 import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
 import { MenuButton } from './menu-button'
 
-type ViewKey = 'home' | 'keyword' | 'blog'
+type ViewKey = 'home' | 'keyword' | 'blog' | 'place'
 
 const refreshViewStorageKey = 'aiva-refresh-view'
 const pullRefreshThreshold = 84
@@ -16,6 +17,7 @@ const mobileHeaderHeight = 72
 const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   keyword: '키워드 분석',
   blog: '블로그 원고 작성',
+  place: '플레이스 순위 조회',
 }
 
 export function MarketingWorkspace() {
@@ -45,7 +47,7 @@ export function MarketingWorkspace() {
   useEffect(() => {
     const savedView = window.sessionStorage.getItem(refreshViewStorageKey)
 
-    if (savedView === 'keyword' || savedView === 'blog') {
+    if (savedView === 'keyword' || savedView === 'blog' || savedView === 'place') {
       setView(savedView)
       window.sessionStorage.removeItem(refreshViewStorageKey)
     }
@@ -225,6 +227,12 @@ export function MarketingWorkspace() {
                     label="AI 블로그 원고 작성"
                     onClick={() => openView('blog')}
                   />
+                  <MenuButton
+                    active={view === 'place'}
+                    eyebrow="Live"
+                    label="네이버 플레이스 순위 조회"
+                    onClick={() => openView('place')}
+                  />
                   <MenuButton eyebrow="Soon" label="AI 모델 이미지 생성" disabled />
                 </nav>
               ) : null}
@@ -241,6 +249,7 @@ export function MarketingWorkspace() {
               <HomeView
                 onOpenBlogPosting={() => openView('blog')}
                 onOpenKeyword={() => openView('keyword')}
+                onOpenPlaceRanking={() => openView('place')}
               />
             ) : null}
             {view === 'keyword' ? (
@@ -254,6 +263,7 @@ export function MarketingWorkspace() {
                 onAutoAnalyzeConsumed={() => setBlogAutoAnalyzeKey(0)}
               />
             ) : null}
+            {view === 'place' ? <PlaceRankingTool /> : null}
           </section>
         </div>
       </div>

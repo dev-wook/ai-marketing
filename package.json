@@ -12,8 +12,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^149.0.0",
     "@supabase/supabase-js": "latest",
     "next": "latest",
+    "playwright-core": "^1.60.0",
     "react": "latest",
     "react-dom": "latest"
   },
