@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import type { PlaceRankingResponse } from '../types'
+import type { PlaceRankingItem, PlaceRankingResponse } from '../types'
 
 type PlaceRankingErrorBody = {
   message?: string
@@ -48,6 +48,9 @@ export function PlaceRankingTool() {
   const [loadingStep, setLoadingStep] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
   const [errorLog, setErrorLog] = useState('')
+  const [openedAddressId, setOpenedAddressId] = useState<string | null>(null)
+  const [placeNameFilter, setPlaceNameFilter] = useState('')
+  const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   const canSubmit = useMemo(
@@ -55,6 +58,17 @@ export function PlaceRankingTool() {
     [isLoading, keyword],
   )
   const visibleItems = result?.items.slice(0, visibleCount) ?? []
+  const filteredItems = useMemo(() => {
+    const filterText = placeNameFilter.trim().toLocaleLowerCase('ko-KR')
+
+    if (!filterText) {
+      return visibleItems
+    }
+
+    return visibleItems.filter((item) =>
+      item.name.toLocaleLowerCase('ko-KR').includes(filterText),
+    )
+  }, [placeNameFilter, visibleItems])
   const canTryLoadMore = Boolean(result && visibleCount < result.items.length)
 
   useEffect(() => {
@@ -106,6 +120,9 @@ export function PlaceRankingTool() {
     setErrorMessage('')
     setErrorLog('')
     setResult(null)
+    setOpenedAddressId(null)
+    setPlaceNameFilter('')
+    setExpandedImage(null)
     setVisibleCount(initialVisibleCount)
 
     try {
@@ -234,108 +251,234 @@ export function PlaceRankingTool() {
             </div>
           </div>
 
+          <div className="mt-5 flex flex-col gap-3 rounded-md border border-white/10 bg-[#080c17]/45 p-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/70">
+                Filter
+              </p>
+              <p className="mt-1 text-sm font-bold text-slate-400">
+                현재 표시된 결과 안에서 플레이스명을 빠르게 찾습니다.
+              </p>
+            </div>
+            <input
+              value={placeNameFilter}
+              onChange={(event) => setPlaceNameFilter(event.target.value)}
+              placeholder="플레이스명 검색"
+              className="min-h-11 w-full rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 md:max-w-xs"
+            />
+          </div>
+
+          {placeNameFilter.trim() ? (
+            <p className="mt-3 text-sm font-bold text-slate-400">
+              검색 결과 {filteredItems.length}개
+            </p>
+          ) : null}
+
           <div className="mt-5 grid gap-3">
-            {visibleItems.map((item) => (
+            {filteredItems.map((item) => (
               <article
                 key={`${item.rank}-${item.name}-${item.rawText.slice(0, 30)}`}
-                className="overflow-hidden rounded-md border border-white/10 bg-[#080c17]/85"
+                className="overflow-visible rounded-md border border-white/10 bg-[#080c17]/85"
               >
-                <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-0 md:grid-cols-[132px_minmax(0,1fr)] lg:grid-cols-[140px_minmax(0,1fr)_minmax(300px,0.86fr)]">
+                <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-0 md:grid-cols-[156px_minmax(0,1fr)]">
                   <div className="p-3 md:p-4">
                     <div className="relative aspect-square overflow-hidden rounded-md bg-white/[0.04]">
-                      {item.thumbnailUrl ? (
-                        <img
-                          src={item.thumbnailUrl}
-                          alt={`${item.name} 썸네일`}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
+                      {item.images.mainImageUrl ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedImage({
+                              src: item.images.mainImageUrl ?? '',
+                              alt: `${item.name} 대표 이미지`,
+                            })
+                          }
+                          className="block h-full w-full"
+                          aria-label={`${item.name} 대표 이미지 크게 보기`}
+                        >
+                          <img
+                            src={item.images.mainImageUrl}
+                            alt={`${item.name} 썸네일`}
+                            className="h-full w-full object-cover transition duration-200 hover:scale-[1.03]"
+                            loading="lazy"
+                          />
+                        </button>
                       ) : (
                         <div className="grid h-full w-full place-items-center bg-gradient-to-br from-cyan-300/15 via-slate-900 to-fuchsia-400/15 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">
                           No Image
                         </div>
                       )}
-                      <div className="absolute left-2 top-2 grid h-9 w-9 place-items-center rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 text-sm font-black text-[#070a12] shadow-[0_12px_24px_rgba(0,0,0,0.28)] md:h-10 md:w-10">
-                        {item.rank}
-                      </div>
                     </div>
-                  </div>
-
-                  <div className="min-w-0 p-3 pl-0 md:p-5 md:pl-0 lg:pl-1">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/70">
-                          Place
-                        </p>
-                        <h4 className="mt-1 break-keep text-lg font-black text-white md:text-xl">
-                          {item.name}
-                        </h4>
-                        <p className="mt-1 text-sm font-bold text-cyan-100/80">{item.category}</p>
-                      </div>
-                      {item.imageCount ? (
-                        <span className="w-fit rounded-md border border-white/10 bg-white/[0.05] px-2.5 py-1.5 text-xs font-black text-slate-300">
-                          이미지 {item.imageCount}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-3 grid gap-2 text-sm font-bold text-slate-300 md:mt-4">
-                      {item.status ? (
-                        <p className="rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-cyan-100">
-                          {item.status}
-                        </p>
-                      ) : null}
-                      {item.address ? (
-                        <p className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2">
-                          {item.address}
-                        </p>
-                      ) : null}
-                      {item.distance ? (
-                        <p className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2">
-                          현재 위치 기준 {item.distance}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    {item.badges.length > 0 ? (
-                      <div className="mt-4 flex flex-wrap gap-1.5">
-                        {item.badges.map((badge) => (
-                          <span
-                            key={badge}
-                            className="rounded-md bg-cyan-300/10 px-2 py-1 text-[11px] font-black text-cyan-100"
+                    {getPreviewImages(item).length > 0 ? (
+                      <div className="mt-2 grid grid-cols-3 gap-1">
+                        {getPreviewImages(item).map((imageUrl, index) => (
+                          <button
+                            type="button"
+                            key={`${item.id}-preview-${imageUrl}-${index}`}
+                            onClick={() =>
+                              setExpandedImage({
+                                src: imageUrl,
+                                alt: `${item.name} 참고 이미지 ${index + 1}`,
+                              })
+                            }
+                            className="aspect-square overflow-hidden rounded-sm bg-white/[0.04]"
+                            aria-label={`${item.name} 참고 이미지 ${index + 1} 크게 보기`}
                           >
-                            {badge}
-                          </span>
+                            <img
+                              src={imageUrl}
+                              alt={`${item.name} 참고 이미지 ${index + 1}`}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          </button>
                         ))}
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="col-span-2 border-t border-white/10 p-4 md:p-5 lg:col-span-1 lg:border-l lg:border-t-0">
-                    <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/70">
-                      최근 리뷰
-                    </p>
-                    <div className="mt-3 grid gap-2">
-                      {item.visitorReviews.length > 0 ? (
-                        item.visitorReviews.map((review, index) => (
-                          <p
-                            key={`${item.expId}-review-${index}`}
-                            className="line-clamp-3 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold leading-6 text-slate-300"
-                          >
-                            {review}
+                  <div className="min-w-0 p-3 pl-0 md:p-5 md:pl-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 px-2.5 py-1 text-sm font-black text-[#070a12] shadow-[0_10px_22px_rgba(0,0,0,0.24)]">
+                        {item.rank}위
+                      </span>
+                      <h4 className="min-w-0 break-keep text-lg font-black text-white md:text-2xl">
+                        {item.name}
+                      </h4>
+                    </div>
+                    <p className="mt-1 text-sm font-bold text-cyan-100/80">{item.category}</p>
+                    <div className="relative mt-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenedAddressId((current) => (current === item.id ? null : item.id))
+                        }
+                        className="inline-flex max-w-full items-center gap-1 text-left text-sm font-black text-slate-300 transition hover:text-cyan-100"
+                        aria-expanded={openedAddressId === item.id}
+                      >
+                        <span className="min-w-0 truncate">{formatShortAddress(item)}</span>
+                        <span
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-cyan-200/80 leading-none"
+                          aria-hidden="true"
+                        >
+                          ⌄
+                        </span>
+                      </button>
+                      {openedAddressId === item.id ? (
+                        <div className="absolute left-0 z-20 mt-2 w-min min-w-64 max-w-[min(22rem,calc(100vw-3rem))] rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.35)]">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
+                            Address
                           </p>
-                        ))
-                      ) : (
-                        <p className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold leading-6 text-slate-400">
-                          최근 리뷰 정보가 제공되지 않았습니다.
-                        </p>
-                      )}
+                          <p className="mt-2">{formatDetailedAddress(item)}</p>
+                          {item.location.distance ? (
+                            <p className="mt-1 text-slate-400">
+                              현재 위치 기준 {item.location.distance}
+                            </p>
+                          ) : null}
+                          {getUsefulOptions(item).length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {getUsefulOptions(item).map((option) => (
+                                <span
+                                  key={option}
+                                  className="rounded-sm bg-white/[0.06] px-2 py-1 text-[10px] text-slate-300"
+                                >
+                                  {option}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {item.badges.map((badge) => (
+                        <span
+                          key={badge}
+                          className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-black text-slate-300"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
+
+                    {item.reviews.snippets.length > 0 ? (
+                      <div className="mt-4 max-w-full overflow-hidden">
+                        <div className="flex snap-x gap-2 overflow-x-auto pb-1">
+                          {item.reviews.snippets.slice(0, 3).map((review, index) => (
+                            <blockquote
+                              key={`${item.id}-${review.reviewId}-${index}`}
+                              className="min-w-[82%] snap-start rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-semibold leading-5 text-slate-300 sm:min-w-[42%] lg:min-w-[30%]"
+                            >
+                              <span className="line-clamp-2">{review.text}</span>
+                            </blockquote>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {item.hashtags.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {item.hashtags.map((hashtag) => (
+                          <span
+                            key={hashtag}
+                            className="rounded-md bg-blue-400/10 px-2.5 py-1 text-xs font-black text-blue-100"
+                          >
+                            #{hashtag.replace(/^#/, '')}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {item.actions.bookingUrl ? (
+                        <a
+                          href={item.actions.bookingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md border border-cyan-200/40 bg-cyan-100 px-3 py-2 text-xs font-black text-[#07111f] shadow-[0_8px_18px_rgba(103,232,249,0.12)] transition hover:bg-white"
+                        >
+                          예약
+                        </a>
+                      ) : null}
+                      {item.actions.talktalkUrl ? (
+                        <a
+                          href={item.actions.talktalkUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md border border-cyan-300/30 bg-cyan-300/15 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/25"
+                        >
+                          톡톡
+                        </a>
+                      ) : null}
+                      {item.actions.phone ? (
+                        <a
+                          href={`tel:${item.actions.phone}`}
+                          className="rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-xs font-black text-white transition hover:bg-white/15"
+                        >
+                          전화
+                        </a>
+                      ) : null}
+                      {item.actions.routeUrl ? (
+                        <a
+                          href={item.actions.routeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-xs font-black text-white transition hover:bg-white/15"
+                        >
+                          길찾기
+                        </a>
+                      ) : null}
                     </div>
                   </div>
                 </div>
               </article>
             ))}
           </div>
+
+          {filteredItems.length === 0 ? (
+            <div className="mt-5 rounded-md border border-white/10 bg-[#080c17]/70 p-5 text-center text-sm font-black text-slate-300">
+              현재 표시된 {visibleItems.length}개 결과 안에서 일치하는 플레이스명이 없습니다.
+            </div>
+          ) : null}
 
           {canTryLoadMore ? (
             <div
@@ -346,6 +489,32 @@ export function PlaceRankingTool() {
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {expandedImage ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="이미지 확대 보기"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="relative max-h-[90vh] w-full max-w-3xl">
+            <button
+              type="button"
+              onClick={() => setExpandedImage(null)}
+              className="absolute right-3 top-3 z-10 rounded-md border border-white/20 bg-black/60 px-3 py-2 text-sm font-black text-white backdrop-blur transition hover:bg-black/80"
+            >
+              닫기
+            </button>
+            <img
+              src={expandedImage.src}
+              alt={expandedImage.alt}
+              className="max-h-[90vh] w-full rounded-md object-contain shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+              onClick={(event) => event.stopPropagation()}
+            />
+          </div>
+        </div>
       ) : null}
     </div>
   )
@@ -388,4 +557,41 @@ function formatCollectedAt(value: string) {
     month: '2-digit',
     day: '2-digit',
   })
+}
+
+function formatShortAddress(item: PlaceRankingItem) {
+  return (
+    item.location.commonAddress ||
+    item.location.address ||
+    item.location.roadAddress ||
+    item.location.fullAddress ||
+    '주소 정보 없음'
+  )
+}
+
+function formatDetailedAddress(item: PlaceRankingItem) {
+  return (
+    item.location.roadAddress ||
+    item.location.fullAddress ||
+    item.location.address ||
+    item.location.commonAddress ||
+    '상세 주소 정보가 제공되지 않았습니다.'
+  )
+}
+
+function getPreviewImages(item: PlaceRankingItem) {
+  const candidates = [
+    ...item.images.imageUrls,
+    ...item.reviews.images.map((image) => image.imageUrl),
+  ].filter((imageUrl) => imageUrl && imageUrl !== item.images.mainImageUrl)
+
+  return Array.from(new Set(candidates)).slice(0, 3)
+}
+
+function getUsefulOptions(item: PlaceRankingItem) {
+  const usefulKeywords = ['주차', '대기공간', '무선 인터넷', '반려동물', '간편결제', '제로페이']
+
+  return item.options
+    .filter((option) => usefulKeywords.some((keyword) => option.includes(keyword)))
+    .slice(0, 5)
 }

@@ -30,11 +30,22 @@ const placeRankingGraphQlQuery = `
           fullAddress
           distance
           imageUrl
+          imageUrls
           imageCount
+          tags
+          options
           visitorReviews {
             id
             review
             reviewId
+            __typename
+          }
+          visitorImages {
+            id
+            reviewId
+            imageUrl
+            profileImageUrl
+            nickname
             __typename
           }
           x
@@ -42,6 +53,12 @@ const placeRankingGraphQlQuery = `
           hasBooking
           hasNPay
           hasWheelchairEntrance
+          bookingUrl
+          bookingBusinessId
+          talktalkUrl
+          phone
+          virtualPhone
+          routeUrl
           totalReviewCount
           blogCafeReviewCount
           bookingReviewCount
@@ -49,10 +66,19 @@ const placeRankingGraphQlQuery = `
           newBusinessHours {
             status
             description
+            dayOff
+            dayOffDescription
             __typename
           }
           coupon {
             total
+            promotions {
+              title
+              type
+              couponUseType
+              couponLandingUrl
+              __typename
+            }
             __typename
           }
           __typename
@@ -282,6 +308,27 @@ async function fetchGraphQlRankingItems(
 
         return Number.isFinite(numberValue) ? numberValue : null
       }
+      const toNumberOrZero = (value: unknown) => asNumber(value) ?? 0
+      const splitOptions = (value: unknown) =>
+        asString(value)
+          .split(',')
+          .map((option) => option.trim())
+          .filter(Boolean)
+      const uniqueBy = <T,>(items: T[], keyGetter: (item: T) => string) => {
+        const map = new Map<string, T>()
+
+        items.forEach((item) => {
+          const key = keyGetter(item)
+
+          if (!key || map.has(key)) {
+            return
+          }
+
+          map.set(key, item)
+        })
+
+        return Array.from(map.values())
+      }
       const resolveValue = (value: unknown): ApolloRecord | null => {
         if (!value || typeof value !== 'object') {
           return null
@@ -295,11 +342,59 @@ async function fetchGraphQlRankingItems(
           : []
       const createBadges = (item: ApolloRecord) =>
         [
-          item.hasBooking ? '예약' : '',
+          item.hasBooking || item.bookingUrl ? '예약' : '',
+          item.talktalkUrl ? '톡톡' : '',
           item.hasNPay ? '네이버페이' : '',
-          item.hasWheelchairEntrance ? '휠체어 출입 가능' : '',
           resolveValue(item.coupon)?.total ? '쿠폰' : '',
         ].filter(Boolean)
+      const createHashtags = (item: ApolloRecord) => {
+        const tags = Array.isArray(item.tags) ? item.tags : []
+
+        return tags
+          .map((tag) => {
+            if (typeof tag === 'string' || typeof tag === 'number') {
+              return asString(tag)
+            }
+
+            const tagObject = resolveValue(tag)
+
+            return (
+              asString(tagObject?.name) ||
+              asString(tagObject?.text) ||
+              asString(tagObject?.tag) ||
+              asString(tagObject?.keyword)
+            )
+          })
+          .filter(Boolean)
+          .slice(0, 8)
+      }
+      const createCoupons = (item: ApolloRecord) => {
+        const coupon = resolveValue(item.coupon)
+        const promotions = resolveArray(coupon?.promotions)
+
+        return promotions
+          .map((promotion) => ({
+            title: asString(promotion.title),
+            type: asString(promotion.type) || undefined,
+            useType: asString(promotion.couponUseType) || undefined,
+            landingUrl: asString(promotion.couponLandingUrl) || undefined,
+          }))
+          .filter((promotion) => promotion.title)
+      }
+      const createReviewImages = (item: ApolloRecord) => {
+        const visitorImages = resolveArray(item.visitorImages)
+        const reviewImages = visitorImages
+          .map((image) => ({
+            id: asString(image.id),
+            reviewId: asString(image.reviewId),
+            imageUrl: asString(image.imageUrl),
+            profileImageUrl: asString(image.profileImageUrl) || undefined,
+            nickname: asString(image.nickname) || undefined,
+          }))
+          .filter((image) => image.id && image.reviewId && image.imageUrl)
+
+        return uniqueBy(reviewImages, (image) => `${image.reviewId}:${image.imageUrl}`)
+      }
       const fetchPage = async (start: number) => {
         const response = await fetch('https://pcmap-api.place.naver.com/graphql', {
           method: 'POST',
@@ -350,15 +445,29 @@ async function fetchGraphQlRankingItems(
         }
 
         const hours = resolveValue(item.newBusinessHours)
+        const coupon = resolveValue(item.coupon)
         const visitorReviews = resolveArray(item.visitorReviews)
-        const reviewTexts = visitorReviews.map((review) => asString(review.review)).filter(Boolean)
+        const reviewSnippets = visitorReviews
+          .map((review) => ({
+            reviewId: asString(review.reviewId || review.id),
+            text: asString(review.review),
+          }))
+          .filter((review) => review.reviewId && review.text)
+        const reviewTexts = reviewSnippets.map((review) => review.text)
+        const hashtags = createHashtags(item)
+        const coupons = createCoupons(item)
+        const imageUrls = Array.isArray(item.imageUrls)
+          ? item.imageUrls.map(asString).filter(Boolean)
+          : []
         const snippets = [
           asString(item.microReview),
           ...reviewTexts,
         ].filter(Boolean)
-        const status = [asString(hours?.status), asString(hours?.description)]
+        const statusText = asString(hours?.status)
+        const businessHoursDescription = asString(hours?.description)
+        const status = [statusText, businessHoursDescription]
           .filter(Boolean)
-          .join('')
+          .join(' · ')
         const address =
           asString(item.commonAddress) ||
           asString(item.fullAddress) ||
@@ -370,6 +479,7 @@ async function fetchGraphQlRankingItems(
           status,
           address,
           item.distance,
+          ...hashtags,
           ...snippets.slice(0, 3),
         ]
           .map(asString)
@@ -377,18 +487,54 @@ async function fetchGraphQlRankingItems(
           .join(' ')
 
         return {
+          id,
           name: asString(item.name),
           category: asString(item.category || item.businessCategory),
-          isAd: false,
-          expId: id,
-          imageCount: asNumber(item.imageCount),
-          thumbnailUrl: asString(item.imageUrl) || null,
-          status,
-          address,
-          distance: asString(item.distance),
+          ad: {
+            isAd: false,
+          },
+          location: {
+            roadAddress: asString(item.roadAddress) || undefined,
+            address: asString(item.address) || undefined,
+            fullAddress: asString(item.fullAddress) || undefined,
+            commonAddress: asString(item.commonAddress) || undefined,
+            distance: asString(item.distance) || undefined,
+            longitude: asNumber(item.x) ?? 0,
+            latitude: asNumber(item.y) ?? 0,
+          },
+          businessHours: {
+            status: statusText || undefined,
+            description: businessHoursDescription || undefined,
+            dayOff: asString(hours?.dayOffDescription) || asString(hours?.dayOff) || null,
+          },
+          images: {
+            mainImageUrl: asString(item.imageUrl) || undefined,
+            imageCount: toNumberOrZero(item.imageCount),
+            imageUrls,
+          },
+          actions: {
+            hasBooking: Boolean(item.hasBooking),
+            bookingUrl: asString(item.bookingUrl) || undefined,
+            bookingBusinessId: asString(item.bookingBusinessId) || undefined,
+            talktalkUrl: asString(item.talktalkUrl) || undefined,
+            phone: asString(item.virtualPhone) || asString(item.phone) || undefined,
+            routeUrl: asString(item.routeUrl) || undefined,
+          },
+          benefits: {
+            hasCoupon: toNumberOrZero(coupon?.total) > 0,
+            couponCount: toNumberOrZero(coupon?.total),
+            coupons,
+          },
+          options: splitOptions(item.options),
+          reviews: {
+            totalReviewCount: toNumberOrZero(item.totalReviewCount),
+            blogCafeReviewCount: toNumberOrZero(item.blogCafeReviewCount),
+            bookingReviewCount: toNumberOrZero(item.bookingReviewCount),
+            snippets: reviewSnippets.slice(0, 3),
+            images: createReviewImages(item),
+          },
           badges: createBadges(item),
-          snippets: snippets.slice(0, 3),
-          visitorReviews: reviewTexts.slice(0, 3),
+          hashtags,
           rawText,
         }
       })
@@ -408,7 +554,7 @@ function toRankedItems(items: CollectedPlaceItem[]) {
 
   return items
     .map((item, index) => {
-      if (item.isAd) {
+      if (item.ad.isAd) {
         return null
       }
 
