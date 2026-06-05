@@ -1,12 +1,86 @@
-import { existsSync } from 'node:fs'
-import type { Browser, Page } from 'playwright-core'
-import type { PlaceRankingItem, PlaceRankingResponse } from '../types'
+import type {
+  PlaceCoupon,
+  PlaceRankingItem,
+  PlaceRankingResponse,
+  PlaceReviewImage,
+} from '../types'
 
 type CollectedPlaceItem = Omit<PlaceRankingItem, 'rank' | 'displayRank'>
 
-type ChromiumModule = {
-  args: string[]
-  executablePath: () => Promise<string>
+type GraphQlPlaceResponse = Array<{
+  data?: {
+    placeList?: {
+      businesses?: {
+        items?: RawGraphQlPlace[]
+      }
+    }
+  }
+  errors?: Array<{ message?: string }>
+}>
+
+type RawGraphQlPlace = {
+  id?: string | number
+  name?: string
+  category?: string
+  businessCategory?: string
+  commonAddress?: string
+  roadAddress?: string
+  address?: string
+  fullAddress?: string
+  distance?: string
+  imageUrl?: string
+  imageUrls?: string[]
+  imageCount?: string | number
+  tags?: Array<string | number | Record<string, unknown>>
+  options?: string
+  visitorReviews?: RawGraphQlVisitorReview[]
+  visitorImages?: RawGraphQlVisitorImage[]
+  x?: string | number
+  y?: string | number
+  hasBooking?: boolean
+  hasNPay?: boolean
+  hasWheelchairEntrance?: boolean
+  bookingUrl?: string
+  bookingBusinessId?: string
+  talktalkUrl?: string
+  phone?: string | null
+  virtualPhone?: string | null
+  routeUrl?: string
+  totalReviewCount?: string | number
+  blogCafeReviewCount?: string | number
+  bookingReviewCount?: string | number
+  microReview?: string
+  newBusinessHours?: {
+    status?: string
+    description?: string
+    dayOff?: string | null
+    dayOffDescription?: string | null
+  } | null
+  coupon?: {
+    total?: string | number
+    promotions?: RawGraphQlCoupon[]
+  } | null
+}
+
+type RawGraphQlCoupon = {
+  title?: string
+  type?: string
+  couponUseType?: string
+  couponLandingUrl?: string
+}
+
+type RawGraphQlVisitorReview = {
+  id?: string
+  reviewId?: string
+  review?: string
+}
+
+type RawGraphQlVisitorImage = {
+  id?: string
+  reviewId?: string
+  imageUrl?: string
+  profileImageUrl?: string
+  nickname?: string
 }
 
 const defaultLimit = 300
@@ -14,7 +88,7 @@ const maxLimit = 300
 const rankingStep = 50
 const graphQlPageSize = 100
 const cacheTtlMs = 5 * 60 * 1000
-const localChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const naverPlaceGraphQlUrl = 'https://pcmap-api.place.naver.com/graphql'
 const placeRankingGraphQlQuery = `
   query restList($input: PlaceListInput) {
     placeList(input: $input) {
@@ -127,31 +201,24 @@ export async function collectNaverPlaceRankings({
     })
   }
 
-  const browser = await launchBrowser()
+  const collectedAt = new Date().toISOString()
+  const items = await collectRankingItems(safeKeyword, maxLimit)
 
-  try {
-    const page = await createRankingPage(browser)
-    const collectedAt = new Date().toISOString()
-    const items = await collectRankingItems(page, safeKeyword, maxLimit)
+  rankingCache.set(cacheKey, {
+    keyword: safeKeyword,
+    collectedAt,
+    expiresAt: Date.now() + cacheTtlMs,
+    items,
+  })
 
-    rankingCache.set(cacheKey, {
-      keyword: safeKeyword,
-      collectedAt,
-      expiresAt: Date.now() + cacheTtlMs,
-      items,
-    })
-
-    return createResponse({
-      keyword: safeKeyword,
-      collectedAt,
-      items: items.slice(0, safeLimit),
-      requestedLimit: safeLimit,
-      source: 'live',
-      availableTotal: items.length,
-    })
-  } finally {
-    await browser.close()
-  }
+  return createResponse({
+    keyword: safeKeyword,
+    collectedAt,
+    items: items.slice(0, safeLimit),
+    requestedLimit: safeLimit,
+    source: 'live',
+    availableTotal: items.length,
+  })
 }
 
 function createResponse({
@@ -186,90 +253,14 @@ function createResponse({
   }
 }
 
-async function launchBrowser(): Promise<Browser> {
-  const { chromium } = await import('playwright-core')
-
-  if (process.env.VERCEL) {
-    const chromiumModule = (await import('@sparticuz/chromium')).default as unknown as ChromiumModule
-
-    return chromium.launch({
-      args: chromiumModule.args,
-      executablePath: await chromiumModule.executablePath(),
-      headless: true,
-    })
-  }
-
-  if (!existsSync(localChromePath)) {
-    throw new Error('로컬 Chrome 실행 파일을 찾을 수 없습니다.')
-  }
-
-  return chromium.launch({
-    executablePath: localChromePath,
-    headless: true,
-  })
-}
-
-async function createRankingPage(browser: Browser) {
-  const page = await browser.newPage({
-    viewport: {
-      width: 1280,
-      height: 900,
-    },
-    userAgent:
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
-  })
-
-  await page.route('**/*', (route) => {
-    const resourceType = route.request().resourceType()
-
-    if (resourceType === 'font' || resourceType === 'image' || resourceType === 'media') {
-      return route.abort()
-    }
-
-    return route.continue()
-  })
-
-  return page
-}
-
-async function collectRankingItems(
-  page: Page,
-  keyword: string,
-  limit: number,
-): Promise<PlaceRankingItem[]> {
-  await prepareRankingPage(page, keyword)
-
-  return collectRankingItemsFromGraphQl(page, keyword.replace(/\s+/g, ''), limit)
-}
-
-async function prepareRankingPage(page: Page, keyword: string) {
+async function collectRankingItems(keyword: string, limit: number): Promise<PlaceRankingItem[]> {
   const searchQuery = keyword.replace(/\s+/g, '')
-  const listUrl = `https://pcmap.place.naver.com/rest/list?query=${encodeURIComponent(
-    searchQuery,
-  )}&display=${graphQlPageSize}&locale=ko`
-
-  await page.goto(listUrl, {
-    waitUntil: 'domcontentloaded',
-    timeout: 30000,
-  })
-  await page.waitForFunction(() => {
-    const state = (window as typeof window & { __APOLLO_STATE__?: Record<string, unknown> })
-      .__APOLLO_STATE__
-
-    return Boolean(
-      state && Object.keys(state).some((key) => key.startsWith('PlaceListBusinessesItem:')),
-    )
-  }, { timeout: 30000 })
-}
-
-async function collectRankingItemsFromGraphQl(page: Page, searchQuery: string, limit: number) {
-  const items = await fetchGraphQlRankingItems(page, searchQuery, limit)
+  const items = await fetchGraphQlRankingItems(searchQuery, limit)
 
   return toRankedItems(items).slice(0, limit)
 }
 
 async function fetchGraphQlRankingItems(
-  page: Page,
   searchQuery: string,
   limit: number,
 ): Promise<CollectedPlaceItem[]> {
@@ -277,276 +268,208 @@ async function fetchGraphQlRankingItems(
     { length: Math.ceil(limit / graphQlPageSize) },
     (_, index) => index * graphQlPageSize + 1,
   )
+  const pages = await Promise.all(starts.map((start) => fetchGraphQlRankingPage(searchQuery, start)))
+  const seenIds = new Set<string>()
 
-  return page.evaluate(
-    async ({ pageSize, query, searchQuery, starts }) => {
-      type ApolloRecord = Record<string, unknown>
-      type GraphQlResponse = Array<{
-        data?: {
-          placeList?: {
-            businesses?: {
-              items?: ApolloRecord[]
-            }
-          }
-        }
-        errors?: Array<{ message?: string }>
-      }>
+  return pages
+    .flat()
+    .flatMap((item) => {
+      const id = asString(item.id)
 
-      const clean = (value: unknown) =>
-        String(value ?? '')
-          .replace(/<[^>]+>/g, '')
-          .replace(/&amp;/g, '&')
-          .replace(/&gt;/g, '>')
-          .replace(/&lt;/g, '<')
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'")
-          .replace(/\s+/g, ' ')
-          .trim()
-      const asString = (value: unknown) => clean(value)
-      const asNumber = (value: unknown) => {
-        const numberValue = Number(value)
-
-        return Number.isFinite(numberValue) ? numberValue : null
-      }
-      const toNumberOrZero = (value: unknown) => asNumber(value) ?? 0
-      const splitOptions = (value: unknown) =>
-        asString(value)
-          .split(',')
-          .map((option) => option.trim())
-          .filter(Boolean)
-      const uniqueBy = <T,>(items: T[], keyGetter: (item: T) => string) => {
-        const map = new Map<string, T>()
-
-        items.forEach((item) => {
-          const key = keyGetter(item)
-
-          if (!key || map.has(key)) {
-            return
-          }
-
-          map.set(key, item)
-        })
-
-        return Array.from(map.values())
-      }
-      const resolveValue = (value: unknown): ApolloRecord | null => {
-        if (!value || typeof value !== 'object') {
-          return null
-        }
-
-        return value as ApolloRecord
-      }
-      const resolveArray = (value: unknown) =>
-        Array.isArray(value)
-          ? value.map(resolveValue).filter((item): item is ApolloRecord => Boolean(item))
-          : []
-      const createBadges = (item: ApolloRecord) =>
-        [
-          item.hasBooking || item.bookingUrl ? '예약' : '',
-          item.talktalkUrl ? '톡톡' : '',
-          item.hasNPay ? '네이버페이' : '',
-          resolveValue(item.coupon)?.total ? '쿠폰' : '',
-        ].filter(Boolean)
-      const createHashtags = (item: ApolloRecord) => {
-        const tags = Array.isArray(item.tags) ? item.tags : []
-
-        return tags
-          .map((tag) => {
-            if (typeof tag === 'string' || typeof tag === 'number') {
-              return asString(tag)
-            }
-
-            const tagObject = resolveValue(tag)
-
-            return (
-              asString(tagObject?.name) ||
-              asString(tagObject?.text) ||
-              asString(tagObject?.tag) ||
-              asString(tagObject?.keyword)
-            )
-          })
-          .filter(Boolean)
-          .slice(0, 8)
-      }
-      const createCoupons = (item: ApolloRecord) => {
-        const coupon = resolveValue(item.coupon)
-        const promotions = resolveArray(coupon?.promotions)
-
-        return promotions
-          .map((promotion) => ({
-            title: asString(promotion.title),
-            type: asString(promotion.type) || undefined,
-            useType: asString(promotion.couponUseType) || undefined,
-            landingUrl: asString(promotion.couponLandingUrl) || undefined,
-          }))
-          .filter((promotion) => promotion.title)
-      }
-      const createReviewImages = (item: ApolloRecord) => {
-        const visitorImages = resolveArray(item.visitorImages)
-        const reviewImages = visitorImages
-          .map((image) => ({
-            id: asString(image.id),
-            reviewId: asString(image.reviewId),
-            imageUrl: asString(image.imageUrl),
-            profileImageUrl: asString(image.profileImageUrl) || undefined,
-            nickname: asString(image.nickname) || undefined,
-          }))
-          .filter((image) => image.id && image.reviewId && image.imageUrl)
-
-        return uniqueBy(reviewImages, (image) => `${image.reviewId}:${image.imageUrl}`)
-      }
-      const fetchPage = async (start: number) => {
-        const response = await fetch('https://pcmap-api.place.naver.com/graphql', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify([
-            {
-              operationName: 'restList',
-              variables: {
-                input: {
-                  query: searchQuery,
-                  start,
-                  display: pageSize,
-                  deviceType: 'pcmap',
-                  businessType: 'rest',
-                  sortingOrder: 'precision',
-                },
-              },
-              query,
-            },
-          ]),
-        })
-        const body = (await response.json()) as GraphQlResponse
-
-        if (!response.ok || body[0]?.errors?.length) {
-          throw new Error(
-            body[0]?.errors?.[0]?.message ||
-              `Naver Place GraphQL request failed with status ${response.status}`,
-          )
-        }
-
-        return body[0]?.data?.placeList?.businesses?.items ?? []
+      if (id && seenIds.has(id)) {
+        return []
       }
 
-      const pages = await Promise.all(starts.map(fetchPage))
-      const seenIds = new Set<string>()
+      if (id) {
+        seenIds.add(id)
+      }
 
-      return pages.flat().flatMap((item) => {
-        const id = asString(item.id)
+      return [mapGraphQlPlaceToItem(item)]
+    })
+    .filter((item) => item.name)
+}
 
-        if (id && seenIds.has(id)) {
-          return []
-        }
-
-        if (id) {
-          seenIds.add(id)
-        }
-
-        const hours = resolveValue(item.newBusinessHours)
-        const coupon = resolveValue(item.coupon)
-        const visitorReviews = resolveArray(item.visitorReviews)
-        const reviewSnippets = visitorReviews
-          .map((review) => ({
-            reviewId: asString(review.reviewId || review.id),
-            text: asString(review.review),
-          }))
-          .filter((review) => review.reviewId && review.text)
-        const reviewTexts = reviewSnippets.map((review) => review.text)
-        const hashtags = createHashtags(item)
-        const coupons = createCoupons(item)
-        const imageUrls = Array.isArray(item.imageUrls)
-          ? item.imageUrls.map(asString).filter(Boolean)
-          : []
-        const snippets = [
-          asString(item.microReview),
-          ...reviewTexts,
-        ].filter(Boolean)
-        const statusText = asString(hours?.status)
-        const businessHoursDescription = asString(hours?.description)
-        const status = [statusText, businessHoursDescription]
-          .filter(Boolean)
-          .join(' · ')
-        const address =
-          asString(item.commonAddress) ||
-          asString(item.fullAddress) ||
-          asString(item.address) ||
-          asString(item.roadAddress)
-        const rawText = [
-          item.name,
-          item.category,
-          status,
-          address,
-          item.distance,
-          ...hashtags,
-          ...snippets.slice(0, 3),
-        ]
-          .map(asString)
-          .filter(Boolean)
-          .join(' ')
-
-        return {
-          id,
-          name: asString(item.name),
-          category: asString(item.category || item.businessCategory),
-          ad: {
-            isAd: false,
-          },
-          location: {
-            roadAddress: asString(item.roadAddress) || undefined,
-            address: asString(item.address) || undefined,
-            fullAddress: asString(item.fullAddress) || undefined,
-            commonAddress: asString(item.commonAddress) || undefined,
-            distance: asString(item.distance) || undefined,
-            longitude: asNumber(item.x) ?? 0,
-            latitude: asNumber(item.y) ?? 0,
-          },
-          businessHours: {
-            status: statusText || undefined,
-            description: businessHoursDescription || undefined,
-            dayOff: asString(hours?.dayOffDescription) || asString(hours?.dayOff) || null,
-          },
-          images: {
-            mainImageUrl: asString(item.imageUrl) || undefined,
-            imageCount: toNumberOrZero(item.imageCount),
-            imageUrls,
-          },
-          actions: {
-            hasBooking: Boolean(item.hasBooking),
-            bookingUrl: asString(item.bookingUrl) || undefined,
-            bookingBusinessId: asString(item.bookingBusinessId) || undefined,
-            talktalkUrl: asString(item.talktalkUrl) || undefined,
-            phone: asString(item.virtualPhone) || asString(item.phone) || undefined,
-            routeUrl: asString(item.routeUrl) || undefined,
-          },
-          benefits: {
-            hasCoupon: toNumberOrZero(coupon?.total) > 0,
-            couponCount: toNumberOrZero(coupon?.total),
-            coupons,
-          },
-          options: splitOptions(item.options),
-          reviews: {
-            totalReviewCount: toNumberOrZero(item.totalReviewCount),
-            blogCafeReviewCount: toNumberOrZero(item.blogCafeReviewCount),
-            bookingReviewCount: toNumberOrZero(item.bookingReviewCount),
-            snippets: reviewSnippets.slice(0, 3),
-            images: createReviewImages(item),
-          },
-          badges: createBadges(item),
-          hashtags,
-          rawText,
-        }
-      })
-      .filter((item) => item.name)
+async function fetchGraphQlRankingPage(searchQuery: string, start: number) {
+  const response = await fetch(naverPlaceGraphQlUrl, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      origin: 'https://pcmap.place.naver.com',
+      referer: `https://pcmap.place.naver.com/rest/list?query=${encodeURIComponent(
+        searchQuery,
+      )}&display=${graphQlPageSize}&locale=ko`,
+      'user-agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
     },
-    {
-      pageSize: graphQlPageSize,
-      query: placeRankingGraphQlQuery,
-      searchQuery,
-      starts,
+    body: JSON.stringify([
+      {
+        operationName: 'restList',
+        variables: {
+          input: {
+            query: searchQuery,
+            start,
+            display: graphQlPageSize,
+            deviceType: 'pcmap',
+            businessType: 'rest',
+            sortingOrder: 'precision',
+          },
+        },
+        query: placeRankingGraphQlQuery,
+      },
+    ]),
+  })
+  const body = (await response.json()) as GraphQlPlaceResponse
+
+  if (!response.ok || body[0]?.errors?.length) {
+    throw new Error(
+      body[0]?.errors?.[0]?.message ||
+        `Naver Place GraphQL request failed with status ${response.status}`,
+    )
+  }
+
+  return body[0]?.data?.placeList?.businesses?.items ?? []
+}
+
+function mapGraphQlPlaceToItem(item: RawGraphQlPlace): CollectedPlaceItem {
+  const hours = item.newBusinessHours ?? null
+  const reviewSnippets = (item.visitorReviews ?? [])
+    .map((review) => ({
+      reviewId: asString(review.reviewId || review.id),
+      text: asString(review.review),
+    }))
+    .filter((review) => review.reviewId && review.text)
+  const reviewTexts = reviewSnippets.map((review) => review.text)
+  const hashtags = createHashtags(item)
+  const coupons = createCoupons(item)
+  const imageUrls = Array.isArray(item.imageUrls) ? item.imageUrls.map(asString).filter(Boolean) : []
+  const snippets = [asString(item.microReview), ...reviewTexts].filter(Boolean)
+  const statusText = asString(hours?.status)
+  const businessHoursDescription = asString(hours?.description)
+  const status = [statusText, businessHoursDescription].filter(Boolean).join(' · ')
+  const address =
+    asString(item.commonAddress) ||
+    asString(item.fullAddress) ||
+    asString(item.address) ||
+    asString(item.roadAddress)
+  const rawText = [
+    item.name,
+    item.category,
+    status,
+    address,
+    item.distance,
+    ...hashtags,
+    ...snippets.slice(0, 3),
+  ]
+    .map(asString)
+    .filter(Boolean)
+    .join(' ')
+
+  return {
+    id: asString(item.id),
+    name: asString(item.name),
+    category: asString(item.category || item.businessCategory),
+    ad: {
+      isAd: false,
     },
-  )
+    location: {
+      roadAddress: asString(item.roadAddress) || undefined,
+      address: asString(item.address) || undefined,
+      fullAddress: asString(item.fullAddress) || undefined,
+      commonAddress: asString(item.commonAddress) || undefined,
+      distance: asString(item.distance) || undefined,
+      longitude: asNumber(item.x) ?? 0,
+      latitude: asNumber(item.y) ?? 0,
+    },
+    businessHours: {
+      status: statusText || undefined,
+      description: businessHoursDescription || undefined,
+      dayOff: asString(hours?.dayOffDescription) || asString(hours?.dayOff) || null,
+    },
+    images: {
+      mainImageUrl: asString(item.imageUrl) || undefined,
+      imageCount: toNumberOrZero(item.imageCount),
+      imageUrls,
+    },
+    actions: {
+      hasBooking: Boolean(item.hasBooking),
+      bookingUrl: asString(item.bookingUrl) || undefined,
+      bookingBusinessId: asString(item.bookingBusinessId) || undefined,
+      talktalkUrl: asString(item.talktalkUrl) || undefined,
+      phone: asString(item.virtualPhone) || asString(item.phone) || undefined,
+      routeUrl: asString(item.routeUrl) || undefined,
+    },
+    benefits: {
+      hasCoupon: toNumberOrZero(item.coupon?.total) > 0,
+      couponCount: toNumberOrZero(item.coupon?.total),
+      coupons,
+    },
+    options: splitOptions(item.options),
+    reviews: {
+      totalReviewCount: toNumberOrZero(item.totalReviewCount),
+      blogCafeReviewCount: toNumberOrZero(item.blogCafeReviewCount),
+      bookingReviewCount: toNumberOrZero(item.bookingReviewCount),
+      snippets: reviewSnippets.slice(0, 3),
+      images: createReviewImages(item),
+    },
+    badges: createBadges(item),
+    hashtags,
+    rawText,
+  }
+}
+
+function createBadges(item: RawGraphQlPlace) {
+  return [
+    item.hasBooking || item.bookingUrl ? '예약' : '',
+    item.talktalkUrl ? '톡톡' : '',
+    item.hasNPay ? '네이버페이' : '',
+    item.coupon?.total ? '쿠폰' : '',
+  ].filter(Boolean)
+}
+
+function createHashtags(item: RawGraphQlPlace) {
+  const tags = Array.isArray(item.tags) ? item.tags : []
+
+  return tags
+    .map((tag) => {
+      if (typeof tag === 'string' || typeof tag === 'number') {
+        return asString(tag)
+      }
+
+      return (
+        asString(tag.name) ||
+        asString(tag.text) ||
+        asString(tag.tag) ||
+        asString(tag.keyword)
+      )
+    })
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+function createCoupons(item: RawGraphQlPlace): PlaceCoupon[] {
+  return (item.coupon?.promotions ?? [])
+    .map((promotion) => ({
+      title: asString(promotion.title),
+      type: asString(promotion.type) || undefined,
+      useType: asString(promotion.couponUseType) || undefined,
+      landingUrl: asString(promotion.couponLandingUrl) || undefined,
+    }))
+    .filter((promotion) => promotion.title)
+}
+
+function createReviewImages(item: RawGraphQlPlace): PlaceReviewImage[] {
+  const reviewImages = (item.visitorImages ?? [])
+    .map((image) => ({
+      id: asString(image.id),
+      reviewId: asString(image.reviewId),
+      imageUrl: asString(image.imageUrl),
+      profileImageUrl: asString(image.profileImageUrl) || undefined,
+      nickname: asString(image.nickname) || undefined,
+    }))
+    .filter((image) => image.id && image.reviewId && image.imageUrl)
+
+  return uniqueBy(reviewImages, (image) => `${image.reviewId}:${image.imageUrl}`)
 }
 
 function toRankedItems(items: CollectedPlaceItem[]) {
@@ -567,6 +490,51 @@ function toRankedItems(items: CollectedPlaceItem[]) {
       }
     })
     .filter((item): item is PlaceRankingItem => item !== null)
+}
+
+function asString(value: unknown) {
+  return String(value ?? '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function asNumber(value: unknown) {
+  const numberValue = Number(value)
+
+  return Number.isFinite(numberValue) ? numberValue : null
+}
+
+function toNumberOrZero(value: unknown) {
+  return asNumber(value) ?? 0
+}
+
+function splitOptions(value: unknown) {
+  return asString(value)
+    .split(',')
+    .map((option) => option.trim())
+    .filter(Boolean)
+}
+
+function uniqueBy<T>(items: T[], keyGetter: (item: T) => string) {
+  const map = new Map<string, T>()
+
+  items.forEach((item) => {
+    const key = keyGetter(item)
+
+    if (!key || map.has(key)) {
+      return
+    }
+
+    map.set(key, item)
+  })
+
+  return Array.from(map.values())
 }
 
 function normalizeLimit(value: number) {

@@ -39,7 +39,7 @@ export async function POST(request: Request) {
         debug:
           error instanceof Error
             ? {
-                provider: 'naver-place-browser',
+                provider: 'naver-place-graphql',
                 message: error.message,
                 createdAt: new Date().toISOString(),
               }

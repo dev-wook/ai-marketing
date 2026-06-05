@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PlaceRankingItem, PlaceRankingResponse } from '../types'
 
 type PlaceRankingErrorBody = {
@@ -11,10 +12,12 @@ type PlaceRankingErrorBody = {
 const rankingPageSize = 50
 const fetchLimit = 300
 const initialVisibleCount = rankingPageSize
+const recentPlaceRankingStorageKey = 'aiva:recent-place-ranking-keywords'
+const maxRecentKeywords = 5
 
 const loadingSteps = [
   '네이버 플레이스 결과를 확인하고 있습니다.',
-  '광고를 제외한 실제 노출 순서를 계산하고 있습니다.',
+  '플레이스 노출 순서를 계산하고 있습니다.',
   '상위 플레이스 정보를 정리하고 있습니다.',
 ]
 
@@ -49,8 +52,11 @@ export function PlaceRankingTool() {
   const [errorMessage, setErrorMessage] = useState('')
   const [errorLog, setErrorLog] = useState('')
   const [openedAddressId, setOpenedAddressId] = useState<string | null>(null)
-  const [placeNameFilter, setPlaceNameFilter] = useState('')
+  const [placeNameFilterInput, setPlaceNameFilterInput] = useState('')
+  const [appliedPlaceNameFilter, setAppliedPlaceNameFilter] = useState('')
+  const [recentKeywords, setRecentKeywords] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null)
+  const [isMounted, setIsMounted] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   const canSubmit = useMemo(
@@ -59,7 +65,7 @@ export function PlaceRankingTool() {
   )
   const visibleItems = result?.items.slice(0, visibleCount) ?? []
   const filteredItems = useMemo(() => {
-    const filterText = placeNameFilter.trim().toLocaleLowerCase('ko-KR')
+    const filterText = appliedPlaceNameFilter.trim().toLocaleLowerCase('ko-KR')
 
     if (!filterText) {
       return visibleItems
@@ -68,8 +74,29 @@ export function PlaceRankingTool() {
     return visibleItems.filter((item) =>
       item.name.toLocaleLowerCase('ko-KR').includes(filterText),
     )
-  }, [placeNameFilter, visibleItems])
-  const canTryLoadMore = Boolean(result && visibleCount < result.items.length)
+  }, [appliedPlaceNameFilter, visibleItems])
+  const canTryLoadMore = Boolean(
+    result && visibleCount < result.items.length && !appliedPlaceNameFilter,
+  )
+
+  useEffect(() => {
+    setIsMounted(true)
+    setRecentKeywords(readRecentPlaceRankingKeywords())
+  }, [])
+
+  useEffect(() => {
+    if (!expandedImage) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [expandedImage])
 
   useEffect(() => {
     if (!isLoading) {
@@ -105,11 +132,7 @@ export function PlaceRankingTool() {
     return () => observer.disconnect()
   }, [canTryLoadMore, result])
 
-  const submitKeyword = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-
-    const nextKeyword = keyword.trim()
-
+  const runKeywordSearch = async (nextKeyword: string) => {
     if (!nextKeyword) {
       setErrorMessage('조회할 키워드를 입력해주세요.')
       setErrorLog('')
@@ -121,7 +144,8 @@ export function PlaceRankingTool() {
     setErrorLog('')
     setResult(null)
     setOpenedAddressId(null)
-    setPlaceNameFilter('')
+    setPlaceNameFilterInput('')
+    setAppliedPlaceNameFilter('')
     setExpandedImage(null)
     setVisibleCount(initialVisibleCount)
 
@@ -130,6 +154,7 @@ export function PlaceRankingTool() {
 
       setResult(nextResult)
       setVisibleCount(Math.min(initialVisibleCount, nextResult.items.length))
+      setRecentKeywords(saveRecentPlaceRankingKeyword(nextKeyword))
     } catch (error) {
       setErrorLog(toReadableErrorLog(readErrorDebug(error)))
       setErrorMessage(error instanceof Error ? error.message : '플레이스 순위 조회에 실패했습니다.')
@@ -138,12 +163,36 @@ export function PlaceRankingTool() {
     }
   }
 
+  const submitKeyword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    await runKeywordSearch(keyword.trim())
+  }
+
   const loadMoreRankings = () => {
     if (!result) {
       return
     }
 
     setVisibleCount((current) => Math.min(current + rankingPageSize, result.items.length))
+  }
+
+  const submitPlaceNameFilter = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setAppliedPlaceNameFilter(placeNameFilterInput.trim())
+  }
+
+  const clearPlaceNameFilter = () => {
+    setPlaceNameFilterInput('')
+    setAppliedPlaceNameFilter('')
+  }
+
+  const applyRecentKeyword = async (nextKeyword: string) => {
+    setKeyword(nextKeyword)
+    await runKeywordSearch(nextKeyword.trim())
+  }
+
+  const removeRecentKeyword = (targetKeyword: string) => {
+    setRecentKeywords(deleteRecentPlaceRankingKeyword(targetKeyword))
   }
 
   return (
@@ -156,8 +205,7 @@ export function PlaceRankingTool() {
           네이버 플레이스 순위를 실시간으로 조회하세요
         </h2>
         <p className="mx-auto mt-4 max-w-4xl text-base font-semibold leading-7 text-slate-300">
-          키워드 기준으로 네이버 플레이스 결과를 수집하고, 광고를 제외한 실제 노출 순서를
-          확인합니다.
+          키워드 기준으로 네이버 플레이스 실시간 노출 순위를 확인합니다.
         </p>
 
         <form
@@ -184,6 +232,40 @@ export function PlaceRankingTool() {
             </button>
           </div>
         </form>
+
+        {recentKeywords.length > 0 ? (
+          <div className="mx-auto mt-4 max-w-3xl text-left">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/70">
+              최근 검색
+            </p>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+              {recentKeywords.slice(0, 5).map((recentKeyword) => (
+                <div
+                  key={recentKeyword}
+                  className="grid min-h-11 grid-cols-[minmax(0,1fr)_38px] overflow-hidden rounded-md border border-cyan-300/25 bg-cyan-300/[0.06]"
+                >
+                  <button
+                    type="button"
+                    onClick={() => applyRecentKeyword(recentKeyword)}
+                    disabled={isLoading}
+                    className="min-w-0 px-3 text-center text-sm font-black text-cyan-50 transition hover:bg-cyan-300/12 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="block truncate">{recentKeyword}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeRecentKeyword(recentKeyword)}
+                    disabled={isLoading}
+                    aria-label={`${recentKeyword} 최근 검색어 삭제`}
+                    className="grid place-items-center border-l border-cyan-300/20 text-sm font-black text-cyan-100/80 transition hover:bg-cyan-300/14 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {!keyword.trim() && errorMessage ? (
           <p className="mx-auto mt-3 max-w-3xl text-left text-sm font-bold text-rose-200">
@@ -235,10 +317,6 @@ export function PlaceRankingTool() {
                 Result
               </p>
               <h3 className="mt-2 text-2xl font-black">네이버 플레이스 순위 조회 결과</h3>
-              <p className="mt-2 text-sm font-semibold text-slate-400">
-                광고를 제외한 실제 노출 순서 기준입니다. 전체 {result.items.length}개 중 현재{' '}
-                {visibleItems.length}개를 표시합니다.
-              </p>
             </div>
             <div className="grid gap-2 md:justify-items-end">
               <span className="w-fit rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-black text-slate-300">
@@ -251,7 +329,10 @@ export function PlaceRankingTool() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-col gap-3 rounded-md border border-white/10 bg-[#080c17]/45 p-3 md:flex-row md:items-center md:justify-between">
+          <form
+            onSubmit={submitPlaceNameFilter}
+            className="mt-5 flex flex-col gap-3 rounded-md border border-white/10 bg-[#080c17]/45 p-3 md:flex-row md:items-center md:justify-between"
+          >
             <div>
               <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/70">
                 Filter
@@ -260,17 +341,34 @@ export function PlaceRankingTool() {
                 현재 표시된 결과 안에서 플레이스명을 빠르게 찾습니다.
               </p>
             </div>
-            <input
-              value={placeNameFilter}
-              onChange={(event) => setPlaceNameFilter(event.target.value)}
-              placeholder="플레이스명 검색"
-              className="min-h-11 w-full rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 md:max-w-xs"
-            />
-          </div>
+            <div className="flex w-full flex-col gap-2 sm:flex-row md:max-w-md">
+              <input
+                value={placeNameFilterInput}
+                onChange={(event) => setPlaceNameFilterInput(event.target.value)}
+                placeholder="플레이스명 입력"
+                className="min-h-11 flex-1 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+              />
+              <button
+                type="submit"
+                className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20"
+              >
+                검색
+              </button>
+              {appliedPlaceNameFilter ? (
+                <button
+                  type="button"
+                  onClick={clearPlaceNameFilter}
+                  className="min-h-11 rounded-md border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-slate-200 transition hover:bg-white/[0.1]"
+                >
+                  초기화
+                </button>
+              ) : null}
+            </div>
+          </form>
 
-          {placeNameFilter.trim() ? (
+          {appliedPlaceNameFilter ? (
             <p className="mt-3 text-sm font-bold text-slate-400">
-              검색 결과 {filteredItems.length}개
+              "{appliedPlaceNameFilter}" 검색 결과 {filteredItems.length}개
             </p>
           ) : null}
 
@@ -280,8 +378,8 @@ export function PlaceRankingTool() {
                 key={`${item.rank}-${item.name}-${item.rawText.slice(0, 30)}`}
                 className="overflow-visible rounded-md border border-white/10 bg-[#080c17]/85"
               >
-                <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-0 md:grid-cols-[156px_minmax(0,1fr)]">
-                  <div className="p-3 md:p-4">
+                <div className="grid grid-cols-[98px_minmax(0,1fr)] gap-0 sm:grid-cols-[120px_minmax(0,1fr)] md:grid-cols-[156px_minmax(0,1fr)]">
+                  <div className="p-3 sm:p-4">
                     <div className="relative aspect-square overflow-hidden rounded-md bg-white/[0.04]">
                       {item.images.mainImageUrl ? (
                         <button
@@ -309,7 +407,7 @@ export function PlaceRankingTool() {
                       )}
                     </div>
                     {getPreviewImages(item).length > 0 ? (
-                      <div className="mt-2 grid grid-cols-3 gap-1">
+                      <div className="mt-1.5 grid grid-cols-3 gap-1 sm:mt-2">
                         {getPreviewImages(item).map((imageUrl, index) => (
                           <button
                             type="button"
@@ -335,17 +433,19 @@ export function PlaceRankingTool() {
                     ) : null}
                   </div>
 
-                  <div className="min-w-0 p-3 pl-0 md:p-5 md:pl-0">
+                  <div className="min-w-0 p-3 pl-0 sm:p-4 sm:pl-0 md:p-5 md:pl-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <span className="rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 px-2.5 py-1 text-sm font-black text-[#070a12] shadow-[0_10px_22px_rgba(0,0,0,0.24)]">
                         {item.rank}위
                       </span>
-                      <h4 className="min-w-0 break-keep text-lg font-black text-white md:text-2xl">
+                      <h4 className="min-w-0 break-keep text-lg font-black leading-tight text-white md:text-2xl">
                         {item.name}
                       </h4>
                     </div>
-                    <p className="mt-1 text-sm font-bold text-cyan-100/80">{item.category}</p>
-                    <div className="relative mt-3">
+                    <p className="mt-1 text-sm font-bold leading-snug text-cyan-100/80">
+                      {item.category}
+                    </p>
+                    <div className="relative mt-2.5 sm:mt-3">
                       <button
                         type="button"
                         onClick={() =>
@@ -356,17 +456,28 @@ export function PlaceRankingTool() {
                       >
                         <span className="min-w-0 truncate">{formatShortAddress(item)}</span>
                         <span
-                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-cyan-200/80 leading-none"
+                          className={`relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-cyan-200/80 transition ${
+                            openedAddressId === item.id ? 'rotate-180' : ''
+                          }`}
                           aria-hidden="true"
                         >
-                          ⌄
+                          <span className="block h-2 w-2 translate-y-[-1px] rotate-45 border-b-2 border-r-2 border-current" />
                         </span>
                       </button>
                       {openedAddressId === item.id ? (
-                        <div className="absolute left-0 z-20 mt-2 w-min min-w-64 max-w-[min(22rem,calc(100vw-3rem))] rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.35)]">
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
-                            Address
-                          </p>
+                        <div className="absolute right-0 z-20 mt-2 w-[min(19rem,calc(100vw-2rem))] rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.35)] sm:left-0 sm:right-auto sm:w-[min(22rem,calc(100vw-3rem))]">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
+                              Address
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setOpenedAddressId(null)}
+                              className="shrink-0 rounded-sm border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.1]"
+                            >
+                              닫기
+                            </button>
+                          </div>
                           <p className="mt-2">{formatDetailedAddress(item)}</p>
                           {item.location.distance ? (
                             <p className="mt-1 text-slate-400">
@@ -389,7 +500,7 @@ export function PlaceRankingTool() {
                       ) : null}
                     </div>
 
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-2">
                       {item.badges.map((badge) => (
                         <span
                           key={badge}
@@ -401,12 +512,12 @@ export function PlaceRankingTool() {
                     </div>
 
                     {item.reviews.snippets.length > 0 ? (
-                      <div className="mt-4 max-w-full overflow-hidden">
+                      <div className="mt-3 max-w-full overflow-hidden sm:mt-4">
                         <div className="flex snap-x gap-2 overflow-x-auto pb-1">
                           {item.reviews.snippets.slice(0, 3).map((review, index) => (
                             <blockquote
                               key={`${item.id}-${review.reviewId}-${index}`}
-                              className="min-w-[82%] snap-start rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-semibold leading-5 text-slate-300 sm:min-w-[42%] lg:min-w-[30%]"
+                              className="min-w-[78%] snap-start rounded-md border border-white/10 bg-white/[0.035] px-2.5 py-2 text-[11px] font-semibold leading-5 text-slate-300 sm:min-w-[42%] sm:px-3 sm:text-xs lg:min-w-[30%]"
                             >
                               <span className="line-clamp-2">{review.text}</span>
                             </blockquote>
@@ -428,13 +539,13 @@ export function PlaceRankingTool() {
                       </div>
                     ) : null}
 
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2 sm:mt-4">
                       {item.actions.bookingUrl ? (
                         <a
                           href={item.actions.bookingUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-md border border-cyan-200/40 bg-cyan-100 px-3 py-2 text-xs font-black text-[#07111f] shadow-[0_8px_18px_rgba(103,232,249,0.12)] transition hover:bg-white"
+                          className="rounded-md border border-cyan-200/40 bg-cyan-100 px-3 py-2 text-[11px] font-black text-[#07111f] shadow-[0_8px_18px_rgba(103,232,249,0.12)] transition hover:bg-white sm:text-xs"
                         >
                           예약
                         </a>
@@ -444,7 +555,7 @@ export function PlaceRankingTool() {
                           href={item.actions.talktalkUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-md border border-cyan-300/30 bg-cyan-300/15 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/25"
+                          className="rounded-md border border-cyan-300/30 bg-cyan-300/15 px-3 py-2 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-300/25 sm:text-xs"
                         >
                           톡톡
                         </a>
@@ -452,7 +563,7 @@ export function PlaceRankingTool() {
                       {item.actions.phone ? (
                         <a
                           href={`tel:${item.actions.phone}`}
-                          className="rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-xs font-black text-white transition hover:bg-white/15"
+                          className="rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-[11px] font-black text-white transition hover:bg-white/15 sm:text-xs"
                         >
                           전화
                         </a>
@@ -462,7 +573,7 @@ export function PlaceRankingTool() {
                           href={item.actions.routeUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-xs font-black text-white transition hover:bg-white/15"
+                          className="rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-[11px] font-black text-white transition hover:bg-white/15 sm:text-xs"
                         >
                           길찾기
                         </a>
@@ -491,31 +602,53 @@ export function PlaceRankingTool() {
         </section>
       ) : null}
 
-      {expandedImage ? (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label="이미지 확대 보기"
-          onClick={() => setExpandedImage(null)}
+      {isMounted && expandedImage
+        ? createPortal(
+            <ImagePreviewModal
+              image={expandedImage}
+              onClose={() => setExpandedImage(null)}
+            />,
+            document.body,
+          )
+        : null}
+    </div>
+  )
+}
+
+type ImagePreviewModalProps = {
+  image: {
+    src: string
+    alt: string
+  }
+  onClose: () => void
+}
+
+function ImagePreviewModal({ image, onClose }: ImagePreviewModalProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[9999] grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="이미지 확대 보기"
+      onClick={onClose}
+    >
+      <div
+        className="relative grid h-[min(76vh,620px)] w-[min(88vw,760px)] place-items-center rounded-md border border-white/10 bg-[#050812] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.5)] md:h-[min(72vh,620px)] md:w-[min(76vw,780px)] md:p-5"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-10 rounded-md border border-white/20 bg-black/70 px-3 py-2 text-sm font-black text-white backdrop-blur transition hover:bg-black/85 md:right-4 md:top-4"
         >
-          <div className="relative max-h-[90vh] w-full max-w-3xl">
-            <button
-              type="button"
-              onClick={() => setExpandedImage(null)}
-              className="absolute right-3 top-3 z-10 rounded-md border border-white/20 bg-black/60 px-3 py-2 text-sm font-black text-white backdrop-blur transition hover:bg-black/80"
-            >
-              닫기
-            </button>
-            <img
-              src={expandedImage.src}
-              alt={expandedImage.alt}
-              className="max-h-[90vh] w-full rounded-md object-contain shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
-              onClick={(event) => event.stopPropagation()}
-            />
-          </div>
-        </div>
-      ) : null}
+          닫기
+        </button>
+        <img
+          src={image.src}
+          alt={image.alt}
+          className="max-h-[calc(76vh-2rem)] max-w-full rounded-md object-contain md:max-h-[560px]"
+        />
+      </div>
     </div>
   )
 }
@@ -542,6 +675,54 @@ function readErrorDebug(error: unknown) {
   }
 
   return undefined
+}
+
+function readRecentPlaceRankingKeywords() {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(recentPlaceRankingStorageKey) ?? '[]',
+    )
+
+    return Array.isArray(parsed)
+      ? parsed.filter((keyword): keyword is string => typeof keyword === 'string').slice(0, maxRecentKeywords)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecentPlaceRankingKeyword(keyword: string) {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  const trimmedKeyword = keyword.trim()
+  const nextKeywords = [
+    trimmedKeyword,
+    ...readRecentPlaceRankingKeywords().filter((recentKeyword) => recentKeyword !== trimmedKeyword),
+  ].slice(0, maxRecentKeywords)
+
+  window.localStorage.setItem(recentPlaceRankingStorageKey, JSON.stringify(nextKeywords))
+
+  return nextKeywords
+}
+
+function deleteRecentPlaceRankingKeyword(keyword: string) {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  const nextKeywords = readRecentPlaceRankingKeywords().filter(
+    (recentKeyword) => recentKeyword !== keyword,
+  )
+
+  window.localStorage.setItem(recentPlaceRankingStorageKey, JSON.stringify(nextKeywords))
+
+  return nextKeywords
 }
 
 function formatCollectedAt(value: string) {
