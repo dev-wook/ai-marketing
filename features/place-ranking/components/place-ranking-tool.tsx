@@ -240,32 +240,34 @@ export function PlaceRankingTool() {
                 key={`${item.rank}-${item.name}-${item.rawText.slice(0, 30)}`}
                 className="overflow-hidden rounded-md border border-white/10 bg-[#080c17]/85"
               >
-                <div className="grid gap-0 lg:grid-cols-[128px_minmax(0,1fr)_minmax(280px,0.9fr)]">
-                  <div className="relative min-h-36 bg-white/[0.04] lg:min-h-full">
-                    {item.thumbnailUrl ? (
-                      <img
-                        src={item.thumbnailUrl}
-                        alt={`${item.name} 썸네일`}
-                        className="h-full min-h-36 w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="grid h-full min-h-36 place-items-center bg-gradient-to-br from-cyan-300/15 via-slate-900 to-fuchsia-400/15 text-xs font-black uppercase tracking-[0.18em] text-cyan-100/70">
-                        No Image
+                <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-0 md:grid-cols-[132px_minmax(0,1fr)] lg:grid-cols-[140px_minmax(0,1fr)_minmax(300px,0.86fr)]">
+                  <div className="p-3 md:p-4">
+                    <div className="relative aspect-square overflow-hidden rounded-md bg-white/[0.04]">
+                      {item.thumbnailUrl ? (
+                        <img
+                          src={item.thumbnailUrl}
+                          alt={`${item.name} 썸네일`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="grid h-full w-full place-items-center bg-gradient-to-br from-cyan-300/15 via-slate-900 to-fuchsia-400/15 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">
+                          No Image
+                        </div>
+                      )}
+                      <div className="absolute left-2 top-2 grid h-9 w-9 place-items-center rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 text-sm font-black text-[#070a12] shadow-[0_12px_24px_rgba(0,0,0,0.28)] md:h-10 md:w-10">
+                        {item.rank}
                       </div>
-                    )}
-                    <div className="absolute left-3 top-3 grid h-11 w-11 place-items-center rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 text-sm font-black text-[#070a12] shadow-[0_12px_24px_rgba(0,0,0,0.28)]">
-                      {item.rank}
                     </div>
                   </div>
 
-                  <div className="p-4 md:p-5">
+                  <div className="min-w-0 p-3 pl-0 md:p-5 md:pl-0 lg:pl-1">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/70">
                           Place
                         </p>
-                        <h4 className="mt-1 break-keep text-xl font-black text-white">
+                        <h4 className="mt-1 break-keep text-lg font-black text-white md:text-xl">
                           {item.name}
                         </h4>
                         <p className="mt-1 text-sm font-bold text-cyan-100/80">{item.category}</p>
@@ -277,7 +279,7 @@ export function PlaceRankingTool() {
                       ) : null}
                     </div>
 
-                    <div className="mt-4 grid gap-2 text-sm font-bold text-slate-300">
+                    <div className="mt-3 grid gap-2 text-sm font-bold text-slate-300 md:mt-4">
                       {item.status ? (
                         <p className="rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-cyan-100">
                           {item.status}
@@ -309,7 +311,7 @@ export function PlaceRankingTool() {
                     ) : null}
                   </div>
 
-                  <div className="border-t border-white/10 p-4 md:p-5 lg:border-l lg:border-t-0">
+                  <div className="col-span-2 border-t border-white/10 p-4 md:p-5 lg:col-span-1 lg:border-l lg:border-t-0">
                     <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/70">
                       최근 리뷰
                     </p>
