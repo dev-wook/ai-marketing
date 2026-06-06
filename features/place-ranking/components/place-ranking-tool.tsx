@@ -2,11 +2,22 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { PlaceRankingItem, PlaceRankingResponse } from '../types'
+import type {
+  PlaceRankingItem,
+  PlaceRankingSnapshotHistoryResponse,
+  PlaceRankingSnapshotSaveResponse,
+  PlaceRankingResponse,
+} from '../types'
 
 type PlaceRankingErrorBody = {
   message?: string
   debug?: unknown
+}
+
+type SnapshotToast = {
+  id: number
+  type: 'success' | 'error'
+  message: string
 }
 
 const rankingPageSize = 50
@@ -43,6 +54,50 @@ async function requestRankings(keyword: string, limit: number) {
   return body as PlaceRankingResponse
 }
 
+async function requestSaveSnapshots(result: PlaceRankingResponse) {
+  const response = await fetch('/api/place-ranking/snapshots', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      keyword: result.keyword,
+      items: result.items,
+    }),
+  })
+  const body = (await response.json()) as PlaceRankingSnapshotSaveResponse | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '순위 기록 저장에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as PlaceRankingSnapshotSaveResponse
+}
+
+async function requestSnapshotHistory(keyword: string, placeId: string) {
+  const params = new URLSearchParams({ keyword, placeId })
+  const response = await fetch(`/api/place-ranking/snapshots?${params.toString()}`)
+  const body = (await response.json()) as PlaceRankingSnapshotHistoryResponse | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '순위 이력 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as PlaceRankingSnapshotHistoryResponse
+}
+
 export function PlaceRankingTool() {
   const [keyword, setKeyword] = useState('')
   const [result, setResult] = useState<PlaceRankingResponse | null>(null)
@@ -57,6 +112,11 @@ export function PlaceRankingTool() {
   const [recentKeywords, setRecentKeywords] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null)
   const [reviewPlace, setReviewPlace] = useState<PlaceRankingItem | null>(null)
+  const [historyPlace, setHistoryPlace] = useState<PlaceRankingItem | null>(null)
+  const [historyRows, setHistoryRows] = useState<PlaceRankingSnapshotHistoryResponse['history']>([])
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false)
+  const [isSavingSnapshot, setIsSavingSnapshot] = useState(false)
+  const [snapshotToast, setSnapshotToast] = useState<SnapshotToast | null>(null)
   const [isMounted, setIsMounted] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
@@ -86,7 +146,7 @@ export function PlaceRankingTool() {
   }, [])
 
   useEffect(() => {
-    if (!expandedImage && !reviewPlace) {
+    if (!expandedImage && !reviewPlace && !historyPlace) {
       return
     }
 
@@ -97,7 +157,7 @@ export function PlaceRankingTool() {
     return () => {
       document.body.style.overflow = previousOverflow
     }
-  }, [expandedImage, reviewPlace])
+  }, [expandedImage, reviewPlace, historyPlace])
 
   useEffect(() => {
     if (!isLoading) {
@@ -149,6 +209,9 @@ export function PlaceRankingTool() {
     setAppliedPlaceNameFilter('')
     setExpandedImage(null)
     setReviewPlace(null)
+    setHistoryPlace(null)
+    setHistoryRows([])
+    setSnapshotToast(null)
     setVisibleCount(initialVisibleCount)
 
     try {
@@ -197,6 +260,70 @@ export function PlaceRankingTool() {
     setRecentKeywords(deleteRecentPlaceRankingKeyword(targetKeyword))
   }
 
+  const saveTodaySnapshot = async () => {
+    if (!result || isSavingSnapshot) {
+      return
+    }
+
+    setIsSavingSnapshot(true)
+
+    try {
+      const response = await requestSaveSnapshots(result)
+
+      setResult({
+        ...result,
+        items: result.items.map((item) => ({
+          ...item,
+          rankChange: response.summary.changesByPlaceId[item.id] ?? null,
+        })),
+      })
+      showSnapshotToast({
+        type: 'success',
+        message: '오늘 순위 기록을 저장했습니다.',
+      })
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '순위 기록 저장에 실패했습니다.',
+      })
+      setErrorLog(toReadableErrorLog(readErrorDebug(error)))
+    } finally {
+      setIsSavingSnapshot(false)
+    }
+  }
+
+  const openHistory = async (place: PlaceRankingItem) => {
+    if (!result) {
+      return
+    }
+
+    setHistoryPlace(place)
+    setHistoryRows([])
+    setIsHistoryLoading(true)
+
+    try {
+      const response = await requestSnapshotHistory(result.keyword, place.id)
+
+      setHistoryRows(response.history)
+    } catch (error) {
+      setHistoryRows([])
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '순위 이력 조회에 실패했습니다.',
+      })
+    } finally {
+      setIsHistoryLoading(false)
+    }
+  }
+
+  const showSnapshotToast = ({ type, message }: Omit<SnapshotToast, 'id'>) => {
+    setSnapshotToast({
+      id: Date.now(),
+      type,
+      message,
+    })
+  }
+
   return (
     <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-center py-6">
       <section className="text-center">
@@ -228,7 +355,7 @@ export function PlaceRankingTool() {
             <button
               type="submit"
               disabled={!canSubmit}
-              className="min-h-14 rounded-md bg-cyan-100 px-7 text-base font-black text-[#090b14] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-400 disabled:text-slate-800"
+              className="min-h-14 rounded-md bg-white px-7 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
             >
               {isLoading ? '조회 중' : '실시간 조회'}
             </button>
@@ -328,6 +455,14 @@ export function PlaceRankingTool() {
                 조회 시각: {formatCollectedAt(result.collectedAt)}
                 {result.source === 'cache' ? ' · 캐시 응답' : ''}
               </span>
+              <button
+                type="button"
+                onClick={saveTodaySnapshot}
+                disabled={isSavingSnapshot || result.items.length === 0}
+                className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSavingSnapshot ? '기록 중' : '오늘 순위 기록'}
+              </button>
             </div>
           </div>
 
@@ -377,7 +512,16 @@ export function PlaceRankingTool() {
           <div className="mt-5 grid gap-3">
             {filteredItems.map((item) => (
               <article
-                key={`${item.rank}-${item.name}-${item.rawText.slice(0, 30)}`}
+                key={item.id}
+                onClick={(event) => {
+                  const target = event.target
+
+                  if (target instanceof Element && target.closest('button,a')) {
+                    return
+                  }
+
+                  openHistory(item)
+                }}
                 className="overflow-visible rounded-md border border-white/10 bg-[#080c17]/85"
               >
                 <div className="grid grid-cols-[86px_minmax(0,1fr)] gap-0 sm:grid-cols-[120px_minmax(0,1fr)] md:grid-cols-[156px_minmax(0,1fr)]">
@@ -440,6 +584,7 @@ export function PlaceRankingTool() {
                       <span className="rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 px-2 py-0.5 text-xs font-black text-[#070a12] shadow-[0_10px_22px_rgba(0,0,0,0.24)] sm:px-2.5 sm:py-1 sm:text-sm">
                         {item.rank}위
                       </span>
+                      <RankChangeBadge change={item.rankChange} />
                       <h4 className="min-w-0 break-keep text-base font-black leading-tight text-white sm:text-lg md:text-2xl">
                         {item.name}
                       </h4>
@@ -603,6 +748,18 @@ export function PlaceRankingTool() {
           )
         : null}
 
+      {isMounted && historyPlace
+        ? createPortal(
+            <PlaceHistoryModal
+              place={historyPlace}
+              rows={historyRows}
+              isLoading={isHistoryLoading}
+              onClose={() => setHistoryPlace(null)}
+            />,
+            document.body,
+          )
+        : null}
+
       {isMounted && expandedImage
         ? createPortal(
             <ImagePreviewModal
@@ -612,6 +769,152 @@ export function PlaceRankingTool() {
             document.body,
           )
         : null}
+
+      {isMounted && snapshotToast
+        ? createPortal(
+            <SnapshotToastMessage
+              toast={snapshotToast}
+              onClose={() => setSnapshotToast(null)}
+            />,
+            document.body,
+          )
+        : null}
+    </div>
+  )
+}
+
+type SnapshotToastMessageProps = {
+  toast: SnapshotToast
+  onClose: () => void
+}
+
+function SnapshotToastMessage({ toast, onClose }: SnapshotToastMessageProps) {
+  useEffect(() => {
+    const timer = window.setTimeout(onClose, 2800)
+
+    return () => window.clearTimeout(timer)
+  }, [onClose, toast.id])
+
+  const isError = toast.type === 'error'
+
+  return (
+    <div
+      className={`fixed left-1/2 top-4 z-[10000] w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 rounded-md border px-4 py-3 text-sm font-black shadow-[0_18px_44px_rgba(0,0,0,0.38)] backdrop-blur-xl md:bottom-6 md:left-auto md:right-6 md:top-auto md:translate-x-0 ${
+        isError
+          ? 'border-rose-300/30 bg-rose-500/15 text-rose-100'
+          : 'border-cyan-300/30 bg-[#0b1724]/95 text-cyan-100'
+      }`}
+      role="status"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span>{toast.message}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 rounded-sm border border-white/10 px-2 py-1 text-[10px] text-slate-200 transition hover:bg-white/10"
+          aria-label="알림 닫기"
+        >
+          닫기
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function RankChangeBadge({ change }: { change?: PlaceRankingItem['rankChange'] | null }) {
+  if (!change || change.direction === 'same') {
+    return null
+  }
+
+  const isUp = change.direction === 'up'
+
+  return (
+    <span className={`text-xs font-black ${isUp ? 'text-rose-300' : 'text-blue-300'}`}>
+      {change.delta}
+      {isUp ? '▲' : '▼'}
+    </span>
+  )
+}
+
+type PlaceHistoryModalProps = {
+  place: PlaceRankingItem
+  rows: PlaceRankingSnapshotHistoryResponse['history']
+  isLoading: boolean
+  onClose: () => void
+}
+
+function PlaceHistoryModal({ place, rows, isLoading, onClose }: PlaceHistoryModalProps) {
+  const isOutsideStoredRange = place.rank > 100
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${place.name} 순위 이력`}
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[82vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              Ranking History
+            </p>
+            <h3 className="mt-1 truncate text-2xl font-black text-white">{place.name}</h3>
+            <p className="mt-1 text-sm font-bold text-cyan-100/75">{place.category}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="max-h-[calc(82vh-7rem)] overflow-y-auto p-5">
+          {isOutsideStoredRange ? (
+            <div className="mb-4 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4 text-sm font-black text-cyan-100">
+              현재 조회 결과는 100위권 밖입니다. 순위 기록은 100위까지 저장됩니다.
+            </div>
+          ) : null}
+          {isLoading ? (
+            <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4 text-sm font-black text-cyan-100">
+              순위 이력을 불러오고 있습니다.
+            </div>
+          ) : rows.length > 0 ? (
+            <div className="overflow-hidden rounded-md border border-white/10">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead className="bg-white/[0.06] text-xs font-black uppercase tracking-[0.12em] text-cyan-100/75">
+                  <tr>
+                    <th className="px-4 py-3">날짜</th>
+                    <th className="px-4 py-3">순위</th>
+                    <th className="px-4 py-3">변화</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {rows.map((row) => (
+                    <tr key={row.snapshotDate} className="text-slate-200">
+                      <td className="px-4 py-3 font-bold">{formatSnapshotDate(row.snapshotDate)}</td>
+                      <td className="px-4 py-3 font-black">{formatRankLabel(row.rank)}</td>
+                      <td className="px-4 py-3">
+                        <RankChangeText change={row.change} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-300">
+              아직 저장된 순위 이력이 없습니다. 조회 결과에서 오늘 순위 기록을 먼저 저장해주세요.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -797,6 +1100,39 @@ function formatCollectedAt(value: string) {
     month: '2-digit',
     day: '2-digit',
   })
+}
+
+function formatSnapshotDate(value: string) {
+  const date = new Date(`${value}T00:00:00+09:00`)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleDateString('ko-KR', {
+    year: '2-digit',
+    month: '2-digit',
+    day: '2-digit',
+  })
+}
+
+function RankChangeText({ change }: { change?: PlaceRankingItem['rankChange'] | null }) {
+  if (!change || change.direction === 'same') {
+    return <span className="font-bold text-slate-500">-</span>
+  }
+
+  const isUp = change.direction === 'up'
+
+  return (
+    <span className={`font-black ${isUp ? 'text-rose-300' : 'text-blue-300'}`}>
+      {change.delta}
+      {isUp ? '▲' : '▼'}
+    </span>
+  )
+}
+
+function formatRankLabel(rank: number) {
+  return rank > 100 ? '100위권 밖' : `${rank}위`
 }
 
 function formatShortAddress(item: PlaceRankingItem) {

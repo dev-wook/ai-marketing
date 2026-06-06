@@ -2,6 +2,14 @@ export type PlaceRankingItem = PlaceCard & {
   rank: number
   displayRank: number
   rawText: string
+  rankChange?: PlaceRankingChange | null
+}
+
+export type PlaceRankingChange = {
+  previousRank: number
+  delta: number
+  direction: 'up' | 'down' | 'same'
+  comparedDate: string
 }
 
 export type PlaceCard = {
@@ -161,4 +169,40 @@ export type PlaceRankingResponse = {
   nextLimit: number | null
   source: 'live' | 'cache'
   items: PlaceRankingItem[]
+}
+
+export type PlaceRankingSnapshotRecord = {
+  keyword: string
+  snapshotDate: string
+  placeId: string
+  rank: number
+  name: string
+  category?: string
+  imageUrl?: string
+  address?: string
+}
+
+export type PlaceRankingSnapshotHistoryItem = {
+  snapshotDate: string
+  rank: number
+  change?: PlaceRankingChange | null
+}
+
+export type PlaceRankingSnapshotSummary = {
+  keyword: string
+  snapshotDate: string
+  totalSaved: number
+  previousSnapshotDate: string | null
+  changesByPlaceId: Record<string, PlaceRankingChange | null>
+}
+
+export type PlaceRankingSnapshotSaveResponse = {
+  message: string
+  summary: PlaceRankingSnapshotSummary
+}
+
+export type PlaceRankingSnapshotHistoryResponse = {
+  keyword: string
+  placeId: string
+  history: PlaceRankingSnapshotHistoryItem[]
 }

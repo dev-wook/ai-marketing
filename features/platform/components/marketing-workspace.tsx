@@ -128,7 +128,7 @@ export function MarketingWorkspace() {
   const isHomeView = view === 'home'
 
   return (
-    <main className="min-h-screen bg-[#070a12] text-white">
+    <main className="min-h-screen overflow-x-hidden bg-[#070a12] text-white">
       <div
         aria-hidden={!shouldShowPullRefresh}
         className={`fixed inset-x-0 z-40 overflow-hidden border-b border-cyan-300/10 bg-[linear-gradient(180deg,rgba(7,10,18,0.98),rgba(10,16,32,0.88))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition-opacity duration-150 md:hidden ${
@@ -160,7 +160,7 @@ export function MarketingWorkspace() {
         </div>
       </div>
       <div className="min-h-screen bg-[radial-gradient(circle_at_28%_20%,rgba(0,200,255,0.22),transparent_32%),radial-gradient(circle_at_76%_28%,rgba(184,54,255,0.24),transparent_34%),linear-gradient(135deg,#080b14_0%,#0b1020_48%,#090713_100%)]">
-        <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-0 md:px-8 md:py-5">
+        <div className="mx-auto flex min-h-screen w-full max-w-7xl min-w-0 flex-col px-5 py-0 md:px-8 md:py-5">
           <header
             className={`sticky top-0 z-50 -mx-5 min-h-[72px] items-center border-b border-white/10 bg-[#070a12]/86 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl md:relative md:top-auto md:z-20 md:mx-0 md:min-h-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
               isHomeView

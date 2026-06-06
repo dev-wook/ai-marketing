@@ -6,7 +6,7 @@
 
 - 제품명: AIVA — AI Marketing Platform
 - 목적: 마케팅 실무자가 AI 검색 노출, 블로그, 플레이스, 이미지 생성 등 마케팅 작업을 순차적으로 수행할 수 있는 도구형 플랫폼
-- 현재 핵심 기능: 입력 키워드를 기준으로 AI 검색 노출에 중요한 키워드, 검색 의도, 블로그/플레이스 활용 포인트 분석
+- 현재 핵심 기능: AI 검색 노출 키워드 분석, AI 블로그 원고 작성, 네이버 플레이스 순위 조회와 순위 기록
 - 배포: GitHub `main` 브랜치와 Vercel Production
 
 ## 기술 스택
@@ -17,7 +17,7 @@
 - Tailwind CSS
 - Gemini API
 - Naver Search API
-- Supabase PostgreSQL은 추후 저장 기능이 생길 때 사용한다.
+- Supabase PostgreSQL은 네이버 플레이스 일자별 순위 기록과 이력 조회에 사용한다.
 
 ## 환경 변수
 
@@ -28,7 +28,9 @@
 - `NAVER_CLIENT_ID`
 - `NAVER_CLIENT_SECRET`
 - `NEXT_PUBLIC_SUPABASE_URL` 추후 사용
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` 추후 사용
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` 기존 anon key 호환용
+- `DATABASE_URL` Supabase PostgreSQL pooler 연결용. Vercel/Serverless 환경에서는 direct connection 대신 pooler URL을 사용한다.
 
 ## 아키텍처 기준
 

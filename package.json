@@ -14,6 +14,7 @@
   "dependencies": {
     "@supabase/supabase-js": "latest",
     "next": "latest",
+    "pg": "^8.21.0",
     "react": "latest",
     "react-dom": "latest"
   },
@@ -21,6 +22,7 @@
     "@next/swc-wasm-nodejs": "^16.2.6",
     "@tailwindcss/postcss": "latest",
     "@types/node": "latest",
+    "@types/pg": "^8.20.0",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "tailwindcss": "latest",
