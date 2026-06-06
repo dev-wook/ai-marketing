@@ -25,6 +25,23 @@ export function HomeView({
       <section className="grid gap-4 xl:grid-cols-4">
         <button
           type="button"
+          onClick={onOpenPlaceRanking}
+          className="group rounded-md border border-cyan-300/35 bg-cyan-300/10 p-5 text-left shadow-[0_0_34px_rgba(34,211,238,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-200/70 hover:bg-cyan-300/14"
+        >
+          <span className="text-xs font-black tracking-[0.12em] text-cyan-200">
+            서비스 오픈(Beta)
+          </span>
+          <h3 className="mt-3 text-2xl font-black">네이버 플레이스 순위 조회</h3>
+          <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-300">
+            키워드별 플레이스 노출 순서와 주요 정보를 실시간으로 확인합니다.
+          </p>
+          <span className="mt-5 inline-flex rounded-md bg-white px-4 py-3 text-sm font-black text-[#090b14] transition group-hover:bg-cyan-100">
+            시작하기
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={onOpenKeyword}
           className="group rounded-md border border-cyan-300/35 bg-cyan-300/10 p-5 text-left shadow-[0_0_34px_rgba(34,211,238,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-200/70 hover:bg-cyan-300/14"
         >
@@ -39,7 +56,6 @@ export function HomeView({
             시작하기
           </span>
         </button>
-
         <button
           type="button"
           onClick={onOpenBlogPosting}
@@ -51,22 +67,6 @@ export function HomeView({
           <h3 className="mt-3 text-2xl font-black">AI 블로그 원고 작성</h3>
           <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-300">
             키워드와 맞춤형 질문 답변을 바탕으로 AI 최적화 블로그 원고를 작성합니다.
-          </p>
-          <span className="mt-5 inline-flex rounded-md bg-white px-4 py-3 text-sm font-black text-[#090b14] transition group-hover:bg-cyan-100">
-            시작하기
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={onOpenPlaceRanking}
-          className="group rounded-md border border-cyan-300/35 bg-cyan-300/10 p-5 text-left shadow-[0_0_34px_rgba(34,211,238,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-200/70 hover:bg-cyan-300/14"
-        >
-          <span className="text-xs font-black tracking-[0.12em] text-cyan-200">
-            서비스 오픈(Beta)
-          </span>
-          <h3 className="mt-3 text-2xl font-black">네이버 플레이스 순위 조회</h3>
-          <p className="mt-3 min-h-16 text-sm font-semibold leading-7 text-slate-300">
-            키워드별 플레이스 노출 순서와 주요 정보를 실시간으로 확인합니다.
           </p>
           <span className="mt-5 inline-flex rounded-md bg-white px-4 py-3 text-sm font-black text-[#090b14] transition group-hover:bg-cyan-100">
             시작하기

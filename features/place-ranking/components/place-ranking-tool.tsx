@@ -56,6 +56,7 @@ export function PlaceRankingTool() {
   const [appliedPlaceNameFilter, setAppliedPlaceNameFilter] = useState('')
   const [recentKeywords, setRecentKeywords] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null)
+  const [reviewPlace, setReviewPlace] = useState<PlaceRankingItem | null>(null)
   const [isMounted, setIsMounted] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
@@ -85,7 +86,7 @@ export function PlaceRankingTool() {
   }, [])
 
   useEffect(() => {
-    if (!expandedImage) {
+    if (!expandedImage && !reviewPlace) {
       return
     }
 
@@ -96,7 +97,7 @@ export function PlaceRankingTool() {
     return () => {
       document.body.style.overflow = previousOverflow
     }
-  }, [expandedImage])
+  }, [expandedImage, reviewPlace])
 
   useEffect(() => {
     if (!isLoading) {
@@ -147,6 +148,7 @@ export function PlaceRankingTool() {
     setPlaceNameFilterInput('')
     setAppliedPlaceNameFilter('')
     setExpandedImage(null)
+    setReviewPlace(null)
     setVisibleCount(initialVisibleCount)
 
     try {
@@ -378,8 +380,8 @@ export function PlaceRankingTool() {
                 key={`${item.rank}-${item.name}-${item.rawText.slice(0, 30)}`}
                 className="overflow-visible rounded-md border border-white/10 bg-[#080c17]/85"
               >
-                <div className="grid grid-cols-[98px_minmax(0,1fr)] gap-0 sm:grid-cols-[120px_minmax(0,1fr)] md:grid-cols-[156px_minmax(0,1fr)]">
-                  <div className="p-3 sm:p-4">
+                <div className="grid grid-cols-[86px_minmax(0,1fr)] gap-0 sm:grid-cols-[120px_minmax(0,1fr)] md:grid-cols-[156px_minmax(0,1fr)]">
+                  <div className="p-2.5 sm:p-4">
                     <div className="relative aspect-square overflow-hidden rounded-md bg-white/[0.04]">
                       {item.images.mainImageUrl ? (
                         <button
@@ -407,7 +409,7 @@ export function PlaceRankingTool() {
                       )}
                     </div>
                     {getPreviewImages(item).length > 0 ? (
-                      <div className="mt-1.5 grid grid-cols-3 gap-1 sm:mt-2">
+                      <div className="mt-1 grid grid-cols-3 gap-1 sm:mt-2">
                         {getPreviewImages(item).map((imageUrl, index) => (
                           <button
                             type="button"
@@ -433,25 +435,25 @@ export function PlaceRankingTool() {
                     ) : null}
                   </div>
 
-                  <div className="min-w-0 p-3 pl-0 sm:p-4 sm:pl-0 md:p-5 md:pl-0">
+                  <div className="min-w-0 p-2.5 pl-0 sm:p-4 sm:pl-0 md:p-5 md:pl-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 px-2.5 py-1 text-sm font-black text-[#070a12] shadow-[0_10px_22px_rgba(0,0,0,0.24)]">
+                      <span className="rounded-md bg-gradient-to-br from-cyan-300 to-fuchsia-500 px-2 py-0.5 text-xs font-black text-[#070a12] shadow-[0_10px_22px_rgba(0,0,0,0.24)] sm:px-2.5 sm:py-1 sm:text-sm">
                         {item.rank}위
                       </span>
-                      <h4 className="min-w-0 break-keep text-lg font-black leading-tight text-white md:text-2xl">
+                      <h4 className="min-w-0 break-keep text-base font-black leading-tight text-white sm:text-lg md:text-2xl">
                         {item.name}
                       </h4>
                     </div>
-                    <p className="mt-1 text-sm font-bold leading-snug text-cyan-100/80">
+                    <p className="mt-0.5 text-xs font-bold leading-snug text-cyan-100/80 sm:mt-1 sm:text-sm">
                       {item.category}
                     </p>
-                    <div className="relative mt-2.5 sm:mt-3">
+                    <div className="mt-2 sm:mt-3">
                       <button
                         type="button"
                         onClick={() =>
                           setOpenedAddressId((current) => (current === item.id ? null : item.id))
                         }
-                        className="inline-flex max-w-full items-center gap-1 text-left text-sm font-black text-slate-300 transition hover:text-cyan-100"
+                        className="inline-flex max-w-full items-center gap-1 text-left text-xs font-black text-slate-300 transition hover:text-cyan-100 sm:text-sm"
                         aria-expanded={openedAddressId === item.id}
                       >
                         <span className="min-w-0 truncate">{formatShortAddress(item)}</span>
@@ -464,47 +466,13 @@ export function PlaceRankingTool() {
                           <span className="block h-2 w-2 translate-y-[-1px] rotate-45 border-b-2 border-r-2 border-current" />
                         </span>
                       </button>
-                      {openedAddressId === item.id ? (
-                        <div className="absolute right-0 z-20 mt-2 w-[min(19rem,calc(100vw-2rem))] rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.35)] sm:left-0 sm:right-auto sm:w-[min(22rem,calc(100vw-3rem))]">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
-                              Address
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => setOpenedAddressId(null)}
-                              className="shrink-0 rounded-sm border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.1]"
-                            >
-                              닫기
-                            </button>
-                          </div>
-                          <p className="mt-2">{formatDetailedAddress(item)}</p>
-                          {item.location.distance ? (
-                            <p className="mt-1 text-slate-400">
-                              현재 위치 기준 {item.location.distance}
-                            </p>
-                          ) : null}
-                          {getUsefulOptions(item).length > 0 ? (
-                            <div className="mt-3 flex flex-wrap gap-1.5">
-                              {getUsefulOptions(item).map((option) => (
-                                <span
-                                  key={option}
-                                  className="rounded-sm bg-white/[0.06] px-2 py-1 text-[10px] text-slate-300"
-                                >
-                                  {option}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-2">
                       {item.badges.map((badge) => (
                         <span
                           key={badge}
-                          className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-black text-slate-300"
+                          className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-black text-slate-300 sm:px-2 sm:py-1 sm:text-[11px]"
                         >
                           {badge}
                         </span>
@@ -512,14 +480,29 @@ export function PlaceRankingTool() {
                     </div>
 
                     {item.reviews.snippets.length > 0 ? (
-                      <div className="mt-3 max-w-full overflow-hidden sm:mt-4">
-                        <div className="flex snap-x gap-2 overflow-x-auto pb-1">
+                      <div className="mt-2 max-w-full overflow-hidden sm:mt-4">
+                        <button
+                          type="button"
+                          onClick={() => setReviewPlace(item)}
+                          className="grid w-full gap-1 rounded-md border border-white/10 bg-white/[0.035] px-2 py-1.5 text-left transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.06] sm:hidden"
+                        >
+                          <span className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200/70">
+                            추천 리뷰
+                          </span>
+                          <span className="line-clamp-2 text-[10px] font-semibold leading-4 text-slate-300">
+                            {item.reviews.snippets[0]?.text}
+                          </span>
+                          <span className="text-[10px] font-black text-cyan-100">
+                            리뷰 보기
+                          </span>
+                        </button>
+                        <div className="hidden snap-x gap-2 overflow-x-auto pb-1 sm:flex">
                           {item.reviews.snippets.slice(0, 3).map((review, index) => (
                             <blockquote
                               key={`${item.id}-${review.reviewId}-${index}`}
-                              className="min-w-[78%] snap-start rounded-md border border-white/10 bg-white/[0.035] px-2.5 py-2 text-[11px] font-semibold leading-5 text-slate-300 sm:min-w-[42%] sm:px-3 sm:text-xs lg:min-w-[30%]"
+                              className="min-w-[72%] snap-start rounded-md border border-white/10 bg-white/[0.035] px-2 py-1.5 text-[10px] font-semibold leading-4 text-slate-300 sm:min-w-[42%] sm:px-3 sm:py-2 sm:text-xs sm:leading-5 lg:min-w-[30%]"
                             >
-                              <span className="line-clamp-2">{review.text}</span>
+                              <span className="line-clamp-1 sm:line-clamp-2">{review.text}</span>
                             </blockquote>
                           ))}
                         </div>
@@ -527,11 +510,11 @@ export function PlaceRankingTool() {
                     ) : null}
 
                     {item.hashtags.length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
+                      <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-3">
                         {item.hashtags.map((hashtag) => (
                           <span
                             key={hashtag}
-                            className="rounded-md bg-blue-400/10 px-2.5 py-1 text-xs font-black text-blue-100"
+                            className="rounded-md bg-blue-400/10 px-2 py-0.5 text-[10px] font-black text-blue-100 sm:px-2.5 sm:py-1 sm:text-xs"
                           >
                             #{hashtag.replace(/^#/, '')}
                           </span>
@@ -539,13 +522,13 @@ export function PlaceRankingTool() {
                       </div>
                     ) : null}
 
-                    <div className="mt-3 flex flex-wrap gap-2 sm:mt-4">
+                    <div className="mt-2 flex flex-wrap gap-2 sm:mt-4">
                       {item.actions.bookingUrl ? (
                         <a
                           href={item.actions.bookingUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-md border border-cyan-200/40 bg-cyan-100 px-3 py-2 text-[11px] font-black text-[#07111f] shadow-[0_8px_18px_rgba(103,232,249,0.12)] transition hover:bg-white sm:text-xs"
+                          className="inline-flex rounded-md border border-cyan-200/40 bg-cyan-100 px-2.5 py-1.5 text-[10px] font-black text-[#07111f] shadow-[0_8px_18px_rgba(103,232,249,0.12)] transition hover:bg-white sm:px-3 sm:py-2 sm:text-xs"
                         >
                           예약
                         </a>
@@ -555,7 +538,7 @@ export function PlaceRankingTool() {
                           href={item.actions.talktalkUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-md border border-cyan-300/30 bg-cyan-300/15 px-3 py-2 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-300/25 sm:text-xs"
+                          className="hidden rounded-md border border-cyan-300/30 bg-cyan-300/15 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/25 sm:inline-flex"
                         >
                           톡톡
                         </a>
@@ -563,7 +546,7 @@ export function PlaceRankingTool() {
                       {item.actions.phone ? (
                         <a
                           href={`tel:${item.actions.phone}`}
-                          className="rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-[11px] font-black text-white transition hover:bg-white/15 sm:text-xs"
+                          className="hidden rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-xs font-black text-white transition hover:bg-white/15 sm:inline-flex"
                         >
                           전화
                         </a>
@@ -573,7 +556,7 @@ export function PlaceRankingTool() {
                           href={item.actions.routeUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-[11px] font-black text-white transition hover:bg-white/15 sm:text-xs"
+                          className="inline-flex rounded-md border border-white/15 bg-white/[0.09] px-2.5 py-1.5 text-[10px] font-black text-white transition hover:bg-white/15 sm:px-3 sm:py-2 sm:text-xs"
                         >
                           길찾기
                         </a>
@@ -581,6 +564,40 @@ export function PlaceRankingTool() {
                     </div>
                   </div>
                 </div>
+                {openedAddressId === item.id ? (
+                  <div className="mx-2.5 mb-2.5 rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.24)] sm:mx-4 sm:mb-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
+                        Address
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setOpenedAddressId(null)}
+                        className="shrink-0 rounded-sm border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.1]"
+                      >
+                        닫기
+                      </button>
+                    </div>
+                    <p className="mt-2">{formatDetailedAddress(item)}</p>
+                    {item.location.distance ? (
+                      <p className="mt-1 text-slate-400">
+                        현재 위치 기준 {item.location.distance}
+                      </p>
+                    ) : null}
+                    {getUsefulOptions(item).length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {getUsefulOptions(item).map((option) => (
+                          <span
+                            key={option}
+                            className="rounded-sm bg-white/[0.06] px-2 py-1 text-[10px] text-slate-300"
+                          >
+                            {option}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
@@ -602,6 +619,13 @@ export function PlaceRankingTool() {
         </section>
       ) : null}
 
+      {isMounted && reviewPlace
+        ? createPortal(
+            <ReviewBottomSheet place={reviewPlace} onClose={() => setReviewPlace(null)} />,
+            document.body,
+          )
+        : null}
+
       {isMounted && expandedImage
         ? createPortal(
             <ImagePreviewModal
@@ -611,6 +635,64 @@ export function PlaceRankingTool() {
             document.body,
           )
         : null}
+    </div>
+  )
+}
+
+type ReviewBottomSheetProps = {
+  place: PlaceRankingItem
+  onClose: () => void
+}
+
+function ReviewBottomSheet({ place, onClose }: ReviewBottomSheetProps) {
+  const reviews = place.reviews.snippets.slice(0, 3)
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] grid place-items-center bg-black/65 p-5 backdrop-blur-sm sm:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${place.name} 추천 리뷰 보기`}
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[72vh] w-full max-w-[24rem] overflow-hidden rounded-2xl border border-white/10 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-white/10 bg-[#070b15]/95 px-4 py-4 backdrop-blur">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              추천 리뷰
+            </p>
+            <h3 className="mt-1 truncate text-lg font-black text-white">{place.name}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="max-h-[calc(72vh-5.5rem)] overflow-y-auto px-4 py-4">
+          <div className="grid gap-3">
+            {reviews.map((review, index) => (
+              <article
+                key={`${place.id}-sheet-review-${review.reviewId}-${index}`}
+                className="rounded-md border border-white/10 bg-white/[0.045] p-3"
+              >
+                <p className="text-[11px] font-black text-cyan-100/80">
+                  {index + 1}번째 추천 리뷰
+                </p>
+                <p className="mt-2 whitespace-pre-wrap break-keep text-sm font-semibold leading-6 text-slate-200">
+                  {review.text}
+                </p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

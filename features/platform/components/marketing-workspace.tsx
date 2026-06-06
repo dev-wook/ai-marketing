@@ -210,10 +210,10 @@ export function MarketingWorkspace() {
               {isMenuOpen ? (
                 <nav className="absolute right-0 top-14 grid w-[min(82vw,340px)] gap-2 rounded-md border border-white/10 bg-[#080b14]/95 p-3 shadow-[0_24px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl">
                   <MenuButton
-                    active={view === 'home'}
-                    eyebrow="Home"
-                    label="메인 화면"
-                    onClick={() => openView('home')}
+                    active={view === 'place'}
+                    eyebrow="Live"
+                    label="네이버 플레이스 순위 조회"
+                    onClick={() => openView('place')}
                   />
                   <MenuButton
                     active={view === 'keyword'}
@@ -226,12 +226,6 @@ export function MarketingWorkspace() {
                     eyebrow="Live"
                     label="AI 블로그 원고 작성"
                     onClick={() => openView('blog')}
-                  />
-                  <MenuButton
-                    active={view === 'place'}
-                    eyebrow="Live"
-                    label="네이버 플레이스 순위 조회"
-                    onClick={() => openView('place')}
                   />
                   <MenuButton eyebrow="Soon" label="AI 모델 이미지 생성" disabled />
                 </nav>
