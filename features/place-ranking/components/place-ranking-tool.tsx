@@ -447,7 +447,7 @@ export function PlaceRankingTool() {
                     <p className="mt-0.5 text-xs font-bold leading-snug text-cyan-100/80 sm:mt-1 sm:text-sm">
                       {item.category}
                     </p>
-                    <div className="mt-2 sm:mt-3">
+                    <div className="relative mt-2 sm:mt-3">
                       <button
                         type="button"
                         onClick={() =>
@@ -466,6 +466,35 @@ export function PlaceRankingTool() {
                           <span className="block h-2 w-2 translate-y-[-1px] rotate-45 border-b-2 border-r-2 border-current" />
                         </span>
                       </button>
+                      {openedAddressId === item.id ? (
+                        <div className="absolute left-0 z-30 mt-2 w-[min(16rem,100%)] rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.35)] sm:w-[min(22rem,calc(100vw-3rem))]">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
+                              Address
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setOpenedAddressId(null)}
+                              className="shrink-0 rounded-sm border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.1]"
+                            >
+                              닫기
+                            </button>
+                          </div>
+                          <p className="mt-2">{formatDetailedAddress(item)}</p>
+                          {getUsefulOptions(item).length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {getUsefulOptions(item).map((option) => (
+                                <span
+                                  key={option}
+                                  className="rounded-sm bg-white/[0.06] px-2 py-1 text-[10px] text-slate-300"
+                                >
+                                  {option}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-2">
@@ -533,24 +562,6 @@ export function PlaceRankingTool() {
                           예약
                         </a>
                       ) : null}
-                      {item.actions.talktalkUrl ? (
-                        <a
-                          href={item.actions.talktalkUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="hidden rounded-md border border-cyan-300/30 bg-cyan-300/15 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/25 sm:inline-flex"
-                        >
-                          톡톡
-                        </a>
-                      ) : null}
-                      {item.actions.phone ? (
-                        <a
-                          href={`tel:${item.actions.phone}`}
-                          className="hidden rounded-md border border-white/15 bg-white/[0.09] px-3 py-2 text-xs font-black text-white transition hover:bg-white/15 sm:inline-flex"
-                        >
-                          전화
-                        </a>
-                      ) : null}
                       {item.actions.routeUrl ? (
                         <a
                           href={item.actions.routeUrl}
@@ -564,40 +575,6 @@ export function PlaceRankingTool() {
                     </div>
                   </div>
                 </div>
-                {openedAddressId === item.id ? (
-                  <div className="mx-2.5 mb-2.5 rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.24)] sm:mx-4 sm:mb-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
-                        Address
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setOpenedAddressId(null)}
-                        className="shrink-0 rounded-sm border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.1]"
-                      >
-                        닫기
-                      </button>
-                    </div>
-                    <p className="mt-2">{formatDetailedAddress(item)}</p>
-                    {item.location.distance ? (
-                      <p className="mt-1 text-slate-400">
-                        현재 위치 기준 {item.location.distance}
-                      </p>
-                    ) : null}
-                    {getUsefulOptions(item).length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {getUsefulOptions(item).map((option) => (
-                          <span
-                            key={option}
-                            className="rounded-sm bg-white/[0.06] px-2 py-1 text-[10px] text-slate-300"
-                          >
-                            {option}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
               </article>
             ))}
           </div>
