@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
+  PlaceRankingBatchKeyword,
+  PlaceRankingBatchKeywordResponse,
   PlaceRankingItem,
   PlaceRankingSnapshotHistoryResponse,
   PlaceRankingSnapshotSaveResponse,
@@ -98,6 +100,70 @@ async function requestSnapshotHistory(keyword: string, placeId: string) {
   return body as PlaceRankingSnapshotHistoryResponse
 }
 
+async function requestBatchKeywords() {
+  const response = await fetch('/api/place-ranking/batch-keywords')
+  const body = (await response.json()) as PlaceRankingBatchKeywordResponse | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '자동 기록 키워드 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return (body as PlaceRankingBatchKeywordResponse).keywords
+}
+
+async function requestAddBatchKeyword(keyword: string) {
+  const response = await fetch('/api/place-ranking/batch-keywords', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword }),
+  })
+  const body = (await response.json()) as
+    | { keyword: PlaceRankingBatchKeyword }
+    | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '자동 기록 키워드 추가에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return (body as { keyword: PlaceRankingBatchKeyword }).keyword
+}
+
+async function requestDeleteBatchKeyword(id: number) {
+  const response = await fetch('/api/place-ranking/batch-keywords', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  const body = (await response.json()) as { ok: boolean } | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '자동 기록 키워드 삭제에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as { ok: boolean }
+}
+
 export function PlaceRankingTool() {
   const [keyword, setKeyword] = useState('')
   const [result, setResult] = useState<PlaceRankingResponse | null>(null)
@@ -117,6 +183,9 @@ export function PlaceRankingTool() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false)
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false)
   const [snapshotToast, setSnapshotToast] = useState<SnapshotToast | null>(null)
+  const [batchKeywords, setBatchKeywords] = useState<PlaceRankingBatchKeyword[]>([])
+  const [batchKeywordInput, setBatchKeywordInput] = useState('')
+  const [isBatchLoading, setIsBatchLoading] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
@@ -143,6 +212,7 @@ export function PlaceRankingTool() {
   useEffect(() => {
     setIsMounted(true)
     setRecentKeywords(readRecentPlaceRankingKeywords())
+    loadBatchKeywords()
   }, [])
 
   useEffect(() => {
@@ -324,6 +394,78 @@ export function PlaceRankingTool() {
     })
   }
 
+  const loadBatchKeywords = async () => {
+    setIsBatchLoading(true)
+
+    try {
+      setBatchKeywords(await requestBatchKeywords())
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '자동 기록 키워드 조회에 실패했습니다.',
+      })
+    } finally {
+      setIsBatchLoading(false)
+    }
+  }
+
+  const submitBatchKeyword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const nextKeyword = batchKeywordInput.trim()
+
+    if (!nextKeyword || isBatchLoading) {
+      return
+    }
+
+    setIsBatchLoading(true)
+
+    try {
+      const created = await requestAddBatchKeyword(nextKeyword)
+
+      setBatchKeywords((current) => [
+        created,
+        ...current.filter((item) => item.id !== created.id && item.keyword !== created.keyword),
+      ])
+      setBatchKeywordInput('')
+      showSnapshotToast({
+        type: 'success',
+        message: '자동 기록 키워드를 추가했습니다.',
+      })
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '자동 기록 키워드 추가에 실패했습니다.',
+      })
+    } finally {
+      setIsBatchLoading(false)
+    }
+  }
+
+  const removeBatchKeyword = async (id: number) => {
+    if (isBatchLoading) {
+      return
+    }
+
+    setIsBatchLoading(true)
+
+    try {
+      await requestDeleteBatchKeyword(id)
+      setBatchKeywords((current) => current.filter((item) => item.id !== id))
+      showSnapshotToast({
+        type: 'success',
+        message: '자동 기록 키워드를 삭제했습니다.',
+      })
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '자동 기록 키워드 삭제에 실패했습니다.',
+      })
+    } finally {
+      setIsBatchLoading(false)
+    }
+  }
+
   return (
     <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-center py-6">
       <section className="text-center">
@@ -437,6 +579,67 @@ export function PlaceRankingTool() {
           ) : null}
         </section>
       ) : null}
+
+      <section className="mx-auto mt-8 w-full max-w-5xl rounded-md border border-cyan-300/20 bg-[#080c17]/65 p-4 text-left shadow-[0_18px_44px_rgba(0,0,0,0.22)]">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)] md:items-start">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              Daily Tracking
+            </p>
+            <h3 className="mt-2 text-xl font-black text-white">자동 순위 기록 키워드</h3>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
+              등록된 키워드는 매일 23:50에 자동으로 조회되고 오늘 순위 기록에 저장됩니다.
+            </p>
+          </div>
+          <form onSubmit={submitBatchKeyword} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px]">
+            <input
+              value={batchKeywordInput}
+              onChange={(event) => setBatchKeywordInput(event.target.value)}
+              placeholder="예: 노원 속눈썹펌"
+              className="min-h-11 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+            />
+            <button
+              type="submit"
+              disabled={!batchKeywordInput.trim() || isBatchLoading}
+              className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              추가
+            </button>
+          </form>
+        </div>
+
+        <div className="mt-4 grid gap-2">
+          {batchKeywords.length > 0 ? (
+            batchKeywords.map((item) => (
+              <div
+                key={item.id}
+                className="grid gap-2 rounded-md border border-white/10 bg-white/[0.04] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-cyan-50">{item.keyword}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-500">
+                    {item.lastRunAt
+                      ? `마지막 기록: ${formatBatchRunAt(item.lastRunAt)} · ${formatBatchRunStatus(item.lastRunStatus)}`
+                      : '아직 자동 기록 전입니다.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeBatchKeyword(item.id)}
+                  disabled={isBatchLoading}
+                  className="min-h-9 rounded-md border border-white/10 bg-white/[0.05] px-3 text-xs font-black text-slate-200 transition hover:bg-rose-400/15 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  삭제
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-400">
+              자동 기록할 키워드를 추가하면 매일 순위 이력이 쌓입니다.
+            </div>
+          )}
+        </div>
+      </section>
 
       {result ? (
         <section className="mx-auto mt-9 w-full max-w-6xl rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
@@ -1109,11 +1312,37 @@ function formatSnapshotDate(value: string) {
     return value
   }
 
-  return date.toLocaleDateString('ko-KR', {
-    year: '2-digit',
+  return date.toLocaleDateString('sv-SE', {
+    timeZone: 'Asia/Seoul',
+  })
+}
+
+function formatBatchRunAt(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString('ko-KR', {
+    timeZone: 'Asia/Seoul',
     month: '2-digit',
     day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   })
+}
+
+function formatBatchRunStatus(value: string | null) {
+  if (value === 'success') {
+    return '성공'
+  }
+
+  if (value === 'failed') {
+    return '실패'
+  }
+
+  return '대기'
 }
 
 function RankChangeText({ change }: { change?: PlaceRankingItem['rankChange'] | null }) {

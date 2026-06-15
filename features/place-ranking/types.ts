@@ -206,3 +206,33 @@ export type PlaceRankingSnapshotHistoryResponse = {
   placeId: string
   history: PlaceRankingSnapshotHistoryItem[]
 }
+
+export type PlaceRankingBatchKeyword = {
+  id: number
+  keyword: string
+  isActive: boolean
+  lastRunAt: string | null
+  lastRunStatus: string | null
+  lastRunMessage: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type PlaceRankingBatchKeywordResponse = {
+  keywords: PlaceRankingBatchKeyword[]
+}
+
+export type PlaceRankingBatchRunResult = {
+  keyword: string
+  ok: boolean
+  savedCount: number
+  message: string
+}
+
+export type PlaceRankingBatchRunResponse = {
+  ranAt: string
+  totalKeywords: number
+  successCount: number
+  failureCount: number
+  results: PlaceRankingBatchRunResult[]
+}

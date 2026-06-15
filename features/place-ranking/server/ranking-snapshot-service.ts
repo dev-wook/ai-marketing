@@ -1,9 +1,11 @@
 import type {
+  PlaceRankingResponse,
   PlaceRankingItem,
   PlaceRankingSnapshotRecord,
   PlaceRankingSnapshotSummary,
 } from '../types'
 import {
+  getPlaceRankingChangesFromPreviousSnapshot,
   getPlaceRankingSnapshotHistory,
   getPlaceRankingSnapshotSummary,
   savePlaceRankingSnapshots,
@@ -87,6 +89,34 @@ export async function readPlaceRankingSnapshotHistory({
     keyword: safeKeyword,
     placeId: safePlaceId,
   })
+}
+
+export async function attachPreviousRankChanges(
+  result: PlaceRankingResponse,
+): Promise<PlaceRankingResponse> {
+  const safeKeyword = normalizeKeyword(result.keyword)
+
+  if (!safeKeyword || result.items.length === 0) {
+    return result
+  }
+
+  const snapshotDate = createTodayDate()
+  const summary = await getPlaceRankingChangesFromPreviousSnapshot({
+    keyword: safeKeyword,
+    snapshotDate,
+    rankings: result.items.map((item) => ({
+      placeId: item.id,
+      rank: item.rank,
+    })),
+  })
+
+  return {
+    ...result,
+    items: result.items.map((item) => ({
+      ...item,
+      rankChange: summary.changesByPlaceId[item.id] ?? null,
+    })),
+  }
 }
 
 function toSnapshotRecord({

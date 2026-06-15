@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { collectNaverPlaceRankings } from '../server/naver-place-rankings'
+import { attachPreviousRankChanges } from '../server/ranking-snapshot-service'
 
 type PlaceRankingRequest = {
   keyword?: string
@@ -23,7 +24,18 @@ export async function POST(request: Request) {
       limit: body.limit,
     })
 
-    return NextResponse.json(result)
+    try {
+      return NextResponse.json(await attachPreviousRankChanges(result))
+    } catch (snapshotError) {
+      if (snapshotError instanceof Error) {
+        console.error('Place ranking previous snapshot comparison error', {
+          message: snapshotError.message,
+          stack: snapshotError.stack,
+        })
+      }
+
+      return NextResponse.json(result)
+    }
   } catch (error) {
     if (error instanceof Error) {
       console.error('Naver place ranking error', {

@@ -209,6 +209,92 @@ export async function getPlaceRankingSnapshotSummary({
   }
 }
 
+export async function getPlaceRankingChangesFromPreviousSnapshot({
+  keyword,
+  snapshotDate,
+  rankings,
+}: {
+  keyword: string
+  snapshotDate: string
+  rankings: Array<{
+    placeId: string
+    rank: number
+  }>
+}): Promise<PlaceRankingSnapshotSummary> {
+  const placeIds = rankings.map((ranking) => ranking.placeId)
+  const changesByPlaceId: Record<string, PlaceRankingChange | null> = {}
+
+  placeIds.forEach((placeId) => {
+    changesByPlaceId[placeId] = null
+  })
+
+  const pool = getPostgresPool()
+  const previousDateResult = await pool.query<{ snapshot_date: string }>(
+    `
+      select snapshot_date::text
+      from public.place_ranking_snapshots
+      where keyword = $1
+        and snapshot_date < $2::date
+      order by snapshot_date desc
+      limit 1
+    `,
+    [keyword, snapshotDate],
+  )
+
+  const previousSnapshotDate = previousDateResult.rows[0]?.snapshot_date ?? null
+
+  if (!previousSnapshotDate || placeIds.length === 0) {
+    return {
+      keyword,
+      snapshotDate,
+      totalSaved: placeIds.length,
+      previousSnapshotDate,
+      changesByPlaceId,
+    }
+  }
+
+  const previousResult = await pool.query<RankingRow>(
+    `
+      select place_id, rank
+      from public.place_ranking_snapshots
+      where keyword = $1
+        and snapshot_date = $2::date
+        and place_id = any($3::text[])
+    `,
+    [keyword, previousSnapshotDate, placeIds],
+  )
+
+  const previousRanks = new Map(
+    previousResult.rows.map((row) => [String(row.place_id), Number(row.rank)]),
+  )
+
+  rankings.forEach((ranking) => {
+    const previousRank = previousRanks.get(ranking.placeId)
+
+    if (!previousRank) {
+      changesByPlaceId[ranking.placeId] = null
+      return
+    }
+
+    const delta = previousRank - ranking.rank
+
+    changesByPlaceId[ranking.placeId] = {
+      previousRank,
+      delta: Math.abs(delta),
+      direction: delta > 0 ? 'up' : delta < 0 ? 'down' : 'same',
+      comparedDate: previousSnapshotDate,
+    }
+  })
+
+  return {
+    keyword,
+    snapshotDate,
+    totalSaved: placeIds.length,
+    previousSnapshotDate,
+    changesByPlaceId,
+  }
+}
+
 export async function getPlaceRankingSnapshotHistory({
   keyword,
   placeId,
