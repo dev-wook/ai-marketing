@@ -24,11 +24,11 @@ export async function listPlaceRankingBatchKeywords({
         id,
         keyword,
         is_active,
-        last_run_at::text,
+        to_char(last_run_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as last_run_at,
         last_run_status,
         last_run_message,
-        created_at::text,
-        updated_at::text
+        to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
+        to_char(updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
       from public.place_ranking_batch_keywords
       where ($1::boolean = false or is_active = true)
       order by created_at desc, id desc
@@ -50,16 +50,16 @@ export async function createPlaceRankingBatchKeyword(
       on conflict (keyword)
       do update set
         is_active = true,
-        updated_at = timezone('Asia/Seoul', now())
+        updated_at = now()
       returning
         id,
         keyword,
         is_active,
-        last_run_at::text,
+        to_char(last_run_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as last_run_at,
         last_run_status,
         last_run_message,
-        created_at::text,
-        updated_at::text
+        to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
+        to_char(updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
     `,
     [keyword],
   )
@@ -94,7 +94,7 @@ export async function updatePlaceRankingBatchKeywordRunStatus({
     `
       update public.place_ranking_batch_keywords
       set
-        last_run_at = timezone('Asia/Seoul', now()),
+        last_run_at = now(),
         last_run_status = $2,
         last_run_message = $3
       where id = $1

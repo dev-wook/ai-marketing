@@ -186,6 +186,7 @@ export function PlaceRankingTool() {
   const [batchKeywords, setBatchKeywords] = useState<PlaceRankingBatchKeyword[]>([])
   const [batchKeywordInput, setBatchKeywordInput] = useState('')
   const [isBatchLoading, setIsBatchLoading] = useState(false)
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
@@ -216,7 +217,7 @@ export function PlaceRankingTool() {
   }, [])
 
   useEffect(() => {
-    if (!expandedImage && !reviewPlace && !historyPlace) {
+    if (!expandedImage && !reviewPlace && !historyPlace && !isBatchModalOpen) {
       return
     }
 
@@ -227,7 +228,7 @@ export function PlaceRankingTool() {
     return () => {
       document.body.style.overflow = previousOverflow
     }
-  }, [expandedImage, reviewPlace, historyPlace])
+  }, [expandedImage, reviewPlace, historyPlace, isBatchModalOpen])
 
   useEffect(() => {
     if (!isLoading) {
@@ -538,6 +539,22 @@ export function PlaceRankingTool() {
           </div>
         ) : null}
 
+        <div className="mx-auto mt-4 flex max-w-3xl justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              setIsBatchModalOpen(true)
+              loadBatchKeywords()
+            }}
+            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-cyan-300/25 bg-cyan-300/[0.08] px-4 text-sm font-black text-cyan-50 transition hover:border-cyan-200/50 hover:bg-cyan-300/[0.14]"
+          >
+            자동 기록 키워드 관리
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-cyan-100/80">
+              {batchKeywords.length}개
+            </span>
+          </button>
+        </div>
+
         {!keyword.trim() && errorMessage ? (
           <p className="mx-auto mt-3 max-w-3xl text-left text-sm font-bold text-rose-200">
             {errorMessage}
@@ -579,67 +596,6 @@ export function PlaceRankingTool() {
           ) : null}
         </section>
       ) : null}
-
-      <section className="mx-auto mt-8 w-full max-w-5xl rounded-md border border-cyan-300/20 bg-[#080c17]/65 p-4 text-left shadow-[0_18px_44px_rgba(0,0,0,0.22)]">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)] md:items-start">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
-              Daily Tracking
-            </p>
-            <h3 className="mt-2 text-xl font-black text-white">자동 순위 기록 키워드</h3>
-            <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
-              등록된 키워드는 매일 23:50에 자동으로 조회되고 오늘 순위 기록에 저장됩니다.
-            </p>
-          </div>
-          <form onSubmit={submitBatchKeyword} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px]">
-            <input
-              value={batchKeywordInput}
-              onChange={(event) => setBatchKeywordInput(event.target.value)}
-              placeholder="예: 노원 속눈썹펌"
-              className="min-h-11 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
-            />
-            <button
-              type="submit"
-              disabled={!batchKeywordInput.trim() || isBatchLoading}
-              className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              추가
-            </button>
-          </form>
-        </div>
-
-        <div className="mt-4 grid gap-2">
-          {batchKeywords.length > 0 ? (
-            batchKeywords.map((item) => (
-              <div
-                key={item.id}
-                className="grid gap-2 rounded-md border border-white/10 bg-white/[0.04] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-cyan-50">{item.keyword}</p>
-                  <p className="mt-1 text-xs font-bold text-slate-500">
-                    {item.lastRunAt
-                      ? `마지막 기록: ${formatBatchRunAt(item.lastRunAt)} · ${formatBatchRunStatus(item.lastRunStatus)}`
-                      : '아직 자동 기록 전입니다.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeBatchKeyword(item.id)}
-                  disabled={isBatchLoading}
-                  className="min-h-9 rounded-md border border-white/10 bg-white/[0.05] px-3 text-xs font-black text-slate-200 transition hover:bg-rose-400/15 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  삭제
-                </button>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-400">
-              자동 기록할 키워드를 추가하면 매일 순위 이력이 쌓입니다.
-            </div>
-          )}
-        </div>
-      </section>
 
       {result ? (
         <section className="mx-auto mt-9 w-full max-w-6xl rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
@@ -973,6 +929,22 @@ export function PlaceRankingTool() {
           )
         : null}
 
+      {isMounted && isBatchModalOpen
+        ? createPortal(
+            <BatchKeywordModal
+              keywords={batchKeywords}
+              keywordInput={batchKeywordInput}
+              isLoading={isBatchLoading}
+              onKeywordInputChange={setBatchKeywordInput}
+              onSubmit={submitBatchKeyword}
+              onRemove={removeBatchKeyword}
+              onRefresh={loadBatchKeywords}
+              onClose={() => setIsBatchModalOpen(false)}
+            />,
+            document.body,
+          )
+        : null}
+
       {isMounted && snapshotToast
         ? createPortal(
             <SnapshotToastMessage
@@ -989,6 +961,126 @@ export function PlaceRankingTool() {
 type SnapshotToastMessageProps = {
   toast: SnapshotToast
   onClose: () => void
+}
+
+type BatchKeywordModalProps = {
+  keywords: PlaceRankingBatchKeyword[]
+  keywordInput: string
+  isLoading: boolean
+  onKeywordInputChange: (value: string) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onRemove: (id: number) => void
+  onRefresh: () => void
+  onClose: () => void
+}
+
+function BatchKeywordModal({
+  keywords,
+  keywordInput,
+  isLoading,
+  onKeywordInputChange,
+  onSubmit,
+  onRemove,
+  onRefresh,
+  onClose,
+}: BatchKeywordModalProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[9998] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="자동 기록 키워드 관리"
+      onClick={onClose}
+    >
+      <section
+        className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.52)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              Daily Tracking
+            </p>
+            <h3 className="mt-1 text-2xl font-black text-white">자동 기록 키워드 관리</h3>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
+              등록된 키워드는 매일 23:50에 자동 조회되고 순위 기록에 저장됩니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="min-h-0 overflow-y-auto p-5">
+          <form onSubmit={onSubmit} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px]">
+            <input
+              value={keywordInput}
+              onChange={(event) => onKeywordInputChange(event.target.value)}
+              placeholder="예: 노원 속눈썹펌"
+              className="min-h-12 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+            />
+            <button
+              type="submit"
+              disabled={!keywordInput.trim() || isLoading}
+              className="min-h-12 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              추가
+            </button>
+          </form>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/65">
+              등록 키워드 {keywords.length}개
+            </p>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-black text-slate-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              새로고침
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-2">
+            {keywords.length > 0 ? (
+              keywords.map((item) => (
+                <div
+                  key={item.id}
+                  className="grid gap-2 rounded-md border border-white/10 bg-white/[0.04] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-cyan-50">{item.keyword}</p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      {item.lastRunAt
+                        ? `마지막 기록: ${formatBatchRunAt(item.lastRunAt)} · ${formatBatchRunStatus(item.lastRunStatus)}`
+                        : '아직 자동 기록 전입니다.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(item.id)}
+                    disabled={isLoading}
+                    className="min-h-9 rounded-md border border-white/10 bg-white/[0.05] px-3 text-xs font-black text-slate-200 transition hover:bg-rose-400/15 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    삭제
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-400">
+                자동 기록할 키워드를 추가하면 매일 순위 이력이 쌓입니다.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  )
 }
 
 function SnapshotToastMessage({ toast, onClose }: SnapshotToastMessageProps) {

@@ -5,8 +5,8 @@ create table if not exists public.place_ranking_batch_keywords (
   last_run_at timestamptz,
   last_run_status text,
   last_run_message text,
-  created_at timestamptz not null default timezone('Asia/Seoul', now()),
-  updated_at timestamptz not null default timezone('Asia/Seoul', now()),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
   unique (keyword)
 );
 
@@ -16,7 +16,7 @@ create index if not exists place_ranking_batch_keywords_active_idx
 create or replace function public.set_place_ranking_batch_keywords_updated_at()
 returns trigger as $$
 begin
-  new.updated_at = timezone('Asia/Seoul', now());
+  new.updated_at = now();
   return new;
 end;
 $$ language plpgsql;
