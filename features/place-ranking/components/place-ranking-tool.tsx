@@ -3,6 +3,9 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
+  PlaceBookingProduct,
+  PlaceBookingSlot,
+  PlaceBookingStatusResponse,
   PlaceRankingBatchKeyword,
   PlaceRankingBatchKeywordResponse,
   PlaceRankingItem,
@@ -27,6 +30,9 @@ const fetchLimit = 300
 const initialVisibleCount = rankingPageSize
 const recentPlaceRankingStorageKey = 'aiva:recent-place-ranking-keywords'
 const maxRecentKeywords = 5
+const calendarWeekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
+const placeActionButtonClass =
+  'inline-flex h-9 w-full items-center justify-center whitespace-nowrap rounded-md px-0 text-[11px] font-black leading-none transition sm:w-[4.75rem] sm:text-[12px]'
 
 const loadingSteps = [
   '네이버 플레이스 결과를 확인하고 있습니다.',
@@ -98,6 +104,38 @@ async function requestSnapshotHistory(keyword: string, placeId: string) {
   }
 
   return body as PlaceRankingSnapshotHistoryResponse
+}
+
+async function requestBookingStatus({
+  place,
+  date,
+}: {
+  place: PlaceRankingItem
+  date: string
+}) {
+  const response = await fetch('/api/place-ranking/booking-status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      bookingUrl: place.actions.bookingUrl,
+      bookingBusinessId: place.actions.bookingBusinessId,
+      date,
+    }),
+  })
+  const body = (await response.json()) as PlaceBookingStatusResponse | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '예약현황 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as PlaceBookingStatusResponse
 }
 
 async function requestBatchKeywords() {
@@ -178,6 +216,13 @@ export function PlaceRankingTool() {
   const [recentKeywords, setRecentKeywords] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null)
   const [reviewPlace, setReviewPlace] = useState<PlaceRankingItem | null>(null)
+  const [bookingPlace, setBookingPlace] = useState<PlaceRankingItem | null>(null)
+  const [bookingDate, setBookingDate] = useState(getTodayKstDate())
+  const [bookingStatus, setBookingStatus] = useState<PlaceBookingStatusResponse | null>(null)
+  const [selectedBookingProductId, setSelectedBookingProductId] = useState<string | null>(null)
+  const [isBookingLoading, setIsBookingLoading] = useState(false)
+  const [bookingErrorMessage, setBookingErrorMessage] = useState('')
+  const [bookingErrorLog, setBookingErrorLog] = useState('')
   const [historyPlace, setHistoryPlace] = useState<PlaceRankingItem | null>(null)
   const [historyRows, setHistoryRows] = useState<PlaceRankingSnapshotHistoryResponse['history']>([])
   const [isHistoryLoading, setIsHistoryLoading] = useState(false)
@@ -217,7 +262,13 @@ export function PlaceRankingTool() {
   }, [])
 
   useEffect(() => {
-    if (!expandedImage && !reviewPlace && !historyPlace && !isBatchModalOpen) {
+    if (
+      !expandedImage &&
+      !reviewPlace &&
+      !bookingPlace &&
+      !historyPlace &&
+      !isBatchModalOpen
+    ) {
       return
     }
 
@@ -228,7 +279,7 @@ export function PlaceRankingTool() {
     return () => {
       document.body.style.overflow = previousOverflow
     }
-  }, [expandedImage, reviewPlace, historyPlace, isBatchModalOpen])
+  }, [bookingPlace, expandedImage, reviewPlace, historyPlace, isBatchModalOpen])
 
   useEffect(() => {
     if (!isLoading) {
@@ -280,6 +331,10 @@ export function PlaceRankingTool() {
     setAppliedPlaceNameFilter('')
     setExpandedImage(null)
     setReviewPlace(null)
+    setBookingPlace(null)
+    setBookingStatus(null)
+    setBookingErrorMessage('')
+    setBookingErrorLog('')
     setHistoryPlace(null)
     setHistoryRows([])
     setSnapshotToast(null)
@@ -385,6 +440,38 @@ export function PlaceRankingTool() {
     } finally {
       setIsHistoryLoading(false)
     }
+  }
+
+  const openBookingStatus = async (place: PlaceRankingItem, nextDate = getTodayKstDate()) => {
+    setBookingPlace(place)
+    setBookingDate(nextDate)
+    setBookingStatus(null)
+    setSelectedBookingProductId(null)
+    setBookingErrorMessage('')
+    setBookingErrorLog('')
+    setIsBookingLoading(true)
+
+    try {
+      const response = await requestBookingStatus({ place, date: nextDate })
+
+      setBookingStatus(response)
+      setSelectedBookingProductId(response.products[0]?.id ?? null)
+    } catch (error) {
+      setBookingErrorLog(toReadableErrorLog(readErrorDebug(error)))
+      setBookingErrorMessage(
+        error instanceof Error ? error.message : '예약현황 조회에 실패했습니다.',
+      )
+    } finally {
+      setIsBookingLoading(false)
+    }
+  }
+
+  const changeBookingDate = async (nextDate: string) => {
+    if (!bookingPlace) {
+      return
+    }
+
+    await openBookingStatus(bookingPlace, nextDate)
   }
 
   const showSnapshotToast = ({ type, message }: Omit<SnapshotToast, 'id'>) => {
@@ -857,26 +944,33 @@ export function PlaceRankingTool() {
                       </div>
                     ) : null}
 
-                    <div className="mt-2 flex flex-wrap gap-2 sm:mt-4">
+                    <div className="mt-2 grid max-w-[16.5rem] grid-cols-3 gap-2 sm:mt-4 sm:flex sm:max-w-none sm:flex-wrap">
                       {item.actions.bookingUrl ? (
-                        <a
-                          href={item.actions.bookingUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex rounded-md border border-cyan-200/40 bg-cyan-100 px-2.5 py-1.5 text-[10px] font-black text-[#07111f] shadow-[0_8px_18px_rgba(103,232,249,0.12)] transition hover:bg-white sm:px-3 sm:py-2 sm:text-xs"
+                        <button
+                          type="button"
+                          onClick={() => openBookingStatus(item)}
+                          className={`${placeActionButtonClass} border border-cyan-300/35 bg-cyan-300/[0.08] text-cyan-50 hover:bg-cyan-300/[0.14]`}
+                        >
+                          예약현황
+                        </button>
+                      ) : null}
+                      {item.actions.bookingUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => openExternalUrl(item.actions.bookingUrl)}
+                          className={`${placeActionButtonClass} border border-cyan-300/25 bg-cyan-300/[0.06] text-cyan-50 hover:bg-cyan-300/[0.12]`}
                         >
                           예약
-                        </a>
+                        </button>
                       ) : null}
                       {item.actions.routeUrl ? (
-                        <a
-                          href={item.actions.routeUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex rounded-md border border-white/15 bg-white/[0.09] px-2.5 py-1.5 text-[10px] font-black text-white transition hover:bg-white/15 sm:px-3 sm:py-2 sm:text-xs"
+                        <button
+                          type="button"
+                          onClick={() => openExternalUrl(item.actions.routeUrl)}
+                          className={`${placeActionButtonClass} border border-white/15 bg-white/[0.06] text-slate-100 hover:bg-white/[0.12]`}
                         >
                           길찾기
-                        </a>
+                        </button>
                       ) : null}
                     </div>
                   </div>
@@ -905,6 +999,25 @@ export function PlaceRankingTool() {
       {isMounted && reviewPlace
         ? createPortal(
             <ReviewBottomSheet place={reviewPlace} onClose={() => setReviewPlace(null)} />,
+            document.body,
+          )
+        : null}
+
+      {isMounted && bookingPlace
+        ? createPortal(
+            <BookingStatusModal
+              place={bookingPlace}
+              date={bookingDate}
+              status={bookingStatus}
+              selectedProductId={selectedBookingProductId}
+              isLoading={isBookingLoading}
+              errorMessage={bookingErrorMessage}
+              errorLog={bookingErrorLog}
+              onDateChange={changeBookingDate}
+              onProductChange={setSelectedBookingProductId}
+              onRetry={() => openBookingStatus(bookingPlace, bookingDate)}
+              onClose={() => setBookingPlace(null)}
+            />,
             document.body,
           )
         : null}
@@ -1133,6 +1246,291 @@ function RankChangeBadge({ change }: { change?: PlaceRankingItem['rankChange'] |
   )
 }
 
+type BookingStatusModalProps = {
+  place: PlaceRankingItem
+  date: string
+  status: PlaceBookingStatusResponse | null
+  selectedProductId: string | null
+  isLoading: boolean
+  errorMessage: string
+  errorLog: string
+  onDateChange: (date: string) => void
+  onProductChange: (productId: string) => void
+  onRetry: () => void
+  onClose: () => void
+}
+
+function BookingStatusModal({
+  place,
+  date,
+  status,
+  selectedProductId,
+  isLoading,
+  errorMessage,
+  errorLog,
+  onDateChange,
+  onProductChange,
+  onRetry,
+  onClose,
+}: BookingStatusModalProps) {
+  const selectedProduct =
+    status?.products.find((product) => product.id === selectedProductId) ??
+    status?.products[0] ??
+    null
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] grid place-items-center bg-black/72 p-3 backdrop-blur-sm sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${place.name} 예약현황`}
+      onClick={onClose}
+    >
+      <section
+        className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.56)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5 sm:py-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              Booking Status
+            </p>
+            <h3 className="mt-1 truncate text-xl font-black text-white sm:text-2xl">
+              {place.name}
+            </h3>
+            <p className="mt-1 text-xs font-bold text-cyan-100/75 sm:text-sm">
+              {place.category}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_19rem] md:items-end">
+            <div>
+              <p className="text-lg font-black text-white">실시간 예약현황</p>
+              <p className="mt-1 text-sm font-bold leading-6 text-slate-400">
+                예약상품별 남은 시간대를 색상으로 확인합니다.
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <span className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/70">
+                날짜 선택
+              </span>
+              <div className="grid grid-cols-[2.5rem_minmax(8.75rem,1fr)_2.5rem] gap-2">
+                <button
+                  type="button"
+                  onClick={() => onDateChange(shiftDateValue(date, -1))}
+                  disabled={isLoading}
+                  className="inline-flex h-11 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black leading-none text-cyan-100 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="이전 날짜"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCalendarOpen(true)}
+                  disabled={isLoading}
+                  className="inline-flex h-11 min-w-0 items-center justify-center rounded-md border border-white/10 bg-[#090d18] px-3 text-center text-sm font-black text-white outline-none transition hover:border-cyan-300/45 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="whitespace-nowrap">{formatCalendarDateLabel(date)}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDateChange(shiftDateValue(date, 1))}
+                  disabled={isLoading}
+                  className="inline-flex h-11 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black leading-none text-cyan-100 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="다음 날짜"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {isCalendarOpen ? (
+            <BookingCalendarModal
+              selectedDate={date}
+              onSelect={(nextDate) => {
+                setIsCalendarOpen(false)
+                onDateChange(nextDate)
+              }}
+              onClose={() => setIsCalendarOpen(false)}
+            />
+          ) : null}
+
+          {isLoading ? (
+            <div className="mt-5 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-black text-cyan-100">예약 가능 시간을 확인하고 있습니다.</p>
+                  <p className="mt-1 text-sm font-bold text-slate-400">
+                    네이버 예약 정보를 실시간으로 불러옵니다.
+                  </p>
+                </div>
+                <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-cyan-200/25 border-t-cyan-200" />
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
+              </div>
+            </div>
+          ) : null}
+
+          {!isLoading && errorMessage ? (
+            <div className="mt-5 rounded-md border border-rose-300/20 bg-rose-400/[0.08] p-4">
+              <p className="font-black text-rose-100">{errorMessage}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+                >
+                  다시 조회
+                </button>
+              </div>
+              {errorLog ? (
+                <details className="mt-3 rounded-md border border-white/10 bg-[#080c17]/80 p-3">
+                  <summary className="cursor-pointer text-sm font-black text-rose-100">
+                    실패 로그 보기
+                  </summary>
+                  <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">
+                    {errorLog}
+                  </pre>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!isLoading && !errorMessage && status ? (
+            status.products.length > 0 ? (
+              <div className="mt-5 grid gap-5">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {status.products.map((product) => {
+                    const visibleSummary = summarizeBookingSlots(product.slots)
+
+                    return (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() => onProductChange(product.id)}
+                        className={`rounded-md border p-3 text-left transition ${
+                          selectedProduct?.id === product.id
+                            ? 'border-cyan-300/45 bg-cyan-300/[0.1]'
+                            : 'border-white/10 bg-white/[0.04] hover:border-cyan-300/25'
+                        }`}
+                      >
+                        <p className="line-clamp-1 text-sm font-black text-white">
+                          {product.name}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-xs font-bold leading-5 text-slate-400">
+                          {product.description || '예약 가능한 상품입니다.'}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black">
+                          <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-cyan-100">
+                            가능 {visibleSummary.availableSlots}
+                          </span>
+                          <span className="rounded-full bg-fuchsia-300/10 px-2 py-1 text-fuchsia-100">
+                            예약됨 {visibleSummary.bookedSlots}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {selectedProduct ? (
+                  <BookingProductGrid product={selectedProduct} />
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-300">
+                표시할 수 있는 예약상품이 없습니다.
+              </div>
+            )
+          ) : null}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function BookingProductGrid({
+  product,
+}: {
+  product: PlaceBookingProduct
+}) {
+  const visibleSlots = product.slots
+  const visibleSummary = summarizeBookingSlots(visibleSlots)
+
+  return (
+    <section className="rounded-md border border-white/10 bg-[#080c17]/75 p-4">
+      <div className="flex flex-col gap-3 border-b border-white/10 pb-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/70">
+            Time Map
+          </p>
+          <h4 className="mt-1 text-xl font-black text-white">{product.name}</h4>
+          <p className="mt-1 text-sm font-bold text-slate-400">
+            {visibleSummary.firstAvailableTime
+              ? `가장 빠른 가능 시간 ${visibleSummary.firstAvailableTime}`
+              : visibleSlots.length > 0
+                ? '현재 표시 가능한 시간에는 바로 예약 가능한 시간이 없습니다.'
+                : '표시할 예약 시간이 없습니다.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs font-black">
+          <span className="rounded-full bg-cyan-300/12 px-3 py-1 text-cyan-100">
+            가능 {visibleSummary.availableSlots}
+          </span>
+          <span className="rounded-full bg-fuchsia-300/10 px-3 py-1 text-fuchsia-100">
+            예약됨 {visibleSummary.bookedSlots}
+          </span>
+          <span className="rounded-full bg-white/[0.06] px-3 py-1 text-slate-400">
+            예약불가 {visibleSummary.closedSlots}
+          </span>
+        </div>
+      </div>
+
+      {visibleSlots.length > 0 ? (
+        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+          {visibleSlots.map((slot) => (
+            <div
+              key={`${product.id}-${slot.startDateTime}-${slot.time}`}
+              className={`min-h-14 rounded-md border px-2 py-2 text-center ${
+                slot.status === 'available'
+                  ? 'border-cyan-300/40 bg-cyan-300/[0.12] text-cyan-50'
+                  : slot.status === 'booked'
+                    ? 'border-fuchsia-300/25 bg-fuchsia-400/[0.08] text-fuchsia-100'
+                    : 'border-white/10 bg-white/[0.035] text-slate-500'
+              }`}
+            >
+              <p className="text-sm font-black">{slot.time}</p>
+              <p className="mt-1 text-[10px] font-black">
+                {slot.status === 'available'
+                  ? `가능 ${slot.remaining}`
+                  : slot.status === 'booked'
+                    ? '예약됨'
+                    : '예약불가'}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-md border border-white/10 bg-white/[0.035] p-4 text-sm font-bold text-slate-400">
+          현재 기준으로 노출할 예약 시간이 없습니다. 다른 날짜를 선택해 확인해주세요.
+        </div>
+      )}
+    </section>
+  )
+}
+
 type PlaceHistoryModalProps = {
   place: PlaceRankingItem
   rows: PlaceRankingSnapshotHistoryResponse['history']
@@ -1274,6 +1672,119 @@ function ReviewBottomSheet({ place, onClose }: ReviewBottomSheetProps) {
   )
 }
 
+type BookingCalendarModalProps = {
+  selectedDate: string
+  onSelect: (date: string) => void
+  onClose: () => void
+}
+
+function BookingCalendarModal({
+  selectedDate,
+  onSelect,
+  onClose,
+}: BookingCalendarModalProps) {
+  const selectedParts = parseDateValue(selectedDate)
+  const [visibleMonth, setVisibleMonth] = useState({
+    year: selectedParts.year,
+    monthIndex: selectedParts.monthIndex,
+  })
+  const calendarCells = getCalendarCells(visibleMonth.year, visibleMonth.monthIndex)
+
+  const moveMonth = (offset: number) => {
+    setVisibleMonth((current) => {
+      const nextDate = new Date(current.year, current.monthIndex + offset, 1)
+
+      return {
+        year: nextDate.getFullYear(),
+        monthIndex: nextDate.getMonth(),
+      }
+    })
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] grid place-items-center bg-black/62 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="예약현황 날짜 선택"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl border border-cyan-300/20 bg-[#080c17] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.5)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => moveMonth(-1)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black text-slate-100 transition hover:bg-white/[0.1]"
+            aria-label="이전 달"
+          >
+            ‹
+          </button>
+          <p className="text-lg font-black text-white">
+            {visibleMonth.year}. {String(visibleMonth.monthIndex + 1).padStart(2, '0')}.
+          </p>
+          <button
+            type="button"
+            onClick={() => moveMonth(1)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black text-slate-100 transition hover:bg-white/[0.1]"
+            aria-label="다음 달"
+          >
+            ›
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-7 gap-1 text-center">
+          {calendarWeekdayLabels.map((label) => (
+            <span
+              key={label}
+              className="py-2 text-[11px] font-black text-cyan-200/65"
+            >
+              {label}
+            </span>
+          ))}
+          {calendarCells.map((cell, index) =>
+            cell ? (
+              <button
+                key={cell.value}
+                type="button"
+                onClick={() => onSelect(cell.value)}
+                className={`min-h-10 rounded-md text-sm font-black transition ${
+                  cell.value === selectedDate
+                    ? 'bg-cyan-100 text-[#07111f]'
+                    : 'border border-white/10 bg-white/[0.04] text-slate-200 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
+                }`}
+              >
+                {cell.day}
+              </button>
+            ) : (
+              <span key={`blank-${index}`} aria-hidden="true" />
+            ),
+          )}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onSelect(getTodayKstDate())}
+            className="rounded-md border border-cyan-300/25 bg-cyan-300/[0.08] px-3 py-2 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.14]"
+          >
+            오늘
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-black text-slate-100 transition hover:bg-white/[0.1]"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type ImagePreviewModalProps = {
   image: {
     src: string
@@ -1334,6 +1845,94 @@ function readErrorDebug(error: unknown) {
   }
 
   return undefined
+}
+
+function openExternalUrl(url?: string) {
+  if (!url || typeof window === 'undefined') {
+    return
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function getTodayKstDate() {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+function formatCalendarDateLabel(value: string) {
+  const { year, monthIndex, day } = parseDateValue(value)
+
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function shiftDateValue(value: string, offsetDays: number) {
+  const { year, monthIndex, day } = parseDateValue(value)
+  const nextDate = new Date(year, monthIndex, day + offsetDays)
+
+  return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`
+}
+
+function parseDateValue(value: string) {
+  const [yearValue, monthValue, dayValue] = value.split('-').map(Number)
+
+  if (
+    Number.isInteger(yearValue) &&
+    Number.isInteger(monthValue) &&
+    Number.isInteger(dayValue) &&
+    monthValue >= 1 &&
+    monthValue <= 12 &&
+    dayValue >= 1 &&
+    dayValue <= 31
+  ) {
+    return {
+      year: yearValue,
+      monthIndex: monthValue - 1,
+      day: dayValue,
+    }
+  }
+
+  const [todayYear, todayMonth, todayDay] = getTodayKstDate().split('-').map(Number)
+
+  return {
+    year: todayYear,
+    monthIndex: todayMonth - 1,
+    day: todayDay,
+  }
+}
+
+function getCalendarCells(year: number, monthIndex: number) {
+  const firstDay = new Date(year, monthIndex, 1).getDay()
+  const lastDate = new Date(year, monthIndex + 1, 0).getDate()
+  const cells: Array<{ day: number; value: string } | null> = []
+
+  for (let index = 0; index < firstDay; index += 1) {
+    cells.push(null)
+  }
+
+  for (let day = 1; day <= lastDate; day += 1) {
+    cells.push({
+      day,
+      value: `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    })
+  }
+
+  return cells
+}
+
+function summarizeBookingSlots(slots: PlaceBookingSlot[]) {
+  return {
+    totalSlots: slots.length,
+    availableSlots: slots.filter((slot) => slot.status === 'available').length,
+    bookedSlots: slots.filter((slot) => slot.status === 'booked').length,
+    closedSlots: slots.filter((slot) => slot.status === 'closed').length,
+    firstAvailableTime:
+      slots.find((slot) => slot.status === 'available')?.time ?? null,
+  }
 }
 
 function readRecentPlaceRankingKeywords() {

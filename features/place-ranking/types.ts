@@ -236,3 +236,48 @@ export type PlaceRankingBatchRunResponse = {
   failureCount: number
   results: PlaceRankingBatchRunResult[]
 }
+
+export type PlaceBookingStatusRequest = {
+  bookingUrl?: string
+  bookingBusinessId?: string
+  date?: string
+}
+
+export type PlaceBookingStatusResponse = {
+  businessId: string
+  businessTypeId: number
+  date: string
+  products: PlaceBookingProduct[]
+}
+
+export type PlaceBookingProduct = {
+  id: string
+  name: string
+  description: string
+  isClosed: boolean
+  minBookingCount: number
+  maxBookingCount: number
+  timeUnitCode?: string
+  summary: PlaceBookingSummary
+  slots: PlaceBookingSlot[]
+}
+
+export type PlaceBookingSummary = {
+  totalSlots: number
+  availableSlots: number
+  bookedSlots: number
+  closedSlots: number
+  firstAvailableTime: string | null
+}
+
+export type PlaceBookingSlot = {
+  time: string
+  startDateTime: string
+  duration: number
+  remaining: number
+  bookingCount: number
+  unitBookingCount: number
+  status: PlaceBookingAvailabilityStatus
+}
+
+export type PlaceBookingAvailabilityStatus = 'available' | 'booked' | 'closed'
