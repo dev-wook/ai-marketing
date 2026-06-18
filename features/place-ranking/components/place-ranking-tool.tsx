@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom'
 import type {
   PlaceBookingProduct,
   PlaceBookingSlot,
+  PlaceBookingSummaryItem,
+  PlaceBookingSummaryResponse,
   PlaceBookingStatusResponse,
   PlaceRankingBatchKeyword,
   PlaceRankingBatchKeywordResponse,
@@ -138,6 +140,44 @@ async function requestBookingStatus({
   return body as PlaceBookingStatusResponse
 }
 
+async function requestBookingSummaries({
+  result,
+  date,
+}: {
+  result: PlaceRankingResponse
+  date: string
+}) {
+  const response = await fetch('/api/place-ranking/booking-summary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      date,
+      items: result.items.map((item) => ({
+        placeId: item.id,
+        rank: item.rank,
+        name: item.name,
+        category: item.category,
+        bookingUrl: item.actions.bookingUrl,
+        bookingBusinessId: item.actions.bookingBusinessId,
+      })),
+    }),
+  })
+  const body = (await response.json()) as PlaceBookingSummaryResponse | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '오늘 예약 현황 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as PlaceBookingSummaryResponse
+}
+
 async function requestBatchKeywords() {
   const response = await fetch('/api/place-ranking/batch-keywords')
   const body = (await response.json()) as PlaceRankingBatchKeywordResponse | PlaceRankingErrorBody
@@ -223,6 +263,11 @@ export function PlaceRankingTool() {
   const [isBookingLoading, setIsBookingLoading] = useState(false)
   const [bookingErrorMessage, setBookingErrorMessage] = useState('')
   const [bookingErrorLog, setBookingErrorLog] = useState('')
+  const [bookingSummaries, setBookingSummaries] = useState<Record<string, PlaceBookingSummaryItem>>({})
+  const [bookingTop, setBookingTop] = useState<PlaceBookingSummaryItem[]>([])
+  const [bookingSummaryDate, setBookingSummaryDate] = useState(getTodayKstDate())
+  const [isBookingSummaryLoading, setIsBookingSummaryLoading] = useState(false)
+  const [bookingSummaryError, setBookingSummaryError] = useState('')
   const [historyPlace, setHistoryPlace] = useState<PlaceRankingItem | null>(null)
   const [historyRows, setHistoryRows] = useState<PlaceRankingSnapshotHistoryResponse['history']>([])
   const [isHistoryLoading, setIsHistoryLoading] = useState(false)
@@ -239,6 +284,17 @@ export function PlaceRankingTool() {
     () => keyword.trim().length > 0 && !isLoading,
     [isLoading, keyword],
   )
+  const bookingSummaryList = useMemo(() => {
+    return Object.values(bookingSummaries)
+      .filter((summary) => summary.status === 'ready')
+      .sort((left, right) => {
+        if (right.bookedSlots !== left.bookedSlots) {
+          return right.bookedSlots - left.bookedSlots
+        }
+
+        return left.rank - right.rank
+      })
+  }, [bookingSummaries])
   const visibleItems = result?.items.slice(0, visibleCount) ?? []
   const filteredItems = useMemo(() => {
     const filterText = appliedPlaceNameFilter.trim().toLocaleLowerCase('ko-KR')
@@ -335,6 +391,10 @@ export function PlaceRankingTool() {
     setBookingStatus(null)
     setBookingErrorMessage('')
     setBookingErrorLog('')
+    setBookingSummaries({})
+    setBookingTop([])
+    setBookingSummaryDate(getTodayKstDate())
+    setBookingSummaryError('')
     setHistoryPlace(null)
     setHistoryRows([])
     setSnapshotToast(null)
@@ -346,6 +406,7 @@ export function PlaceRankingTool() {
       setResult(nextResult)
       setVisibleCount(Math.min(initialVisibleCount, nextResult.items.length))
       setRecentKeywords(saveRecentPlaceRankingKeyword(nextKeyword))
+      void loadBookingSummaries(nextResult)
     } catch (error) {
       setErrorLog(toReadableErrorLog(readErrorDebug(error)))
       setErrorMessage(error instanceof Error ? error.message : '플레이스 순위 조회에 실패했습니다.')
@@ -472,6 +533,41 @@ export function PlaceRankingTool() {
     }
 
     await openBookingStatus(bookingPlace, nextDate)
+  }
+
+  const loadBookingSummaries = async (nextResult: PlaceRankingResponse) => {
+    const bookingTargets = nextResult.items.filter(
+      (item) => item.actions.bookingUrl || item.actions.bookingBusinessId,
+    )
+
+    if (bookingTargets.length === 0) {
+      setBookingSummaries({})
+      setBookingTop([])
+      setBookingSummaryError('')
+      return
+    }
+
+    setIsBookingSummaryLoading(true)
+    setBookingSummaryError('')
+
+    try {
+      const response = await requestBookingSummaries({
+        result: nextResult,
+        date: getTodayKstDate(),
+      })
+
+      setBookingSummaries(response.summaries)
+      setBookingTop(response.top)
+      setBookingSummaryDate(response.date)
+    } catch (error) {
+      setBookingSummaries({})
+      setBookingTop([])
+      setBookingSummaryError(
+        error instanceof Error ? error.message : '오늘 예약 현황 조회에 실패했습니다.',
+      )
+    } finally {
+      setIsBookingSummaryLoading(false)
+    }
   }
 
   const showSnapshotToast = ({ type, message }: Omit<SnapshotToast, 'id'>) => {
@@ -714,6 +810,14 @@ export function PlaceRankingTool() {
             </div>
           </div>
 
+          <BookingTopBoard
+            top={bookingTop}
+            allSummaries={bookingSummaryList}
+            date={bookingSummaryDate}
+            isLoading={isBookingSummaryLoading}
+            errorMessage={bookingSummaryError}
+          />
+
           <form
             onSubmit={submitPlaceNameFilter}
             className="mt-5 flex flex-col gap-3 rounded-md border border-white/10 bg-[#080c17]/45 p-3 md:flex-row md:items-center md:justify-between"
@@ -837,6 +941,13 @@ export function PlaceRankingTool() {
                         {item.name}
                       </h4>
                     </div>
+                    <BookingCountBadge
+                      summary={bookingSummaries[item.id]}
+                      isLoading={
+                        isBookingSummaryLoading &&
+                        Boolean(item.actions.bookingUrl || item.actions.bookingBusinessId)
+                      }
+                    />
                     <p className="mt-0.5 text-xs font-bold leading-snug text-cyan-100/80 sm:mt-1 sm:text-sm">
                       {item.category}
                     </p>
@@ -1244,6 +1355,345 @@ function RankChangeBadge({ change }: { change?: PlaceRankingItem['rankChange'] |
       {isUp ? '▲' : '▼'}
     </span>
   )
+}
+
+function BookingCountBadge({
+  summary,
+  isLoading,
+}: {
+  summary?: PlaceBookingSummaryItem
+  isLoading: boolean
+}) {
+  if (isLoading && !summary) {
+    return (
+      <span className="mt-2 inline-flex w-fit items-center gap-1.5 rounded-full border border-cyan-300/20 bg-cyan-300/[0.06] px-2.5 py-1 text-[10px] font-black text-cyan-100/75">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-200" />
+        예약 확인 중
+      </span>
+    )
+  }
+
+  if (!summary || summary.status !== 'ready') {
+    return null
+  }
+
+  const hasBookedSlots = summary.bookedSlots > 0
+
+  return (
+    <span
+      className={`mt-2 inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black sm:text-[11px] ${
+        hasBookedSlots
+          ? 'border-fuchsia-300/25 bg-fuchsia-300/[0.08] text-fuchsia-100'
+          : 'border-white/10 bg-white/[0.04] text-slate-400'
+      }`}
+    >
+      <span className="text-cyan-100/85">오늘 예약</span>
+      <strong className={hasBookedSlots ? 'text-white' : 'text-slate-300'}>
+        {summary.bookedSlots}
+      </strong>
+    </span>
+  )
+}
+
+function BookingTopBoard({
+  top,
+  allSummaries,
+  date,
+  isLoading,
+  errorMessage,
+}: {
+  top: PlaceBookingSummaryItem[]
+  allSummaries: PlaceBookingSummaryItem[]
+  date: string
+  isLoading: boolean
+  errorMessage: string
+}) {
+  const [isAllModalOpen, setIsAllModalOpen] = useState(false)
+
+  if (isLoading && top.length === 0) {
+    return (
+      <section className="mt-5 rounded-md border border-cyan-300/20 bg-cyan-300/[0.055] p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
+              Today Booking
+            </p>
+            <h4 className="mt-1 text-lg font-black text-white">오늘 예약 TOP10 확인 중</h4>
+            <p className="mt-1 text-sm font-bold text-slate-400">
+              예약 가능한 플레이스의 당일 예약 현황을 정리하고 있습니다.
+            </p>
+          </div>
+          <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-cyan-200/25 border-t-cyan-200" />
+        </div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
+        </div>
+      </section>
+    )
+  }
+
+  if (errorMessage && top.length === 0) {
+    return (
+      <section className="mt-5 rounded-md border border-rose-300/20 bg-rose-400/[0.06] p-4">
+        <p className="text-sm font-black text-rose-100">{errorMessage}</p>
+      </section>
+    )
+  }
+
+  if (top.length === 0) {
+    return null
+  }
+
+  const compactItems = top.slice(0, 10)
+  const mobileItems = compactItems.slice(0, 3)
+
+  return (
+    <>
+      <section className="mt-5 rounded-md border border-white/10 bg-[#080c17]/55 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
+              Today Booking
+            </p>
+            <h4 className="mt-1 text-xl font-black text-white">당일예약 TOP10</h4>
+            <p className="mt-1 text-sm font-bold text-slate-400">
+              {formatCalendarDateLabel(date)} 기준 예약 현황입니다.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <span className="hidden w-fit rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-black text-slate-300 sm:inline-flex">
+              {formatCalendarDateLabel(date)}
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsAllModalOpen(true)}
+              className="inline-flex min-h-9 items-center justify-center rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12]"
+            >
+              전체보기
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 md:hidden">
+          {mobileItems.map((item, index) => (
+            <BookingTopRow key={item.placeId} item={item} index={index} />
+          ))}
+        </div>
+        <div className="mt-4 hidden gap-2 md:grid md:grid-cols-2 xl:grid-cols-5">
+          {compactItems.map((item, index) => (
+            <BookingTopRow key={item.placeId} item={item} index={index} />
+          ))}
+        </div>
+      </section>
+
+      {isAllModalOpen ? (
+        <BookingTopAllModal
+          items={allSummaries.length > 0 ? allSummaries : compactItems}
+          date={date}
+          onClose={() => setIsAllModalOpen(false)}
+        />
+      ) : null}
+    </>
+  )
+}
+
+function BookingTopRow({
+  item,
+  index,
+  isHighlighted = false,
+}: {
+  item: PlaceBookingSummaryItem
+  index: number
+  isHighlighted?: boolean
+}) {
+  const visual = getBookingTopVisual(index)
+
+  return (
+    <article
+      className={`grid grid-cols-[3.65rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md border px-3 py-2.5 transition ${visual.containerClass} ${
+        isHighlighted ? 'ring-2 ring-cyan-200/75 ring-offset-2 ring-offset-[#080c17]' : ''
+      }`}
+    >
+      <span
+        className={`inline-flex h-10 items-center justify-center rounded-md px-2 text-xs font-black leading-none ${visual.badgeClass}`}
+      >
+        {visual.badgeText}
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-black text-slate-50">{item.name}</p>
+        <p className="mt-0.5 truncate text-xs font-bold text-slate-500">
+          플레이스 {item.rank}위
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="text-[10px] font-black text-slate-500">예약</p>
+        <strong className="text-lg font-black text-cyan-100">{item.bookedSlots}</strong>
+      </div>
+    </article>
+  )
+}
+
+function BookingTopAllModal({
+  items,
+  date,
+  onClose,
+}: {
+  items: PlaceBookingSummaryItem[]
+  date: string
+  onClose: () => void
+}) {
+  const [searchText, setSearchText] = useState('')
+  const [highlightedPlaceId, setHighlightedPlaceId] = useState<string | null>(null)
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const listRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [])
+
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const keyword = searchText.trim().toLocaleLowerCase('ko-KR')
+
+    if (!keyword) {
+      setHighlightedPlaceId(null)
+      return
+    }
+
+    const matched = items.find((item) => {
+      return `${item.name} ${item.category}`.toLocaleLowerCase('ko-KR').includes(keyword)
+    })
+
+    if (!matched) {
+      setHighlightedPlaceId(null)
+      return
+    }
+
+    setHighlightedPlaceId(matched.placeId)
+    window.requestAnimationFrame(() => {
+      itemRefs.current[matched.placeId]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    })
+  }
+
+  const scrollToTop = () => {
+    listRef.current?.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-md">
+      <section className="relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-md border border-cyan-300/20 bg-[#080c17] shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
+              Today Booking
+            </p>
+            <h4 className="mt-1 text-xl font-black text-white">
+              전체 예약 현황 · {formatCalendarDateLabel(date)}
+            </h4>
+            <p className="mt-1 text-sm font-bold text-slate-500">
+              수집된 플레이스 {items.length}개를 예약 수 기준으로 보여줍니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-slate-100 transition hover:bg-white/[0.1]"
+          >
+            닫기
+          </button>
+        </div>
+
+        <form onSubmit={submitSearch} className="grid gap-2 border-b border-white/10 p-4 sm:grid-cols-[minmax(0,1fr)_6rem]">
+          <input
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            placeholder="플레이스명 검색"
+            className="min-h-11 rounded-md border border-white/10 bg-[#050814] px-3 text-sm font-bold text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70"
+          />
+          <button
+            type="submit"
+            className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/[0.12] px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.18]"
+          >
+            검색
+          </button>
+        </form>
+
+        <div ref={listRef} className="grid gap-2 overflow-y-auto p-4">
+          {items.map((item, index) => (
+            <div
+              key={item.placeId}
+              ref={(node) => {
+                itemRefs.current[item.placeId] = node
+              }}
+            >
+              <BookingTopRow
+                item={item}
+                index={index}
+                isHighlighted={highlightedPlaceId === item.placeId}
+              />
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={scrollToTop}
+          className="absolute bottom-4 right-4 inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-cyan-300/35 bg-[#0d2333]/95 px-4 text-xs font-black text-cyan-50 shadow-[0_14px_34px_rgba(0,0,0,0.35)] transition hover:bg-cyan-300/20"
+        >
+          TOP
+        </button>
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+function getBookingTopVisual(index: number) {
+  if (index === 0) {
+    return {
+      badgeText: 'TOP 1',
+      badgeClass: 'bg-amber-300 text-[#1b1300]',
+      containerClass: 'border-amber-300/45 bg-amber-300/[0.08]',
+    }
+  }
+
+  if (index === 1) {
+    return {
+      badgeText: 'TOP 2',
+      badgeClass: 'bg-slate-200 text-[#101521]',
+      containerClass: 'border-slate-200/35 bg-slate-200/[0.06]',
+    }
+  }
+
+  if (index === 2) {
+    return {
+      badgeText: 'TOP 3',
+      badgeClass: 'bg-orange-300 text-[#1b1005]',
+      containerClass: 'border-orange-300/35 bg-orange-300/[0.06]',
+    }
+  }
+
+  return {
+    badgeText: `${index + 1}위`,
+    badgeClass: 'bg-white/[0.08] text-slate-200',
+    containerClass: 'border-white/10 bg-white/[0.035]',
+  }
 }
 
 type BookingStatusModalProps = {

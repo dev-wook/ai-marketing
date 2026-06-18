@@ -243,6 +243,42 @@ export type PlaceBookingStatusRequest = {
   date?: string
 }
 
+export type PlaceBookingSummaryRequestItem = {
+  placeId: string
+  rank: number
+  name: string
+  category: string
+  bookingUrl?: string
+  bookingBusinessId?: string
+}
+
+export type PlaceBookingSummaryRequest = {
+  date?: string
+  items: PlaceBookingSummaryRequestItem[]
+}
+
+export type PlaceBookingSummaryItem = {
+  placeId: string
+  rank: number
+  name: string
+  category: string
+  status: 'ready' | 'unavailable' | 'failed'
+  bookedSlots: number
+  availableSlots: number
+  productCount: number
+  firstAvailableTime: string | null
+  message?: string
+}
+
+export type PlaceBookingSummaryResponse = {
+  date: string
+  summaries: Record<string, PlaceBookingSummaryItem>
+  top: PlaceBookingSummaryItem[]
+  totalRequested: number
+  totalSucceeded: number
+  totalFailed: number
+}
+
 export type PlaceBookingStatusResponse = {
   businessId: string
   businessTypeId: number
