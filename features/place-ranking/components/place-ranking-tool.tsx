@@ -1450,26 +1450,28 @@ function BookingTopBoard({
   return (
     <>
       <section className="mt-5 rounded-md border border-white/10 bg-[#080c17]/55 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
               Today Booking
             </p>
-            <h4 className="mt-1 text-xl font-black text-white">오늘의 예약 TOP 100</h4>
-            <p className="mt-1 text-sm font-bold text-slate-400">
+            <h4 className="mt-1 whitespace-nowrap text-lg font-black text-white sm:text-xl">
+              오늘의 예약 TOP 100
+            </h4>
+            <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
               네이버 예약을 사용하는 플레이스 기준입니다.
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex shrink-0 items-center justify-between gap-2 sm:flex-col sm:items-end">
             <span className="hidden w-fit rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-black text-slate-300 sm:inline-flex">
               {formatCalendarDateLabel(date)}
             </span>
             <button
               type="button"
               onClick={() => setIsAllModalOpen(true)}
-              className="inline-flex min-h-9 items-center justify-center rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12]"
+              className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12]"
             >
-              TOP 100 보기
+              전체 순위 보기
             </button>
           </div>
         </div>
@@ -1600,15 +1602,18 @@ function BookingTopAllModal({
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-md">
       <section className="relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-md border border-cyan-300/20 bg-[#080c17] shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
         <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
               Today Booking
             </p>
-            <h4 className="mt-1 text-xl font-black text-white">
-              [{date}] 오늘의 예약 TOP 100
+            <h4 className="mt-1 break-keep text-xl font-black leading-tight text-white">
+              오늘의 예약 TOP 100
             </h4>
-            <p className="mt-1 text-sm font-bold text-slate-500">
-              네이버 예약을 사용하는 플레이스 {items.length}개를 예약 수 기준으로 보여줍니다.
+            <p className="mt-1 text-sm font-black text-cyan-100/80">
+              {formatBookingTopDateLabel(date)} 기준
+            </p>
+            <p className="mt-2 break-keep text-sm font-bold leading-6 text-slate-500">
+              네이버 예약을 사용하는 플레이스 {items.length}개를 예약 수 기준으로 보여드립니다.
             </p>
           </div>
           <button
@@ -2318,6 +2323,12 @@ function formatCalendarDateLabel(value: string) {
   const { year, monthIndex, day } = parseDateValue(value)
 
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function formatBookingTopDateLabel(value: string) {
+  const { year, monthIndex, day } = parseDateValue(value)
+
+  return `${year}.${String(monthIndex + 1).padStart(2, '0')}.${String(day).padStart(2, '0')}`
 }
 
 function shiftDateValue(value: string, offsetDays: number) {
