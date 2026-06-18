@@ -1418,9 +1418,9 @@ function BookingTopBoard({
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
               Today Booking
             </p>
-            <h4 className="mt-1 text-lg font-black text-white">오늘 예약 TOP10 확인 중</h4>
+            <h4 className="mt-1 text-lg font-black text-white">오늘의 예약 TOP 100 확인 중</h4>
             <p className="mt-1 text-sm font-bold text-slate-400">
-              예약 가능한 플레이스의 당일 예약 현황을 정리하고 있습니다.
+              네이버 예약을 사용하는 플레이스의 당일 예약 현황을 정리하고 있습니다.
             </p>
           </div>
           <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-cyan-200/25 border-t-cyan-200" />
@@ -1455,9 +1455,9 @@ function BookingTopBoard({
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
               Today Booking
             </p>
-            <h4 className="mt-1 text-xl font-black text-white">당일예약 TOP10</h4>
+            <h4 className="mt-1 text-xl font-black text-white">오늘의 예약 TOP 100</h4>
             <p className="mt-1 text-sm font-bold text-slate-400">
-              {formatCalendarDateLabel(date)} 기준 예약 현황입니다.
+              네이버 예약을 사용하는 플레이스 기준입니다.
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
@@ -1469,7 +1469,7 @@ function BookingTopBoard({
               onClick={() => setIsAllModalOpen(true)}
               className="inline-flex min-h-9 items-center justify-center rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12]"
             >
-              전체보기
+              TOP 100 보기
             </button>
           </div>
         </div>
@@ -1605,10 +1605,10 @@ function BookingTopAllModal({
               Today Booking
             </p>
             <h4 className="mt-1 text-xl font-black text-white">
-              전체 예약 현황 · {formatCalendarDateLabel(date)}
+              [{date}] 오늘의 예약 TOP 100
             </h4>
             <p className="mt-1 text-sm font-bold text-slate-500">
-              수집된 플레이스 {items.length}개를 예약 수 기준으로 보여줍니다.
+              네이버 예약을 사용하는 플레이스 {items.length}개를 예약 수 기준으로 보여줍니다.
             </p>
           </div>
           <button

@@ -9,6 +9,7 @@ import { collectNaverBookingStatus } from '../server/naver-booking-status'
 
 const bookingSummaryConcurrency = 4
 const bookingSummaryCacheTtlMs = 1000 * 60 * 5
+const bookingSummaryTopLimit = 100
 const bookingSummaryCache = new Map<
   string,
   {
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as PlaceBookingSummaryRequest
     const date = normalizeDate(body.date)
     const items = Array.isArray(body.items) ? body.items : []
-    const targets = items.filter(hasBookingTarget)
+    const targets = items.filter(hasBookingTarget).slice(0, bookingSummaryTopLimit)
     const cacheKey = createBookingSummaryCacheKey(date, targets)
     const cachedResponse = readCachedBookingSummary(cacheKey)
 
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
 
         return left.rank - right.rank
       })
-      .slice(0, 10)
+      .slice(0, bookingSummaryTopLimit)
 
     const response: PlaceBookingSummaryResponse = {
       date,
