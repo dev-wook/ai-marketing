@@ -255,6 +255,7 @@ export type PlaceBookingSummaryRequestItem = {
 export type PlaceBookingSummaryRequest = {
   date?: string
   items: PlaceBookingSummaryRequestItem[]
+  excludePlaceKeys?: string[]
 }
 
 export type PlaceBookingSummaryItem = {
@@ -277,6 +278,28 @@ export type PlaceBookingSummaryResponse = {
   totalRequested: number
   totalSucceeded: number
   totalFailed: number
+}
+
+export type PlaceRankingBlacklistEntry = {
+  id: number
+  keyword: string
+  placeKey: string
+  placeId: string | null
+  placeName: string
+  category: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type PlaceRankingBlacklistGroup = {
+  keyword: string
+  count: number
+  entries: PlaceRankingBlacklistEntry[]
+}
+
+export type PlaceRankingBlacklistResponse = {
+  entries?: PlaceRankingBlacklistEntry[]
+  groups?: PlaceRankingBlacklistGroup[]
 }
 
 export type PlaceBookingStatusResponse = {

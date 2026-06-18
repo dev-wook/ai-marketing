@@ -8,6 +8,9 @@ import type {
   PlaceBookingSummaryItem,
   PlaceBookingSummaryResponse,
   PlaceBookingStatusResponse,
+  PlaceRankingBlacklistEntry,
+  PlaceRankingBlacklistGroup,
+  PlaceRankingBlacklistResponse,
   PlaceRankingBatchKeyword,
   PlaceRankingBatchKeywordResponse,
   PlaceRankingItem,
@@ -143,9 +146,11 @@ async function requestBookingStatus({
 async function requestBookingSummaries({
   result,
   date,
+  excludePlaceKeys = [],
 }: {
   result: PlaceRankingResponse
   date: string
+  excludePlaceKeys?: string[]
 }) {
   const response = await fetch('/api/place-ranking/booking-summary', {
     method: 'POST',
@@ -160,6 +165,7 @@ async function requestBookingSummaries({
         bookingUrl: item.actions.bookingUrl,
         bookingBusinessId: item.actions.bookingBusinessId,
       })),
+      excludePlaceKeys,
     }),
   })
   const body = (await response.json()) as PlaceBookingSummaryResponse | PlaceRankingErrorBody
@@ -242,6 +248,129 @@ async function requestDeleteBatchKeyword(id: number) {
   return body as { ok: boolean }
 }
 
+async function requestBlacklistEntries(keyword: string) {
+  const params = new URLSearchParams({ keyword })
+  const response = await fetch(`/api/place-ranking/blacklist?${params.toString()}`)
+  const body = (await response.json()) as PlaceRankingBlacklistResponse | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '제외 목록 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return (body as PlaceRankingBlacklistResponse).entries ?? []
+}
+
+async function requestBlacklistGroups() {
+  const response = await fetch('/api/place-ranking/blacklist')
+  const body = (await response.json()) as PlaceRankingBlacklistResponse | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '제외 목록 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return (body as PlaceRankingBlacklistResponse).groups ?? []
+}
+
+async function requestAddBlacklistEntry({
+  keyword,
+  place,
+}: {
+  keyword: string
+  place: PlaceBookingSummaryItem
+}) {
+  const response = await fetch('/api/place-ranking/blacklist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      keyword,
+      placeKey: createPlaceBlacklistKey(place.placeId, place.name),
+      placeId: place.placeId,
+      placeName: place.name,
+      category: place.category,
+    }),
+  })
+  const body = (await response.json()) as
+    | { entry: PlaceRankingBlacklistEntry }
+    | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '제외 목록 등록에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return (body as { entry: PlaceRankingBlacklistEntry }).entry
+}
+
+async function requestDeleteBlacklistEntry(id: number) {
+  const response = await fetch('/api/place-ranking/blacklist', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  const body = (await response.json()) as { ok: boolean } | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '제외 목록 삭제에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as { ok: boolean }
+}
+
+async function requestDeleteBlacklistPlace({
+  keyword,
+  placeKey,
+}: {
+  keyword: string
+  placeKey: string
+}) {
+  const response = await fetch('/api/place-ranking/blacklist', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword, placeKey }),
+  })
+  const body = (await response.json()) as { ok: boolean } | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '제외 목록 삭제에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as { ok: boolean }
+}
+
 export function PlaceRankingTool() {
   const [keyword, setKeyword] = useState('')
   const [result, setResult] = useState<PlaceRankingResponse | null>(null)
@@ -264,10 +393,13 @@ export function PlaceRankingTool() {
   const [bookingErrorMessage, setBookingErrorMessage] = useState('')
   const [bookingErrorLog, setBookingErrorLog] = useState('')
   const [bookingSummaries, setBookingSummaries] = useState<Record<string, PlaceBookingSummaryItem>>({})
-  const [bookingTop, setBookingTop] = useState<PlaceBookingSummaryItem[]>([])
   const [bookingSummaryDate, setBookingSummaryDate] = useState(getTodayKstDate())
   const [isBookingSummaryLoading, setIsBookingSummaryLoading] = useState(false)
   const [bookingSummaryError, setBookingSummaryError] = useState('')
+  const [blacklistEntries, setBlacklistEntries] = useState<PlaceRankingBlacklistEntry[]>([])
+  const [blacklistGroups, setBlacklistGroups] = useState<PlaceRankingBlacklistGroup[]>([])
+  const [isBlacklistLoading, setIsBlacklistLoading] = useState(false)
+  const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false)
   const [historyPlace, setHistoryPlace] = useState<PlaceRankingItem | null>(null)
   const [historyRows, setHistoryRows] = useState<PlaceRankingSnapshotHistoryResponse['history']>([])
   const [isHistoryLoading, setIsHistoryLoading] = useState(false)
@@ -278,6 +410,7 @@ export function PlaceRankingTool() {
   const [isBatchLoading, setIsBatchLoading] = useState(false)
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
+  const keywordInputRef = useRef<HTMLInputElement | null>(null)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   const canSubmit = useMemo(
@@ -295,6 +428,17 @@ export function PlaceRankingTool() {
         return left.rank - right.rank
       })
   }, [bookingSummaries])
+  const blacklistPlaceKeys = useMemo(() => {
+    return new Set(blacklistEntries.map((entry) => entry.placeKey))
+  }, [blacklistEntries])
+  const visibleBookingSummaryList = useMemo(() => {
+    return bookingSummaryList.filter(
+      (summary) => !blacklistPlaceKeys.has(createPlaceBlacklistKey(summary.placeId, summary.name)),
+    )
+  }, [blacklistPlaceKeys, bookingSummaryList])
+  const visibleBookingTop = useMemo(() => {
+    return visibleBookingSummaryList.slice(0, 100)
+  }, [visibleBookingSummaryList])
   const visibleItems = result?.items.slice(0, visibleCount) ?? []
   const filteredItems = useMemo(() => {
     const filterText = appliedPlaceNameFilter.trim().toLocaleLowerCase('ko-KR')
@@ -323,7 +467,8 @@ export function PlaceRankingTool() {
       !reviewPlace &&
       !bookingPlace &&
       !historyPlace &&
-      !isBatchModalOpen
+      !isBatchModalOpen &&
+      !isBlacklistModalOpen
     ) {
       return
     }
@@ -335,7 +480,14 @@ export function PlaceRankingTool() {
     return () => {
       document.body.style.overflow = previousOverflow
     }
-  }, [bookingPlace, expandedImage, reviewPlace, historyPlace, isBatchModalOpen])
+  }, [
+    bookingPlace,
+    expandedImage,
+    reviewPlace,
+    historyPlace,
+    isBatchModalOpen,
+    isBlacklistModalOpen,
+  ])
 
   useEffect(() => {
     if (!isLoading) {
@@ -392,9 +544,10 @@ export function PlaceRankingTool() {
     setBookingErrorMessage('')
     setBookingErrorLog('')
     setBookingSummaries({})
-    setBookingTop([])
     setBookingSummaryDate(getTodayKstDate())
     setBookingSummaryError('')
+    setBlacklistEntries([])
+    setBlacklistGroups([])
     setHistoryPlace(null)
     setHistoryRows([])
     setSnapshotToast(null)
@@ -402,11 +555,26 @@ export function PlaceRankingTool() {
 
     try {
       const nextResult = await requestRankings(nextKeyword, fetchLimit)
+      let nextBlacklistEntries: PlaceRankingBlacklistEntry[] = []
+
+      try {
+        nextBlacklistEntries = await requestBlacklistEntries(nextResult.keyword)
+      } catch (error) {
+        showSnapshotToast({
+          type: 'error',
+          message: error instanceof Error ? error.message : '제외 목록 조회에 실패했습니다.',
+        })
+      }
 
       setResult(nextResult)
       setVisibleCount(Math.min(initialVisibleCount, nextResult.items.length))
       setRecentKeywords(saveRecentPlaceRankingKeyword(nextKeyword))
-      void loadBookingSummaries(nextResult)
+      setBlacklistEntries(nextBlacklistEntries)
+      void loadBookingSummaries(
+        nextResult,
+        getTodayKstDate(),
+        nextBlacklistEntries.map((entry) => entry.placeKey),
+      )
     } catch (error) {
       setErrorLog(toReadableErrorLog(readErrorDebug(error)))
       setErrorMessage(error instanceof Error ? error.message : '플레이스 순위 조회에 실패했습니다.')
@@ -535,14 +703,17 @@ export function PlaceRankingTool() {
     await openBookingStatus(bookingPlace, nextDate)
   }
 
-  const loadBookingSummaries = async (nextResult: PlaceRankingResponse) => {
+  const loadBookingSummaries = async (
+    nextResult: PlaceRankingResponse,
+    date = getTodayKstDate(),
+    excludePlaceKeys: Iterable<string> = blacklistEntries.map((entry) => entry.placeKey),
+  ) => {
     const bookingTargets = nextResult.items.filter(
       (item) => item.actions.bookingUrl || item.actions.bookingBusinessId,
     )
 
     if (bookingTargets.length === 0) {
       setBookingSummaries({})
-      setBookingTop([])
       setBookingSummaryError('')
       return
     }
@@ -553,20 +724,190 @@ export function PlaceRankingTool() {
     try {
       const response = await requestBookingSummaries({
         result: nextResult,
-        date: getTodayKstDate(),
+        date,
+        excludePlaceKeys: Array.from(excludePlaceKeys),
       })
 
       setBookingSummaries(response.summaries)
-      setBookingTop(response.top)
       setBookingSummaryDate(response.date)
     } catch (error) {
       setBookingSummaries({})
-      setBookingTop([])
       setBookingSummaryError(
         error instanceof Error ? error.message : '오늘 예약 현황 조회에 실패했습니다.',
       )
     } finally {
       setIsBookingSummaryLoading(false)
+    }
+  }
+
+  const changeBookingSummaryDate = async (nextDate: string) => {
+    if (!result) {
+      return
+    }
+
+    setBookingSummaryDate(nextDate)
+    await loadBookingSummaries(result, nextDate)
+  }
+
+  const loadBlacklistEntries = async (targetKeyword: string) => {
+    setIsBlacklistLoading(true)
+
+    try {
+      setBlacklistEntries(await requestBlacklistEntries(targetKeyword))
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '제외 목록 조회에 실패했습니다.',
+      })
+    } finally {
+      setIsBlacklistLoading(false)
+    }
+  }
+
+  const loadBlacklistGroups = async () => {
+    setIsBlacklistLoading(true)
+
+    try {
+      setBlacklistGroups(await requestBlacklistGroups())
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '제외 목록 조회에 실패했습니다.',
+      })
+    } finally {
+      setIsBlacklistLoading(false)
+    }
+  }
+
+  const addBookingTopBlacklist = async (place: PlaceBookingSummaryItem) => {
+    if (!result || isBlacklistLoading) {
+      return
+    }
+
+    setIsBlacklistLoading(true)
+
+    try {
+      const entry = await requestAddBlacklistEntry({
+        keyword: result.keyword,
+        place,
+      })
+
+      setBlacklistEntries((current) => {
+        const nextEntries = new Map(current.map((entry) => [entry.placeKey, entry]))
+
+        nextEntries.set(entry.placeKey, entry)
+
+        return Array.from(nextEntries.values())
+      })
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '제외 목록 등록에 실패했습니다.',
+      })
+      throw error
+    } finally {
+      setIsBlacklistLoading(false)
+    }
+  }
+
+  const removeBookingTopBlacklist = async (place: PlaceBookingSummaryItem) => {
+    if (!result || isBlacklistLoading) {
+      return
+    }
+
+    const placeKey = createPlaceBlacklistKey(place.placeId, place.name)
+
+    setIsBlacklistLoading(true)
+
+    try {
+      await requestDeleteBlacklistPlace({
+        keyword: result.keyword,
+        placeKey,
+      })
+
+      setBlacklistEntries((current) => current.filter((entry) => entry.placeKey !== placeKey))
+      setBlacklistGroups((current) =>
+        current
+          .map((group) => ({
+            ...group,
+            entries: group.entries.filter((entry) => entry.placeKey !== placeKey),
+          }))
+          .filter((group) => group.entries.length > 0)
+          .map((group) => ({
+            ...group,
+            count: group.entries.length,
+          })),
+      )
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '제외 목록 삭제에 실패했습니다.',
+      })
+      throw error
+    } finally {
+      setIsBlacklistLoading(false)
+    }
+  }
+
+  const applyBookingTopBlacklist = async (places: PlaceBookingSummaryItem[]) => {
+    if (!result || isBlacklistLoading || places.length === 0) {
+      return
+    }
+
+    setIsBlacklistLoading(true)
+
+    try {
+      const excludePlaceKeys = new Set(blacklistEntries.map((entry) => entry.placeKey))
+
+      places.forEach((place) => {
+        excludePlaceKeys.add(createPlaceBlacklistKey(place.placeId, place.name))
+      })
+
+      await loadBookingSummaries(result, bookingSummaryDate, excludePlaceKeys)
+      showSnapshotToast({
+        type: 'success',
+        message: '제외 조건을 반영해 순위를 재산정했습니다.',
+      })
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '순위 재산정에 실패했습니다.',
+      })
+    } finally {
+      setIsBlacklistLoading(false)
+    }
+  }
+
+  const removeBlacklistEntry = async (entry: PlaceRankingBlacklistEntry) => {
+    if (isBlacklistLoading) {
+      return
+    }
+
+    setIsBlacklistLoading(true)
+
+    try {
+      await requestDeleteBlacklistEntry(entry.id)
+      setBlacklistEntries((current) => current.filter((item) => item.id !== entry.id))
+      setBlacklistGroups((current) =>
+        current
+          .map((group) => ({
+            ...group,
+            entries: group.entries.filter((item) => item.id !== entry.id),
+          }))
+          .filter((group) => group.entries.length > 0)
+          .map((group) => ({ ...group, count: group.entries.length })),
+      )
+      showSnapshotToast({
+        type: 'success',
+        message: '제외 목록에서 삭제했습니다.',
+      })
+    } catch (error) {
+      showSnapshotToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '제외 목록 삭제에 실패했습니다.',
+      })
+    } finally {
+      setIsBlacklistLoading(false)
     }
   }
 
@@ -650,6 +991,13 @@ export function PlaceRankingTool() {
     }
   }
 
+  const clearKeywordInput = () => {
+    setKeyword('')
+    setErrorMessage('')
+    setErrorLog('')
+    keywordInputRef.current?.focus()
+  }
+
   return (
     <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-center py-6">
       <section className="text-center">
@@ -686,16 +1034,30 @@ export function PlaceRankingTool() {
           className="mx-auto mt-4 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
         >
           <div className="flex flex-col gap-3 md:flex-row">
-            <input
-              value={keyword}
-              onChange={(event) => {
-                setKeyword(event.target.value)
-                setErrorMessage('')
-                setErrorLog('')
-              }}
-              placeholder="예: 노원 속눈썹펌"
-              className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
-            />
+            <div className="relative flex-1">
+              <input
+                ref={keywordInputRef}
+                value={keyword}
+                onChange={(event) => {
+                  setKeyword(event.target.value)
+                  setErrorMessage('')
+                  setErrorLog('')
+                }}
+                placeholder="예: 노원 속눈썹펌"
+                className="min-h-14 w-full rounded-md border border-white/10 bg-[#090d18] py-0 pl-4 pr-12 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+              />
+              {keyword ? (
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={clearKeywordInput}
+                  aria-label="검색어 전체 삭제"
+                  className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-xl font-black leading-none text-slate-500 transition hover:bg-white/[0.08] hover:text-cyan-100"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
             <button
               type="submit"
               disabled={!canSubmit}
@@ -799,23 +1161,37 @@ export function PlaceRankingTool() {
                 조회 시각: {formatCollectedAt(result.collectedAt)}
                 {result.source === 'cache' ? ' · 캐시 응답' : ''}
               </span>
-              <button
-                type="button"
-                onClick={saveTodaySnapshot}
-                disabled={isSavingSnapshot || result.items.length === 0}
-                className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSavingSnapshot ? '기록 중' : '오늘 순위 기록'}
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={saveTodaySnapshot}
+                  disabled={isSavingSnapshot || result.items.length === 0}
+                  className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSavingSnapshot ? '기록 중' : '오늘 순위 기록'}
+                </button>
+              </div>
             </div>
           </div>
 
           <BookingTopBoard
-            top={bookingTop}
+            top={visibleBookingTop}
             allSummaries={bookingSummaryList}
+            keyword={result.keyword}
             date={bookingSummaryDate}
             isLoading={isBookingSummaryLoading}
             errorMessage={bookingSummaryError}
+            blacklistCount={blacklistEntries.length}
+            blacklistPlaceKeys={blacklistPlaceKeys}
+            isBlacklistLoading={isBlacklistLoading}
+            onDateChange={changeBookingSummaryDate}
+            onAddBlacklistPlace={addBookingTopBlacklist}
+            onRemoveBlacklistPlace={removeBookingTopBlacklist}
+            onApplyBlacklist={applyBookingTopBlacklist}
+            onOpenBlacklistManagement={() => {
+              setIsBlacklistModalOpen(true)
+              loadBlacklistGroups()
+            }}
           />
 
           <form
@@ -1171,6 +1547,19 @@ export function PlaceRankingTool() {
           )
         : null}
 
+      {isMounted && isBlacklistModalOpen
+        ? createPortal(
+            <BlacklistManagementModal
+              groups={blacklistGroups}
+              isLoading={isBlacklistLoading}
+              onRemove={removeBlacklistEntry}
+              onRefresh={loadBlacklistGroups}
+              onClose={() => setIsBlacklistModalOpen(false)}
+            />,
+            document.body,
+          )
+        : null}
+
       {isMounted && snapshotToast
         ? createPortal(
             <SnapshotToastMessage
@@ -1309,6 +1698,175 @@ function BatchKeywordModal({
   )
 }
 
+type BlacklistManagementModalProps = {
+  groups: PlaceRankingBlacklistGroup[]
+  isLoading: boolean
+  onRemove: (entry: PlaceRankingBlacklistEntry) => Promise<void>
+  onRefresh: () => Promise<void>
+  onClose: () => void
+}
+
+function BlacklistManagementModal({
+  groups,
+  isLoading,
+  onRemove,
+  onRefresh,
+  onClose,
+}: BlacklistManagementModalProps) {
+  const [selectedKeyword, setSelectedKeyword] = useState(groups[0]?.keyword ?? '')
+
+  useEffect(() => {
+    if (groups.length === 0) {
+      setSelectedKeyword('')
+      return
+    }
+
+    if (!selectedKeyword || !groups.some((group) => group.keyword === selectedKeyword)) {
+      setSelectedKeyword(groups[0].keyword)
+    }
+  }, [groups, selectedKeyword])
+
+  const selectedGroup = groups.find((group) => group.keyword === selectedKeyword) ?? groups[0]
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="제외 목록 관리"
+      onClick={onClose}
+    >
+      <section
+        className="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.52)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              Blacklist
+            </p>
+            <h3 className="mt-1 text-2xl font-black text-white">제외 목록 관리</h3>
+            <p className="mt-2 break-keep text-sm font-bold leading-6 text-slate-400">
+              키워드와 맞지 않는 플레이스를 제외하면 예약 TOP 100 순위에서 빠집니다.
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="rounded-md border border-cyan-300/25 bg-cyan-300/[0.08] px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.14] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              새로고침
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+
+        <div className="grid min-h-0 gap-4 overflow-y-auto p-5 md:grid-cols-[18rem_minmax(0,1fr)]">
+          <div className="min-h-0">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/65">
+                키워드 {groups.length}개
+              </p>
+              {isLoading ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-200/25 border-t-cyan-200" />
+              ) : null}
+            </div>
+            <div className="grid max-h-[28vh] gap-2 overflow-y-auto pr-1 md:max-h-none">
+              {groups.length > 0 ? (
+                groups.map((group) => {
+                  const isSelected = group.keyword === selectedGroup?.keyword
+
+                  return (
+                    <button
+                      key={group.keyword}
+                      type="button"
+                      onClick={() => setSelectedKeyword(group.keyword)}
+                      className={`grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border px-3 text-left transition ${
+                        isSelected
+                          ? 'border-cyan-300/45 bg-cyan-300/[0.08] text-cyan-50'
+                          : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.07]'
+                      }`}
+                    >
+                      <span className="truncate text-sm font-black">{group.keyword}</span>
+                      <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-1 text-[11px] font-black text-cyan-100">
+                        {group.count}
+                      </span>
+                    </button>
+                  )
+                })
+              ) : (
+                <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-400">
+                  아직 제외 등록된 플레이스가 없습니다.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="min-h-0 rounded-md border border-white/10 bg-white/[0.03] p-4">
+            {selectedGroup ? (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-200/65">
+                      Excluded Places
+                    </p>
+                    <h4 className="mt-1 truncate text-lg font-black text-white">
+                      {selectedGroup.keyword}
+                    </h4>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-fuchsia-300/20 bg-fuchsia-300/[0.08] px-3 py-1 text-xs font-black text-fuchsia-100">
+                    {selectedGroup.count}개 제외
+                  </span>
+                </div>
+
+                <div className="mt-4 grid max-h-[42vh] gap-2 overflow-y-auto pr-1">
+                  {selectedGroup.entries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="grid gap-3 rounded-md border border-white/10 bg-[#090d18] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-slate-50">
+                          {entry.placeName}
+                        </p>
+                        {entry.category ? (
+                          <p className="mt-1 truncate text-xs font-bold text-cyan-100/65">
+                            {entry.category}
+                          </p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemove(entry)}
+                        disabled={isLoading}
+                        className="min-h-9 rounded-md border border-rose-300/20 bg-rose-300/[0.06] px-3 text-xs font-black text-rose-100 transition hover:bg-rose-300/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        제외 해제
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-400">
+                키워드를 선택하면 제외된 플레이스를 확인할 수 있습니다.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function SnapshotToastMessage({ toast, onClose }: SnapshotToastMessageProps) {
   useEffect(() => {
     const timer = window.setTimeout(onClose, 2800)
@@ -1398,15 +1956,33 @@ function BookingCountBadge({
 function BookingTopBoard({
   top,
   allSummaries,
+  keyword,
   date,
   isLoading,
   errorMessage,
+  blacklistCount,
+  blacklistPlaceKeys,
+  isBlacklistLoading,
+  onDateChange,
+  onAddBlacklistPlace,
+  onRemoveBlacklistPlace,
+  onApplyBlacklist,
+  onOpenBlacklistManagement,
 }: {
   top: PlaceBookingSummaryItem[]
   allSummaries: PlaceBookingSummaryItem[]
+  keyword: string
   date: string
   isLoading: boolean
   errorMessage: string
+  blacklistCount: number
+  blacklistPlaceKeys: Set<string>
+  isBlacklistLoading: boolean
+  onDateChange: (date: string) => Promise<void>
+  onAddBlacklistPlace: (place: PlaceBookingSummaryItem) => Promise<void>
+  onRemoveBlacklistPlace: (place: PlaceBookingSummaryItem) => Promise<void>
+  onApplyBlacklist: (places: PlaceBookingSummaryItem[]) => Promise<void>
+  onOpenBlacklistManagement: () => void
 }) {
   const [isAllModalOpen, setIsAllModalOpen] = useState(false)
 
@@ -1466,13 +2042,22 @@ function BookingTopBoard({
             <span className="hidden w-fit rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-black text-slate-300 sm:inline-flex">
               {formatCalendarDateLabel(date)}
             </span>
-            <button
-              type="button"
-              onClick={() => setIsAllModalOpen(true)}
-              className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12]"
-            >
-              전체 순위 보기
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpenBlacklistManagement}
+                className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-white/10 bg-white/[0.045] px-3 text-xs font-black text-slate-200 transition hover:border-cyan-300/30 hover:bg-cyan-300/[0.08] hover:text-cyan-50"
+              >
+                제외 관리
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAllModalOpen(true)}
+                className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12]"
+              >
+                전체 순위 보기
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1481,7 +2066,7 @@ function BookingTopBoard({
             <BookingTopRow key={item.placeId} item={item} index={index} />
           ))}
         </div>
-        <div className="mt-4 hidden gap-2 md:grid md:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-4 hidden gap-2 md:grid md:grid-cols-2">
           {compactItems.map((item, index) => (
             <BookingTopRow key={item.placeId} item={item} index={index} />
           ))}
@@ -1491,7 +2076,16 @@ function BookingTopBoard({
       {isAllModalOpen ? (
         <BookingTopAllModal
           items={allSummaries.length > 0 ? allSummaries : compactItems}
+          keyword={keyword}
           date={date}
+          isLoading={isLoading}
+          blacklistCount={blacklistCount}
+          blacklistPlaceKeys={blacklistPlaceKeys}
+          isBlacklistLoading={isBlacklistLoading}
+          onDateChange={onDateChange}
+          onAddBlacklistPlace={onAddBlacklistPlace}
+          onRemoveBlacklistPlace={onRemoveBlacklistPlace}
+          onApplyBlacklist={onApplyBlacklist}
           onClose={() => setIsAllModalOpen(false)}
         />
       ) : null}
@@ -1537,17 +2131,53 @@ function BookingTopRow({
 
 function BookingTopAllModal({
   items,
+  keyword,
   date,
+  isLoading,
+  blacklistCount,
+  blacklistPlaceKeys,
+  isBlacklistLoading,
+  onDateChange,
+  onAddBlacklistPlace,
+  onRemoveBlacklistPlace,
+  onApplyBlacklist,
   onClose,
 }: {
   items: PlaceBookingSummaryItem[]
+  keyword: string
   date: string
+  isLoading: boolean
+  blacklistCount: number
+  blacklistPlaceKeys: Set<string>
+  isBlacklistLoading: boolean
+  onDateChange: (date: string) => Promise<void>
+  onAddBlacklistPlace: (place: PlaceBookingSummaryItem) => Promise<void>
+  onRemoveBlacklistPlace: (place: PlaceBookingSummaryItem) => Promise<void>
+  onApplyBlacklist: (places: PlaceBookingSummaryItem[]) => Promise<void>
   onClose: () => void
 }) {
   const [searchText, setSearchText] = useState('')
   const [highlightedPlaceId, setHighlightedPlaceId] = useState<string | null>(null)
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  const [isBlacklistMode, setIsBlacklistMode] = useState(false)
+  const [appliedBlacklistKeys, setAppliedBlacklistKeys] = useState<Set<string>>(
+    () => new Set(blacklistPlaceKeys),
+  )
+  const [pendingExcludeKeys, setPendingExcludeKeys] = useState<Set<string>>(() => new Set())
+  const [savingExcludeKeys, setSavingExcludeKeys] = useState<Set<string>>(() => new Set())
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const modalRef = useRef<HTMLElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const displayedItems = useMemo(() => {
+    return items
+      .filter((item) => !appliedBlacklistKeys.has(createPlaceBlacklistKey(item.placeId, item.name)))
+      .slice(0, 100)
+  }, [appliedBlacklistKeys, items])
+  const pendingExcludeItems = useMemo(() => {
+    return displayedItems.filter((item) =>
+      pendingExcludeKeys.has(createPlaceBlacklistKey(item.placeId, item.name)),
+    )
+  }, [displayedItems, pendingExcludeKeys])
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -1573,7 +2203,7 @@ function BookingTopAllModal({
       return
     }
 
-    const matched = items.find((item) => {
+    const matched = displayedItems.find((item) => {
       return `${item.name} ${item.category}`.toLocaleLowerCase('ko-KR').includes(keyword)
     })
 
@@ -1592,37 +2222,168 @@ function BookingTopAllModal({
   }
 
   const scrollToTop = () => {
+    modalRef.current?.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
     listRef.current?.scrollTo({
       top: 0,
       behavior: 'smooth',
     })
   }
 
+  const selectDate = async (nextDate: string) => {
+    setIsCalendarOpen(false)
+    setHighlightedPlaceId(null)
+    setPendingExcludeKeys(new Set())
+    setSavingExcludeKeys(new Set())
+    listRef.current?.scrollTo({ top: 0 })
+    await onDateChange(nextDate)
+    setAppliedBlacklistKeys(new Set(blacklistPlaceKeys))
+  }
+
+  const togglePendingExclude = async (item: PlaceBookingSummaryItem) => {
+    const placeKey = createPlaceBlacklistKey(item.placeId, item.name)
+
+    if (savingExcludeKeys.has(placeKey)) {
+      return
+    }
+
+    setSavingExcludeKeys((current) => {
+      const nextKeys = new Set(current)
+
+      nextKeys.add(placeKey)
+
+      return nextKeys
+    })
+
+    try {
+      if (pendingExcludeKeys.has(placeKey)) {
+        await onRemoveBlacklistPlace(item)
+
+        setPendingExcludeKeys((current) => {
+          const nextKeys = new Set(current)
+
+          nextKeys.delete(placeKey)
+
+          return nextKeys
+        })
+      } else {
+        await onAddBlacklistPlace(item)
+
+        setPendingExcludeKeys((current) => {
+          const nextKeys = new Set(current)
+
+          nextKeys.add(placeKey)
+
+          return nextKeys
+        })
+      }
+    } finally {
+      setSavingExcludeKeys((current) => {
+        const nextKeys = new Set(current)
+
+        nextKeys.delete(placeKey)
+
+        return nextKeys
+      })
+    }
+  }
+
+  const applyPendingExcludes = async () => {
+    if (pendingExcludeItems.length === 0 || isBlacklistLoading) {
+      return
+    }
+
+    await onApplyBlacklist(pendingExcludeItems)
+    setAppliedBlacklistKeys((current) => new Set([...current, ...pendingExcludeKeys]))
+    setPendingExcludeKeys(new Set())
+    setHighlightedPlaceId(null)
+    listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-md">
-      <section className="relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-md border border-cyan-300/20 bg-[#080c17] shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0">
+      <section
+        ref={modalRef}
+        className="relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-y-auto rounded-md border border-cyan-300/20 bg-[#080c17] shadow-[0_28px_80px_rgba(0,0,0,0.55)] md:overflow-hidden"
+      >
+        <div className="relative flex flex-col gap-4 border-b border-white/10 p-4 pr-[5.75rem] sm:flex-row sm:items-start sm:justify-between sm:pr-4">
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
               Today Booking
             </p>
             <h4 className="mt-1 break-keep text-xl font-black leading-tight text-white">
               오늘의 예약 TOP 100
             </h4>
-            <p className="mt-1 text-sm font-black text-cyan-100/80">
-              {formatBookingTopDateLabel(date)} 기준
-            </p>
-            <p className="mt-2 break-keep text-sm font-bold leading-6 text-slate-500">
-              네이버 예약을 사용하는 플레이스 {items.length}개를 예약 수 기준으로 보여드립니다.
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-3 py-1 text-xs font-black text-cyan-100">
+                기준 키워드: {keyword}
+              </span>
+              {blacklistCount > 0 ? (
+                <span className="rounded-full border border-fuchsia-300/20 bg-fuchsia-300/[0.08] px-3 py-1 text-xs font-black text-fuchsia-100">
+                  제외 목록 {blacklistCount}개
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-3 break-keep text-sm font-bold leading-6 text-slate-500">
+              네이버 예약을 사용하는 플레이스 {displayedItems.length}개를 예약 수 기준으로 보여드립니다.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-slate-100 transition hover:bg-white/[0.1]"
-          >
-            닫기
-          </button>
+          <div className="flex w-full shrink-0 items-start gap-2 sm:w-auto sm:flex-col sm:items-end">
+            <div className="grid w-full gap-1.5 sm:w-auto">
+              <span className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200/70">
+                날짜 선택
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCalendarOpen(true)}
+                disabled={isLoading}
+                className="inline-flex h-11 w-full min-w-[9.5rem] items-center justify-center rounded-md border border-white/10 bg-[#090d18] px-3 text-center text-sm font-black text-white outline-none transition hover:border-cyan-300/45 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              >
+                <span className="whitespace-nowrap">{formatCalendarDateLabel(date)}</span>
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute right-4 top-4 inline-flex min-h-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-slate-100 transition hover:bg-white/[0.1] sm:static"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="break-keep text-xs font-bold leading-5 text-slate-500">
+            제외 모드에서 플레이스를 선택한 뒤 순위 재산정을 누르면 TOP100을 다시 채웁니다.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {pendingExcludeKeys.size > 0 ? (
+              <span className="inline-flex min-h-9 items-center rounded-md border border-fuchsia-300/25 bg-fuchsia-300/[0.08] px-3 text-xs font-black text-fuchsia-100">
+                선택됨 {pendingExcludeKeys.size}개
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setIsBlacklistMode((current) => !current)}
+              className={`inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border px-3 text-xs font-black transition ${
+                isBlacklistMode
+                  ? 'border-fuchsia-300/35 bg-fuchsia-300/[0.12] text-fuchsia-50 hover:bg-fuchsia-300/[0.18]'
+                  : 'border-white/10 bg-white/[0.05] text-slate-200 hover:bg-white/[0.09]'
+              }`}
+            >
+              {isBlacklistMode ? '제외 선택 중' : '제외 모드'}
+            </button>
+            <button
+              type="button"
+              onClick={applyPendingExcludes}
+              disabled={isBlacklistLoading || pendingExcludeItems.length === 0}
+              className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {isBlacklistLoading ? '재산정 중' : '순위 재산정'}
+            </button>
+          </div>
         </div>
 
         <form onSubmit={submitSearch} className="grid gap-2 border-b border-white/10 p-4 sm:grid-cols-[minmax(0,1fr)_6rem]">
@@ -1640,29 +2401,77 @@ function BookingTopAllModal({
           </button>
         </form>
 
-        <div ref={listRef} className="grid gap-2 overflow-y-auto p-4">
-          {items.map((item, index) => (
-            <div
-              key={item.placeId}
-              ref={(node) => {
-                itemRefs.current[item.placeId] = node
-              }}
-            >
-              <BookingTopRow
-                item={item}
-                index={index}
-                isHighlighted={highlightedPlaceId === item.placeId}
-              />
+        <div ref={listRef} className="grid gap-2 p-4 md:overflow-y-auto">
+          {isLoading ? (
+            <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.055] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-black text-cyan-100">
+                  선택한 날짜의 예약 현황을 확인하고 있습니다.
+                </p>
+                <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-cyan-200/25 border-t-cyan-200" />
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
+              </div>
             </div>
-          ))}
+          ) : displayedItems.length > 0 ? (
+            displayedItems.map((item, index) => {
+              const placeKey = createPlaceBlacklistKey(item.placeId, item.name)
+              const isPendingExclude = pendingExcludeKeys.has(placeKey)
+              const isSavingExclude = savingExcludeKeys.has(placeKey)
+
+              return (
+                <div
+                  key={`${placeKey}:${item.rank}:${index}`}
+                  ref={(node) => {
+                    itemRefs.current[item.placeId] = node
+                  }}
+                  className={`grid gap-2 ${isBlacklistMode ? 'grid-cols-[minmax(0,1fr)_4.75rem] sm:grid-cols-[minmax(0,1fr)_6.25rem]' : ''}`}
+                >
+                  <BookingTopRow
+                    item={item}
+                    index={index}
+                    isHighlighted={highlightedPlaceId === item.placeId || isPendingExclude}
+                  />
+                  {isBlacklistMode ? (
+                    <button
+                      type="button"
+                      onClick={() => togglePendingExclude(item)}
+                      disabled={isSavingExclude}
+                      className={`inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-md border px-2 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-xs ${
+                        isPendingExclude
+                          ? 'border-fuchsia-300/45 bg-fuchsia-300/[0.14] text-fuchsia-50 hover:bg-fuchsia-300/[0.2]'
+                          : 'border-white/10 bg-white/[0.045] text-slate-300 hover:border-fuchsia-300/30 hover:bg-fuchsia-300/[0.08] hover:text-fuchsia-50'
+                      }`}
+                    >
+                      {isSavingExclude ? '저장 중' : isPendingExclude ? '선택됨' : '선택'}
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })
+          ) : (
+            <p className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-400">
+              표시할 예약 순위 데이터가 없습니다.
+            </p>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={scrollToTop}
-          className="absolute bottom-4 right-4 inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-cyan-300/35 bg-[#0d2333]/95 px-4 text-xs font-black text-cyan-50 shadow-[0_14px_34px_rgba(0,0,0,0.35)] transition hover:bg-cyan-300/20"
-        >
-          TOP
-        </button>
+        {!isLoading && displayedItems.length > 0 ? (
+          <button
+            type="button"
+            onClick={scrollToTop}
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-5 z-[90] inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-cyan-300/35 bg-[#0d2333]/95 px-4 text-xs font-black text-cyan-50 shadow-[0_14px_34px_rgba(0,0,0,0.35)] transition hover:bg-cyan-300/20 md:absolute md:bottom-4 md:right-4"
+          >
+            TOP
+          </button>
+        ) : null}
+        {isCalendarOpen ? (
+          <BookingCalendarModal
+            selectedDate={date}
+            onSelect={selectDate}
+            onClose={() => setIsCalendarOpen(false)}
+          />
+        ) : null}
       </section>
     </div>,
     document.body,
@@ -2308,6 +3117,20 @@ function openExternalUrl(url?: string) {
   }
 
   window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function createPlaceBlacklistKey(placeId?: string | null, placeName = '') {
+  const normalizedId = placeId?.trim()
+
+  if (normalizedId) {
+    return `id:${normalizedId}`
+  }
+
+  return `name:${normalizeBlacklistName(placeName)}`
+}
+
+function normalizeBlacklistName(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ko-KR')
 }
 
 function getTodayKstDate() {

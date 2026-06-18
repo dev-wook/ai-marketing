@@ -38,6 +38,7 @@ export function BlogPostingTool({
   const [errorMessage, setErrorMessage] = useState('')
   const [errorLog, setErrorLog] = useState('')
   const lastAutoAnalyzeKeyRef = useRef(0)
+  const keywordInputRef = useRef<HTMLInputElement | null>(null)
 
   const interviewAnswers = useMemo(() => {
     if (!analysis) {
@@ -125,6 +126,13 @@ export function BlogPostingTool({
   const submitKeyword = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     void analyzeKeyword()
+  }
+
+  const clearKeywordInput = () => {
+    setKeyword('')
+    setErrorMessage('')
+    setErrorLog('')
+    keywordInputRef.current?.focus()
   }
 
   const generateDraft = async () => {
@@ -230,17 +238,31 @@ export function BlogPostingTool({
           className="mx-auto mt-8 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
         >
           <div className="flex flex-col gap-3 md:flex-row">
-            <input
-              value={keyword}
-              onChange={(event) => {
-                setKeyword(event.target.value)
-                setErrorMessage('')
-                setErrorLog('')
-              }}
-              placeholder="예: 노원 속눈썹펌"
-              className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
-              disabled={isLoading}
-            />
+            <div className="relative flex-1">
+              <input
+                ref={keywordInputRef}
+                value={keyword}
+                onChange={(event) => {
+                  setKeyword(event.target.value)
+                  setErrorMessage('')
+                  setErrorLog('')
+                }}
+                placeholder="예: 노원 속눈썹펌"
+                className="min-h-14 w-full rounded-md border border-white/10 bg-[#090d18] px-4 pr-12 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+                disabled={isLoading}
+              />
+              {keyword ? (
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={clearKeywordInput}
+                  aria-label="검색어 전체 삭제"
+                  className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-xl font-black leading-none text-slate-500 transition hover:bg-white/[0.08] hover:text-cyan-100"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
             <button
               type="submit"
               disabled={!canSubmitKeyword}

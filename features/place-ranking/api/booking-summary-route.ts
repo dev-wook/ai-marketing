@@ -26,7 +26,15 @@ export async function POST(request: Request) {
     const body = (await request.json()) as PlaceBookingSummaryRequest
     const date = normalizeDate(body.date)
     const items = Array.isArray(body.items) ? body.items : []
-    const targets = items.filter(hasBookingTarget).slice(0, bookingSummaryTopLimit)
+    const excludePlaceKeys = new Set(
+      Array.isArray(body.excludePlaceKeys)
+        ? body.excludePlaceKeys.filter((key) => typeof key === 'string' && key.trim())
+        : [],
+    )
+    const targets = items
+      .filter(hasBookingTarget)
+      .filter((item) => !excludePlaceKeys.has(createPlaceBlacklistKey(item.placeId, item.name)))
+      .slice(0, bookingSummaryTopLimit)
     const cacheKey = createBookingSummaryCacheKey(date, targets)
     const cachedResponse = readCachedBookingSummary(cacheKey)
 
@@ -174,6 +182,20 @@ async function runWithConcurrency<T, R>(
 
 function hasBookingTarget(item: PlaceBookingSummaryRequestItem) {
   return Boolean(item.placeId && (item.bookingUrl || item.bookingBusinessId))
+}
+
+function createPlaceBlacklistKey(placeId?: string | null, placeName = '') {
+  const normalizedId = placeId?.trim()
+
+  if (normalizedId) {
+    return `id:${normalizedId}`
+  }
+
+  return `name:${normalizeBlacklistName(placeName)}`
+}
+
+function normalizeBlacklistName(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ko-KR')
 }
 
 function createBookingSummaryCacheKey(
