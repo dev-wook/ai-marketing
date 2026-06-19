@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
+import type { AuthUser } from '@/features/auth/types'
 import { KeywordTool } from '@/features/keyword-analysis/components/keyword-tool'
 import { PlaceRankingTool } from '@/features/place-ranking/components/place-ranking-tool'
+import { PlaceTrackingDashboard } from '@/features/place-tracking/components/place-tracking-dashboard'
 import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
 import { MenuButton } from './menu-button'
 
-type ViewKey = 'home' | 'keyword' | 'blog' | 'place'
+type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'tracking'
 
 const refreshViewStorageKey = 'aiva-refresh-view'
 const pullRefreshThreshold = 84
@@ -18,6 +20,7 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   keyword: '키워드 분석',
   blog: '블로그 원고 작성',
   place: '플레이스 순위 조회',
+  tracking: '플레이스 관리',
 }
 
 export function MarketingWorkspace() {
@@ -26,6 +29,9 @@ export function MarketingWorkspace() {
   const [blogInitialKeywordKey, setBlogInitialKeywordKey] = useState(0)
   const [blogAutoAnalyzeKey, setBlogAutoAnalyzeKey] = useState(0)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [isSessionChecking, setIsSessionChecking] = useState(true)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const touchStartYRef = useRef(0)
@@ -45,9 +51,67 @@ export function MarketingWorkspace() {
   }
 
   useEffect(() => {
+    let isMounted = true
+
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/auth/session', {
+          cache: 'no-store',
+        })
+        const data = await response.json().catch(() => null) as {
+          authenticated?: boolean
+          user?: AuthUser | null
+        } | null
+
+        if (!isMounted) {
+          return
+        }
+
+        if (!response.ok || !data?.authenticated || !data.user) {
+          window.location.replace('/login')
+          return
+        }
+
+        setAuthUser(data.user)
+      } catch {
+        if (isMounted) {
+          window.location.replace('/login')
+        }
+      } finally {
+        if (isMounted) {
+          setIsSessionChecking(false)
+        }
+      }
+    }
+
+    checkSession()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+      })
+    } finally {
+      window.location.replace('/login')
+    }
+  }
+
+  useEffect(() => {
     const savedView = window.sessionStorage.getItem(refreshViewStorageKey)
 
-    if (savedView === 'keyword' || savedView === 'blog' || savedView === 'place') {
+    if (
+      savedView === 'keyword'
+      || savedView === 'blog'
+      || savedView === 'place'
+      || savedView === 'tracking'
+    ) {
       setView(savedView)
       window.sessionStorage.removeItem(refreshViewStorageKey)
     }
@@ -127,6 +191,19 @@ export function MarketingWorkspace() {
   const activePullDistance = isRefreshing ? pullRefreshThreshold : pullIndicatorHeight
   const isHomeView = view === 'home'
 
+  if (isSessionChecking) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#070a12] text-white">
+        <div className="grid gap-4 text-center">
+          <span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-cyan-100/30 border-t-cyan-100" />
+          <p className="text-sm font-black tracking-[0.14em] text-cyan-100/80">
+            AIVA 확인 중
+          </p>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#070a12] text-white">
       <div
@@ -162,7 +239,7 @@ export function MarketingWorkspace() {
       <div className="min-h-screen bg-[radial-gradient(circle_at_28%_20%,rgba(0,200,255,0.22),transparent_32%),radial-gradient(circle_at_76%_28%,rgba(184,54,255,0.24),transparent_34%),linear-gradient(135deg,#080b14_0%,#0b1020_48%,#090713_100%)]">
         <div className="mx-auto flex min-h-screen w-full max-w-7xl min-w-0 flex-col px-5 py-0 md:px-8 md:py-5">
           <header
-            className={`sticky top-0 z-50 -mx-5 min-h-[72px] items-center border-b border-white/10 bg-[#070a12]/86 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.18)] backdrop-blur-xl md:relative md:top-auto md:z-20 md:mx-0 md:min-h-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
+            className={`fixed inset-x-0 top-0 z-50 min-h-[72px] items-center border-b border-white/10 bg-[#070a12]/92 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.2)] backdrop-blur-xl md:relative md:inset-auto md:z-20 md:min-h-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
               isHomeView
                 ? 'flex justify-between'
                 : 'grid grid-cols-[44px_minmax(0,1fr)_44px] gap-3'
@@ -206,35 +283,24 @@ export function MarketingWorkspace() {
                   <span className="block h-0.5 w-5 rounded-full bg-white" />
                 </span>
               </button>
-
-              {isMenuOpen ? (
-                <nav className="absolute right-0 top-14 grid w-[min(82vw,340px)] gap-2 rounded-md border border-white/10 bg-[#080b14]/95 p-3 shadow-[0_24px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-                  <MenuButton
-                    active={view === 'place'}
-                    eyebrow="Live"
-                    label="네이버 플레이스 순위 조회"
-                    onClick={() => openView('place')}
-                  />
-                  <MenuButton
-                    active={view === 'keyword'}
-                    eyebrow="Live"
-                    label="AI 검색 노출 키워드 분석"
-                    onClick={() => openView('keyword')}
-                  />
-                  <MenuButton
-                    active={view === 'blog'}
-                    eyebrow="Live"
-                    label="AI 블로그 원고 작성"
-                    onClick={() => openView('blog')}
-                  />
-                  <MenuButton eyebrow="Soon" label="AI 모델 이미지 생성" disabled />
-                </nav>
-              ) : null}
             </div>
           </header>
 
+          <SideMenu
+            activeView={view}
+            isLoggingOut={isLoggingOut}
+            isOpen={isMenuOpen}
+            onClose={() => setIsMenuOpen(false)}
+            onLogout={handleLogout}
+            onOpenBlogPosting={() => openView('blog')}
+            onOpenKeyword={() => openView('keyword')}
+            onOpenPlaceRanking={() => openView('place')}
+            onOpenPlaceTracking={() => openView('tracking')}
+            user={authUser}
+          />
+
           <section
-            className="min-w-0 flex-1 py-6 transition-transform duration-150 ease-out lg:py-8 md:translate-y-0"
+            className="min-w-0 flex-1 pt-[96px] pb-6 transition-transform duration-150 ease-out lg:py-8 md:pt-6 md:translate-y-0"
             style={{
               transform: `translateY(${activePullDistance}px)`,
             }}
@@ -244,6 +310,7 @@ export function MarketingWorkspace() {
                 onOpenBlogPosting={() => openView('blog')}
                 onOpenKeyword={() => openView('keyword')}
                 onOpenPlaceRanking={() => openView('place')}
+                onOpenPlaceTracking={() => openView('tracking')}
               />
             ) : null}
             {view === 'keyword' ? (
@@ -258,9 +325,115 @@ export function MarketingWorkspace() {
               />
             ) : null}
             {view === 'place' ? <PlaceRankingTool /> : null}
+            {view === 'tracking' ? <PlaceTrackingDashboard /> : null}
           </section>
         </div>
       </div>
     </main>
+  )
+}
+
+function SideMenu({
+  activeView,
+  isLoggingOut,
+  isOpen,
+  onClose,
+  onLogout,
+  onOpenBlogPosting,
+  onOpenKeyword,
+  onOpenPlaceRanking,
+  onOpenPlaceTracking,
+  user,
+}: {
+  activeView: ViewKey
+  isLoggingOut: boolean
+  isOpen: boolean
+  onClose: () => void
+  onLogout: () => void
+  onOpenBlogPosting: () => void
+  onOpenKeyword: () => void
+  onOpenPlaceRanking: () => void
+  onOpenPlaceTracking: () => void
+  user: AuthUser | null
+}) {
+  return (
+    <div
+      className={`fixed inset-0 z-[80] overflow-hidden transition-opacity duration-200 ${
+        isOpen ? 'pointer-events-auto' : 'pointer-events-none'
+      }`}
+      aria-hidden={!isOpen}
+    >
+      <button
+        type="button"
+        aria-label="메뉴 닫기"
+        onClick={onClose}
+        className={`absolute inset-0 bg-black/55 transition-opacity duration-200 ease-out ${
+          isOpen ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+      <aside
+        className={`absolute right-0 top-0 flex h-full w-[min(88vw,380px)] transform-gpu flex-col border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              Account
+            </p>
+            <p className="mt-2 truncate text-lg font-black text-white">
+              {user ? `${user.nickname}(${user.username})` : '관리자'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-xl font-black text-slate-200 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
+            aria-label="메뉴 닫기"
+          >
+            ×
+          </button>
+        </div>
+
+        <nav className="grid gap-3 overflow-y-auto px-5 py-5">
+          <MenuButton
+            active={activeView === 'place'}
+            eyebrow="Live"
+            label="네이버 플레이스 순위 조회"
+            onClick={onOpenPlaceRanking}
+          />
+          <MenuButton
+            active={activeView === 'tracking'}
+            eyebrow="Manage"
+            label="플레이스 관리"
+            onClick={onOpenPlaceTracking}
+          />
+          <MenuButton
+            active={activeView === 'keyword'}
+            eyebrow="Live"
+            label="AI 검색 노출 키워드 분석"
+            onClick={onOpenKeyword}
+          />
+          <MenuButton
+            active={activeView === 'blog'}
+            eyebrow="Live"
+            label="AI 블로그 원고 작성"
+            onClick={onOpenBlogPosting}
+          />
+          <MenuButton eyebrow="Soon" label="AI 모델 이미지 생성" disabled />
+        </nav>
+
+        <div className="mt-auto border-t border-white/10 p-5">
+          <button
+            type="button"
+            onClick={onLogout}
+            disabled={isLoggingOut}
+            className="ml-auto flex h-11 items-center justify-center rounded-md border border-rose-300/20 bg-rose-400/10 px-4 text-sm font-black text-rose-100 transition hover:border-rose-200/40 hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoggingOut ? '로그아웃 중' : '로그아웃'}
+          </button>
+        </div>
+      </aside>
+    </div>
   )
 }
