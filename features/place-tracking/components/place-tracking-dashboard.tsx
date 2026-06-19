@@ -13,21 +13,35 @@ type PlaceListResponse = {
 }
 
 type PlaceTrackingDashboardProps = {
-  compact?: boolean
+  mode?: 'dashboard' | 'manager'
+  onOpenManagerPage?: () => void
 }
 
-export function PlaceTrackingDashboard({ compact = false }: PlaceTrackingDashboardProps) {
+export function PlaceTrackingDashboard({
+  mode = 'dashboard',
+  onOpenManagerPage,
+}: PlaceTrackingDashboardProps) {
   const [dashboard, setDashboard] = useState<TrackingDashboardResponse | null>(null)
   const [places, setPlaces] = useState<TrackedPlace[]>([])
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false)
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false)
   const [isManagerOpen, setIsManagerOpen] = useState(false)
+  const [refreshingPlaceId, setRefreshingPlaceId] = useState<number | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
 
   const hasTrackedKeywords = useMemo(
     () => places.some((place) => place.keywords.length > 0),
     [places],
   )
+
+  const openManager = () => {
+    if (onOpenManagerPage) {
+      onOpenManagerPage()
+      return
+    }
+
+    setIsManagerOpen(true)
+  }
 
   const refreshPlaces = async () => {
     setIsLoadingPlaces(true)
@@ -79,6 +93,45 @@ export function PlaceTrackingDashboard({ compact = false }: PlaceTrackingDashboa
     }
   }
 
+  const refreshPlaceDashboard = async (placeId: number) => {
+    setRefreshingPlaceId(placeId)
+    setErrorMessage('')
+
+    try {
+      const response = await fetch(`/api/place-tracking/dashboard?placeId=${placeId}`, {
+        cache: 'no-store',
+      })
+      const data = (await response.json()) as TrackingDashboardResponse & { message?: string }
+      const refreshedPlace = data.places[0]
+
+      if (!response.ok || !refreshedPlace) {
+        throw new Error(data.message || '플레이스 순위를 확인하지 못했습니다.')
+      }
+
+      setDashboard((current) => {
+        if (!current) {
+          return data
+        }
+
+        return {
+          ...current,
+          updatedAt: data.updatedAt,
+          places: current.places.map((place) =>
+            place.id === refreshedPlace.id ? refreshedPlace : place,
+          ),
+        }
+      })
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : '플레이스 순위 새로고침 중 문제가 발생했습니다.',
+      )
+    } finally {
+      setRefreshingPlaceId(null)
+    }
+  }
+
   useEffect(() => {
     refreshPlaces().catch(() => {
       setErrorMessage('플레이스 목록을 불러오지 못했습니다.')
@@ -86,13 +139,32 @@ export function PlaceTrackingDashboard({ compact = false }: PlaceTrackingDashboa
   }, [])
 
   useEffect(() => {
+    if (mode === 'manager') {
+      return
+    }
+
     refreshDashboard().catch(() => {
       setErrorMessage('플레이스 추적 현황 조회 중 문제가 발생했습니다.')
     })
-  }, [hasTrackedKeywords])
+  }, [hasTrackedKeywords, mode])
+
+  if (mode === 'manager') {
+    return (
+      <PlaceTrackingManager
+        isLoading={isLoadingPlaces}
+        isOpen
+        onChanged={async () => {
+          await refreshPlaces()
+        }}
+        onClose={() => undefined}
+        places={places}
+        variant="page"
+      />
+    )
+  }
 
   return (
-    <section className="grid min-w-0 gap-4 rounded-md border border-cyan-300/18 bg-[#07101d]/78 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.22)] md:p-6">
+    <section className="grid min-w-0 gap-4 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.22)] md:p-6">
       <div className="grid min-w-0 gap-4 md:grid-cols-[1fr_auto] md:items-start">
         <div className="min-w-0">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200/80">
@@ -106,23 +178,7 @@ export function PlaceTrackingDashboard({ compact = false }: PlaceTrackingDashboa
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 md:justify-end">
-          <button
-            type="button"
-            onClick={() => setIsManagerOpen(true)}
-            className="h-11 rounded-md border border-cyan-300/35 bg-cyan-300/10 px-4 text-sm font-black text-cyan-100 transition hover:bg-cyan-300/16"
-          >
-            플레이스 관리
-          </button>
-          <button
-            type="button"
-            onClick={() => refreshDashboard()}
-            disabled={!hasTrackedKeywords || isLoadingDashboard}
-            className="h-11 rounded-md border border-white/10 bg-white/[0.045] px-4 text-sm font-black text-slate-100 transition hover:border-cyan-300/35 hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isLoadingDashboard ? '조회 중' : '순위 새로고침'}
-          </button>
-        </div>
+        <div className="hidden md:block" />
       </div>
 
       {errorMessage ? (
@@ -132,7 +188,7 @@ export function PlaceTrackingDashboard({ compact = false }: PlaceTrackingDashboa
       ) : null}
 
       {!places.length && !isLoadingPlaces ? (
-        <EmptyTrackingState onOpenManager={() => setIsManagerOpen(true)} />
+        <EmptyTrackingState onOpenManager={openManager} />
       ) : null}
 
       {places.length > 0 && !hasTrackedKeywords ? (
@@ -155,23 +211,31 @@ export function PlaceTrackingDashboard({ compact = false }: PlaceTrackingDashboa
       ) : null}
 
       {dashboard?.places.length ? (
-        <div className={`grid gap-3 ${compact ? 'md:grid-cols-2' : 'lg:grid-cols-2'}`}>
+        <div className="grid gap-4">
           {dashboard.places.map((place) => (
-            <TrackedPlaceCard key={place.id} place={place} />
+            <TrackedPlaceCard
+              key={place.id}
+              isRefreshing={refreshingPlaceId === place.id}
+              onOpenManager={openManager}
+              onRefresh={() => refreshPlaceDashboard(place.id)}
+              place={place}
+            />
           ))}
         </div>
       ) : null}
 
-      <PlaceTrackingManager
-        isOpen={isManagerOpen}
-        isLoading={isLoadingPlaces}
-        onClose={() => setIsManagerOpen(false)}
-        onChanged={async () => {
-          await refreshPlaces()
-          await refreshDashboard(true)
-        }}
-        places={places}
-      />
+      {!onOpenManagerPage ? (
+        <PlaceTrackingManager
+          isOpen={isManagerOpen}
+          isLoading={isLoadingPlaces}
+          onClose={() => setIsManagerOpen(false)}
+          onChanged={async () => {
+            await refreshPlaces()
+            await refreshDashboard(true)
+          }}
+          places={places}
+        />
+      ) : null}
     </section>
   )
 }
@@ -196,37 +260,82 @@ function EmptyTrackingState({ onOpenManager }: { onOpenManager: () => void }) {
   )
 }
 
-function TrackedPlaceCard({ place }: { place: TrackingDashboardPlace }) {
+function TrackedPlaceCard({
+  isRefreshing,
+  onOpenManager,
+  onRefresh,
+  place,
+}: {
+  isRefreshing: boolean
+  onOpenManager: () => void
+  onRefresh: () => void
+  place: TrackingDashboardPlace
+}) {
   return (
-    <article className="min-w-0 rounded-md border border-white/10 bg-[#090e1a]/82 p-4">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-xl font-black text-white">{place.placeName}</p>
-          <p className="mt-1 truncate text-xs font-bold text-slate-500">
-            ID {place.naverPlaceId}
+    <article className="relative grid min-w-0 gap-4 rounded-md border border-cyan-300/14 bg-[#0a1220]/86 p-4 shadow-[0_18px_46px_rgba(0,0,0,0.18)] md:p-5">
+      <div className="grid min-w-0 gap-3 border-b border-white/10 pb-4 md:grid-cols-[1fr_auto] md:items-start">
+        <div className="min-w-0 pr-12 md:pr-0">
+          <p className="truncate text-xl font-black text-white md:text-2xl">
+            {place.placeName}
           </p>
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-black text-slate-400">
+              ID {place.naverPlaceId}
+            </span>
+            <button
+              type="button"
+              onClick={onOpenManager}
+              className="inline-flex h-8 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/7 px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/12"
+            >
+              플레이스 관리 →
+            </button>
+          </div>
         </div>
-        <a
-          href={place.placeUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="shrink-0 rounded-md border border-white/10 px-3 py-2 text-xs font-black text-slate-300 transition hover:border-cyan-300/45 hover:text-cyan-100"
+
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          aria-label={`${place.placeName} 순위 새로고침`}
+          className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md border border-cyan-300/22 bg-cyan-300/8 text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-300/14 disabled:cursor-not-allowed disabled:opacity-60 md:static md:h-10 md:w-10"
         >
-          열기
-        </a>
+          {isRefreshing ? (
+            <span className="block h-4 w-4 animate-spin rounded-full border-2 border-cyan-100/30 border-t-cyan-100" />
+          ) : (
+            <svg
+              aria-hidden="true"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2.2"
+              viewBox="0 0 24 24"
+            >
+              <path d="M20 6v6h-6" />
+              <path d="M4 18v-6h6" />
+              <path d="M20 12a8 8 0 0 0-13.66-5.66L4 8" />
+              <path d="M4 12a8 8 0 0 0 13.66 5.66L20 16" />
+            </svg>
+          )}
+        </button>
       </div>
 
-      <div className="mt-4 grid gap-2">
+      <div className="grid min-w-0 gap-2 sm:grid-cols-2 md:gap-3 xl:grid-cols-3 2xl:grid-cols-4">
         {place.keywords.map((keyword) => (
           <div
             key={keyword.keywordId}
-            className="grid min-w-0 grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-white/10 bg-white/[0.035] px-3 py-3"
+            className="grid min-w-0 gap-3 rounded-md border border-cyan-300/12 bg-[#0d1828]/82 px-3 py-3 md:min-h-28 md:content-between"
           >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-black text-slate-100">{keyword.keyword}</p>
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <RankBadge rank={keyword.rank} status={keyword.status} />
               <RankChange change={keyword.rankChange} />
             </div>
-            <RankBadge rank={keyword.rank} status={keyword.status} />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black text-slate-100 md:text-[15px]">
+                {keyword.keyword}
+              </p>
+            </div>
           </div>
         ))}
       </div>
@@ -243,7 +352,7 @@ function RankBadge({
 }) {
   if (status === 'not_found' || !rank) {
     return (
-      <span className="rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-sm font-black text-slate-500">
+      <span className="inline-flex w-fit rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-base font-black text-slate-500 md:text-lg">
         미노출
       </span>
     )
@@ -259,7 +368,7 @@ function RankBadge({
           : 'border-white/10 bg-white/[0.035] text-slate-300'
 
   return (
-    <span className={`rounded-md border px-3 py-2 text-sm font-black ${colorClass}`}>
+    <span className={`inline-flex w-fit rounded-md border px-3 py-2 text-lg font-black leading-none md:text-2xl ${colorClass}`}>
       {rank}위
     </span>
   )
@@ -271,13 +380,17 @@ function RankChange({
   change: TrackingDashboardPlace['keywords'][number]['rankChange']
 }) {
   if (!change || change.direction === 'same') {
-    return <p className="mt-1 text-xs font-bold text-slate-500">전일 대비 -</p>
+    return (
+      <p className="shrink-0 whitespace-nowrap pt-1 text-xs font-bold text-slate-500">
+        전일 대비 -
+      </p>
+    )
   }
 
   const isUp = change.direction === 'up'
 
   return (
-    <p className={`mt-1 text-xs font-black ${isUp ? 'text-rose-300' : 'text-blue-300'}`}>
+    <p className={`shrink-0 whitespace-nowrap pt-1 text-xs font-black ${isUp ? 'text-rose-300' : 'text-blue-300'}`}>
       전일 대비 {isUp ? '▲' : '▼'} {change.delta}
     </p>
   )
@@ -289,12 +402,14 @@ function PlaceTrackingManager({
   onChanged,
   onClose,
   places,
+  variant = 'modal',
 }: {
   isOpen: boolean
   isLoading: boolean
   onChanged: () => Promise<void>
   onClose: () => void
   places: TrackedPlace[]
+  variant?: 'modal' | 'page'
 }) {
   const [placeUrl, setPlaceUrl] = useState('')
   const [preview, setPreview] = useState<PlacePreview | null>(null)
@@ -310,7 +425,7 @@ function PlaceTrackingManager({
     }
   }, [activePlaceId, places])
 
-  if (!isOpen) {
+  if (!isOpen && variant === 'modal') {
     return null
   }
 
@@ -432,9 +547,12 @@ function PlaceTrackingManager({
     await onChanged()
   }
 
-  return (
-    <div className="fixed inset-0 z-[90] overflow-y-auto bg-black/65 p-4 backdrop-blur-sm">
-      <div className="mx-auto my-8 grid w-full max-w-5xl gap-4 rounded-md border border-cyan-300/20 bg-[#080b14] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)] md:p-6">
+  const managerContent = (
+      <div
+        className={`mx-auto grid w-full max-w-5xl gap-4 rounded-md border border-cyan-300/20 bg-[#080b14] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)] md:p-6 ${
+          variant === 'modal' ? 'my-0 md:my-8' : ''
+        }`}
+      >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
@@ -442,13 +560,15 @@ function PlaceTrackingManager({
             </p>
             <h3 className="mt-2 text-2xl font-black text-white">플레이스 관리</h3>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-10 rounded-md border border-white/10 px-4 text-sm font-black text-slate-100"
-          >
-            닫기
-          </button>
+          {variant === 'modal' ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 rounded-md border border-white/10 px-4 text-sm font-black text-slate-100"
+            >
+              닫기
+            </button>
+          ) : null}
         </div>
 
         <form onSubmit={submitPreview} className="grid gap-3 md:grid-cols-[1fr_auto]">
@@ -587,6 +707,15 @@ function PlaceTrackingManager({
           </div>
         </div>
       </div>
+  )
+
+  if (variant === 'page') {
+    return managerContent
+  }
+
+  return (
+    <div className="fixed inset-0 z-[45] overflow-y-auto bg-black/65 px-4 pb-4 pt-[calc(env(safe-area-inset-top)+88px)] backdrop-blur-sm md:z-[90] md:p-4">
+      {managerContent}
     </div>
   )
 }

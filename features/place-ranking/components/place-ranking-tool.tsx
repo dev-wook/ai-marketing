@@ -376,6 +376,7 @@ export function PlaceRankingTool() {
   const [result, setResult] = useState<PlaceRankingResponse | null>(null)
   const [visibleCount, setVisibleCount] = useState(initialVisibleCount)
   const [isLoading, setIsLoading] = useState(false)
+  const [shouldScrollToResult, setShouldScrollToResult] = useState(false)
   const [loadingStep, setLoadingStep] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
   const [errorLog, setErrorLog] = useState('')
@@ -411,6 +412,7 @@ export function PlaceRankingTool() {
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const keywordInputRef = useRef<HTMLInputElement | null>(null)
+  const resultSectionRef = useRef<HTMLElement | null>(null)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   const canSubmit = useMemo(
@@ -503,6 +505,22 @@ export function PlaceRankingTool() {
   }, [isLoading])
 
   useEffect(() => {
+    if (!shouldScrollToResult || !result || isLoading) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      resultSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+      setShouldScrollToResult(false)
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isLoading, result, shouldScrollToResult])
+
+  useEffect(() => {
     const target = loadMoreRef.current
 
     if (!target || !canTryLoadMore) {
@@ -534,6 +552,7 @@ export function PlaceRankingTool() {
     setErrorMessage('')
     setErrorLog('')
     setResult(null)
+    setShouldScrollToResult(false)
     setOpenedAddressId(null)
     setPlaceNameFilterInput('')
     setAppliedPlaceNameFilter('')
@@ -567,6 +586,7 @@ export function PlaceRankingTool() {
       }
 
       setResult(nextResult)
+      setShouldScrollToResult(true)
       setVisibleCount(Math.min(initialVisibleCount, nextResult.items.length))
       setRecentKeywords(saveRecentPlaceRankingKeyword(nextKeyword))
       setBlacklistEntries(nextBlacklistEntries)
@@ -1145,13 +1165,21 @@ export function PlaceRankingTool() {
       ) : null}
 
       {result ? (
-        <section className="mx-auto mt-9 w-full max-w-6xl rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
+        <section
+          ref={resultSectionRef}
+          className="mx-auto mt-9 w-full max-w-6xl scroll-mt-28 rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl"
+        >
           <div className="flex flex-col gap-3 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
                 Result
               </p>
               <h3 className="mt-2 text-2xl font-black">네이버 플레이스 순위 조회 결과</h3>
+              <p className="mt-2 text-sm font-bold text-slate-400">
+                {result.items.length > 0
+                  ? `조회가 완료되었습니다. 총 ${result.items.length.toLocaleString('ko-KR')}개의 플레이스를 찾았습니다.`
+                  : '검색 결과가 없습니다.'}
+              </p>
             </div>
             <div className="grid gap-2 md:justify-items-end">
               <span className="w-fit rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-black text-slate-300">

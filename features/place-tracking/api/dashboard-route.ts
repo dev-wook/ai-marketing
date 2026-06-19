@@ -4,9 +4,19 @@ import { createPlaceTrackingDashboard } from '../server/place-tracking-dashboard
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    return NextResponse.json(await createPlaceTrackingDashboard())
+    const placeIdParam = new URL(request.url).searchParams.get('placeId')
+    const placeId = placeIdParam ? Number(placeIdParam) : undefined
+
+    if (placeIdParam && (!placeId || Number.isNaN(placeId))) {
+      return NextResponse.json(
+        { message: '플레이스 정보가 올바르지 않습니다.' },
+        { status: 400 },
+      )
+    }
+
+    return NextResponse.json(await createPlaceTrackingDashboard({ placeId }))
   } catch (error) {
     if (error instanceof Error) {
       console.error('Place tracking dashboard error', {

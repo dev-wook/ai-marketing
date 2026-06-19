@@ -50,6 +50,11 @@ export function MarketingWorkspace() {
     window.scrollTo({ top: 0 })
   }
 
+  const openPlaceTrackingManager = () => {
+    openView('tracking')
+    window.scrollTo({ top: 0 })
+  }
+
   useEffect(() => {
     let isMounted = true
 
@@ -236,7 +241,7 @@ export function MarketingWorkspace() {
           </span>
         </div>
       </div>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_28%_20%,rgba(0,200,255,0.22),transparent_32%),radial-gradient(circle_at_76%_28%,rgba(184,54,255,0.24),transparent_34%),linear-gradient(135deg,#080b14_0%,#0b1020_48%,#090713_100%)]">
+      <div className="min-h-screen bg-[linear-gradient(135deg,#07111d_0%,#0b1020_52%,#120a1e_100%)]">
         <div className="mx-auto flex min-h-screen w-full max-w-7xl min-w-0 flex-col px-5 py-0 md:px-8 md:py-5">
           <header
             className={`fixed inset-x-0 top-0 z-50 min-h-[72px] items-center border-b border-white/10 bg-[#070a12]/92 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.2)] backdrop-blur-xl md:relative md:inset-auto md:z-20 md:min-h-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
@@ -295,7 +300,7 @@ export function MarketingWorkspace() {
             onOpenBlogPosting={() => openView('blog')}
             onOpenKeyword={() => openView('keyword')}
             onOpenPlaceRanking={() => openView('place')}
-            onOpenPlaceTracking={() => openView('tracking')}
+            onOpenPlaceTracking={openPlaceTrackingManager}
             user={authUser}
           />
 
@@ -310,7 +315,7 @@ export function MarketingWorkspace() {
                 onOpenBlogPosting={() => openView('blog')}
                 onOpenKeyword={() => openView('keyword')}
                 onOpenPlaceRanking={() => openView('place')}
-                onOpenPlaceTracking={() => openView('tracking')}
+                onOpenPlaceTracking={openPlaceTrackingManager}
               />
             ) : null}
             {view === 'keyword' ? (
@@ -325,7 +330,7 @@ export function MarketingWorkspace() {
               />
             ) : null}
             {view === 'place' ? <PlaceRankingTool /> : null}
-            {view === 'tracking' ? <PlaceTrackingDashboard /> : null}
+            {view === 'tracking' ? <PlaceTrackingDashboard mode="manager" /> : null}
           </section>
         </div>
       </div>
@@ -397,30 +402,26 @@ function SideMenu({
 
         <nav className="grid gap-3 overflow-y-auto px-5 py-5">
           <MenuButton
-            active={activeView === 'place'}
-            eyebrow="Live"
-            label="네이버 플레이스 순위 조회"
-            onClick={onOpenPlaceRanking}
-          />
-          <MenuButton
             active={activeView === 'tracking'}
-            eyebrow="Manage"
             label="플레이스 관리"
             onClick={onOpenPlaceTracking}
           />
           <MenuButton
+            active={activeView === 'place'}
+            label="플레이스 순위 조회"
+            onClick={onOpenPlaceRanking}
+          />
+          <MenuButton
             active={activeView === 'keyword'}
-            eyebrow="Live"
-            label="AI 검색 노출 키워드 분석"
+            label="AI 키워드 분석"
             onClick={onOpenKeyword}
           />
           <MenuButton
             active={activeView === 'blog'}
-            eyebrow="Live"
             label="AI 블로그 원고 작성"
             onClick={onOpenBlogPosting}
           />
-          <MenuButton eyebrow="Soon" label="AI 모델 이미지 생성" disabled />
+          <MenuButton label="AI 모델 이미지 생성" disabled />
         </nav>
 
         <div className="mt-auto border-t border-white/10 p-5">

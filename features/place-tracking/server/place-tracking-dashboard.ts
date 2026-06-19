@@ -9,8 +9,15 @@ import type {
 } from '../types'
 import { listTrackedPlaces } from './place-tracking-repository'
 
-export async function createPlaceTrackingDashboard(): Promise<TrackingDashboardResponse> {
-  const places = await listTrackedPlaces()
+type CreatePlaceTrackingDashboardOptions = {
+  placeId?: number
+}
+
+export async function createPlaceTrackingDashboard({
+  placeId,
+}: CreatePlaceTrackingDashboardOptions = {}): Promise<TrackingDashboardResponse> {
+  const allPlaces = await listTrackedPlaces()
+  const places = placeId ? allPlaces.filter((place) => place.id === placeId) : allPlaces
   const keywords = Array.from(
     new Set(
       places

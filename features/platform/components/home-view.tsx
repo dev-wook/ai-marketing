@@ -21,20 +21,14 @@ export function HomeView({
 }) {
   const features: HomeFeature[] = [
     {
-      title: '플레이스 관리',
-      description: '내 플레이스와 추적 키워드를 등록하고 대시보드에 연결합니다.',
-      status: 'open',
-      primary: true,
-      action: onOpenPlaceTracking,
-    },
-    {
-      title: '네이버 플레이스 순위 조회',
+      title: '플레이스 순위 조회',
       description: '키워드별 플레이스 노출 순서와 예약 흐름을 확인합니다.',
       status: 'open',
+      primary: true,
       action: onOpenPlaceRanking,
     },
     {
-      title: 'AI 검색 노출 키워드 분석',
+      title: 'AI 키워드 분석',
       description: '검색 의도와 상위 콘텐츠 흐름에 맞는 핵심 키워드를 분석합니다.',
       status: 'open',
       action: onOpenKeyword,
@@ -54,21 +48,7 @@ export function HomeView({
 
   return (
     <div className="grid w-full min-w-0 gap-6 overflow-x-hidden">
-      <PlaceTrackingDashboard compact />
-
-      <section className="grid min-w-0 gap-4 rounded-md border border-white/10 bg-white/[0.035] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.22)] md:p-6">
-        <div className="min-w-0">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200/80">
-            Tools
-          </p>
-          <h2 className="mt-2 break-keep text-2xl font-black tracking-[-0.02em] text-white md:text-3xl">
-            작업 바로가기
-          </h2>
-          <p className="mt-3 max-w-2xl break-keep text-sm font-semibold leading-6 text-slate-300">
-            필요한 기능을 선택해 바로 시작합니다.
-          </p>
-        </div>
-      </section>
+      <PlaceTrackingDashboard onOpenManagerPage={onOpenPlaceTracking} />
 
       <section className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {features.map((feature) => (
@@ -87,22 +67,22 @@ function FeatureCard({ feature }: { feature: HomeFeature }) {
       className={`group grid min-h-56 min-w-0 content-between rounded-md border p-5 transition md:min-h-64 ${
         isOpen
           ? feature.primary
-            ? 'border-cyan-300/55 bg-cyan-300/12 shadow-[0_0_38px_rgba(34,211,238,0.16)] hover:-translate-y-0.5 hover:border-cyan-200/80'
-            : 'border-cyan-300/30 bg-[#0b1727]/82 hover:-translate-y-0.5 hover:border-cyan-200/55'
+            ? 'border-cyan-300/50 bg-[#0b1727]/88 shadow-[0_0_30px_rgba(34,211,238,0.12)] hover:-translate-y-0.5 hover:border-cyan-200/75'
+            : 'border-cyan-300/24 bg-[#0b1727]/82 hover:-translate-y-0.5 hover:border-cyan-200/50'
           : 'border-white/10 bg-white/[0.025] opacity-75'
       }`}
     >
       <div className="min-w-0">
-        <span
-          className={`inline-flex rounded-full px-3 py-1 text-[11px] font-black tracking-[0.08em] ${
-            isOpen
-              ? 'bg-cyan-300/12 text-cyan-100'
-              : 'bg-fuchsia-300/10 text-fuchsia-200/80'
+        {!isOpen ? (
+          <span className="inline-flex rounded-full bg-fuchsia-300/10 px-3 py-1 text-[11px] font-black tracking-[0.08em] text-fuchsia-200/80">
+            준비 중
+          </span>
+        ) : null}
+        <h3
+          className={`break-keep text-2xl font-black leading-tight text-white md:text-3xl ${
+            isOpen ? 'mt-0' : 'mt-4'
           }`}
         >
-          {isOpen ? '서비스 오픈(Beta)' : '준비 중'}
-        </span>
-        <h3 className="mt-4 break-keep text-2xl font-black leading-tight text-white md:text-3xl">
           {feature.title}
         </h3>
         <p className="mt-4 break-keep text-sm font-semibold leading-7 text-slate-300">

@@ -1,13 +1,11 @@
 export function MenuButton({
   active = false,
   disabled = false,
-  eyebrow,
   label,
   onClick,
 }: {
   active?: boolean
   disabled?: boolean
-  eyebrow: string
   label: string
   onClick?: () => void
 }) {
@@ -22,10 +20,7 @@ export function MenuButton({
           : 'border-white/8 bg-white/[0.03] hover:border-white/18 hover:bg-white/[0.06]'
       } ${disabled ? 'cursor-not-allowed opacity-45 hover:border-white/8 hover:bg-white/[0.03]' : ''}`}
     >
-      <span className="block text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/70">
-        {eyebrow}
-      </span>
-      <span className="mt-1 block font-black text-white">{label}</span>
+      <span className="block break-keep text-base font-black text-white">{label}</span>
     </button>
   )
 }
