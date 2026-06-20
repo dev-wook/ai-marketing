@@ -3074,6 +3074,8 @@ function BookingCalendarModal({
     year: selectedParts.year,
     monthIndex: selectedParts.monthIndex,
   })
+  const [pickerMode, setPickerMode] = useState<'year' | 'month' | null>(null)
+  const bookingCalendarYearOptions = useMemo(() => getBookingCalendarYearOptions(), [])
   const calendarCells = getCalendarCells(visibleMonth.year, visibleMonth.monthIndex)
   const visibleMonthKey = formatYearMonthFromParts(
     visibleMonth.year,
@@ -3093,6 +3095,22 @@ function BookingCalendarModal({
         monthIndex: nextDate.getMonth(),
       }
     })
+  }
+
+  const selectVisibleYear = (year: number) => {
+    setVisibleMonth((current) => ({
+      ...current,
+      year,
+    }))
+    setPickerMode(null)
+  }
+
+  const selectVisibleMonth = (monthIndex: number) => {
+    setVisibleMonth((current) => ({
+      ...current,
+      monthIndex,
+    }))
+    setPickerMode(null)
   }
 
   return (
@@ -3116,8 +3134,8 @@ function BookingCalendarModal({
           >
             ‹
           </button>
-          <p className="text-lg font-black text-white">
-            {visibleMonth.year}. {String(visibleMonth.monthIndex + 1).padStart(2, '0')}.
+          <p className="min-w-32 text-center text-lg font-black text-white">
+            {visibleMonth.year}년 {visibleMonth.monthIndex + 1}월
           </p>
           <button
             type="button"
@@ -3128,6 +3146,71 @@ function BookingCalendarModal({
             ›
           </button>
         </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setPickerMode((current) => (current === 'year' ? null : 'year'))}
+            className={`rounded-md border px-3 py-2 text-sm font-black transition ${
+              pickerMode === 'year'
+                ? 'border-cyan-200/45 bg-cyan-200/[0.12] text-cyan-50'
+                : 'border-white/10 bg-white/[0.045] text-slate-100 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
+            }`}
+            aria-expanded={pickerMode === 'year'}
+          >
+            {visibleMonth.year}년
+          </button>
+          <button
+            type="button"
+            onClick={() => setPickerMode((current) => (current === 'month' ? null : 'month'))}
+            className={`rounded-md border px-3 py-2 text-sm font-black transition ${
+              pickerMode === 'month'
+                ? 'border-cyan-200/45 bg-cyan-200/[0.12] text-cyan-50'
+                : 'border-white/10 bg-white/[0.045] text-slate-100 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
+            }`}
+            aria-expanded={pickerMode === 'month'}
+          >
+            {visibleMonth.monthIndex + 1}월
+          </button>
+        </div>
+
+        {pickerMode === 'year' ? (
+          <div className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-white/10 bg-white/[0.035] p-2">
+            {bookingCalendarYearOptions.map((year) => (
+              <button
+                key={year}
+                type="button"
+                onClick={() => selectVisibleYear(year)}
+                className={`rounded-md border px-2 py-2 text-xs font-black transition ${
+                  year === visibleMonth.year
+                    ? 'border-cyan-200/50 bg-cyan-100 text-[#07111f]'
+                    : 'border-white/10 bg-[#0d1322] text-slate-200 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
+                }`}
+              >
+                {year}년
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {pickerMode === 'month' ? (
+          <div className="mt-2 grid grid-cols-4 gap-2 rounded-md border border-white/10 bg-white/[0.035] p-2">
+            {Array.from({ length: 12 }, (_, monthIndex) => (
+              <button
+                key={monthIndex}
+                type="button"
+                onClick={() => selectVisibleMonth(monthIndex)}
+                className={`rounded-md border px-2 py-2 text-xs font-black transition ${
+                  monthIndex === visibleMonth.monthIndex
+                    ? 'border-cyan-200/50 bg-cyan-100 text-[#07111f]'
+                    : 'border-white/10 bg-[#0d1322] text-slate-200 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
+                }`}
+              >
+                {monthIndex + 1}월
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {isCountsLoading || countsError ? (
           <div
@@ -3317,6 +3400,22 @@ function getTodayKstDate() {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
+}
+
+function getKstCurrentYear() {
+  return Number(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+    }).format(new Date()),
+  )
+}
+
+function getBookingCalendarYearOptions() {
+  const currentYear = getKstCurrentYear()
+  const startYear = currentYear - 6
+
+  return Array.from({ length: 8 }, (_, index) => startYear + index)
 }
 
 function formatCalendarDateLabel(value: string) {
