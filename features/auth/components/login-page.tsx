@@ -19,19 +19,17 @@ export function LoginPage() {
   const usernameInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const savedUsername = window.sessionStorage.getItem(savedUsernameStorageKey)
+    const savedUsername =
+      window.localStorage.getItem(savedUsernameStorageKey) ||
+      window.sessionStorage.getItem(savedUsernameStorageKey)
 
     if (savedUsername) {
+      window.localStorage.setItem(savedUsernameStorageKey, savedUsername)
+      window.sessionStorage.removeItem(savedUsernameStorageKey)
       setUsername(savedUsername)
       setRememberUsername(true)
     }
   }, [])
-
-  useEffect(() => {
-    if (!rememberUsername) {
-      window.sessionStorage.removeItem(savedUsernameStorageKey)
-    }
-  }, [rememberUsername])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -63,9 +61,9 @@ export function LoginPage() {
       }
 
       if (rememberUsername) {
-        window.sessionStorage.setItem(savedUsernameStorageKey, username.trim())
+        window.localStorage.setItem(savedUsernameStorageKey, username.trim())
       } else {
-        window.sessionStorage.removeItem(savedUsernameStorageKey)
+        clearSavedUsername()
       }
 
       const nextPath = searchParams.get('next')
@@ -80,8 +78,21 @@ export function LoginPage() {
 
   const clearUsername = () => {
     setUsername('')
-    window.sessionStorage.removeItem(savedUsernameStorageKey)
+    clearSavedUsername()
     usernameInputRef.current?.focus()
+  }
+
+  const clearSavedUsername = () => {
+    window.localStorage.removeItem(savedUsernameStorageKey)
+    window.sessionStorage.removeItem(savedUsernameStorageKey)
+  }
+
+  const handleRememberUsernameChange = (checked: boolean) => {
+    setRememberUsername(checked)
+
+    if (!checked) {
+      clearSavedUsername()
+    }
   }
 
   return (
@@ -144,7 +155,7 @@ export function LoginPage() {
               <input
                 type="checkbox"
                 checked={rememberUsername}
-                onChange={(event) => setRememberUsername(event.target.checked)}
+                onChange={(event) => handleRememberUsernameChange(event.target.checked)}
                 className="h-5 w-5 accent-cyan-200"
               />
               아이디 저장

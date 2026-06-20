@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
+  PlaceBookingCalendarResponse,
   PlaceBookingProduct,
   PlaceBookingSlot,
   PlaceBookingSummaryItem,
@@ -141,6 +142,40 @@ async function requestBookingStatus({
   }
 
   return body as PlaceBookingStatusResponse
+}
+
+async function requestBookingCalendar({
+  place,
+  yearMonth,
+}: {
+  place: PlaceRankingItem
+  yearMonth: string
+}) {
+  const response = await fetch('/api/place-ranking/booking-calendar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      bookingUrl: place.actions.bookingUrl,
+      bookingBusinessId: place.actions.bookingBusinessId,
+      yearMonth,
+    }),
+  })
+  const body = (await response.json()) as
+    | PlaceBookingCalendarResponse
+    | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as PlaceRankingErrorBody
+    const error = new Error(errorBody.message ?? '예약 캘린더 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as PlaceBookingCalendarResponse
 }
 
 async function requestBookingSummaries({
@@ -2570,6 +2605,53 @@ function BookingStatusModal({
     status?.products[0] ??
     null
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  const [calendarMonthKey, setCalendarMonthKey] = useState(formatYearMonthValue(date))
+  const [calendarCountsByMonth, setCalendarCountsByMonth] = useState<
+    Record<string, PlaceBookingCalendarResponse['days']>
+  >({})
+  const [isCalendarCountsLoading, setIsCalendarCountsLoading] = useState(false)
+  const [calendarCountsError, setCalendarCountsError] = useState('')
+
+  useEffect(() => {
+    setCalendarMonthKey(formatYearMonthValue(date))
+  }, [date])
+
+  useEffect(() => {
+    if (!isCalendarOpen || calendarCountsByMonth[calendarMonthKey]) {
+      return
+    }
+
+    let isCanceled = false
+
+    setIsCalendarCountsLoading(true)
+    setCalendarCountsError('')
+
+    requestBookingCalendar({ place, yearMonth: calendarMonthKey })
+      .then((response) => {
+        if (isCanceled) {
+          return
+        }
+
+        setCalendarCountsByMonth((current) => ({
+          ...current,
+          [response.yearMonth]: response.days,
+        }))
+      })
+      .catch(() => {
+        if (!isCanceled) {
+          setCalendarCountsError('예약 수를 확인하지 못했습니다.')
+        }
+      })
+      .finally(() => {
+        if (!isCanceled) {
+          setIsCalendarCountsLoading(false)
+        }
+      })
+
+    return () => {
+      isCanceled = true
+    }
+  }, [calendarCountsByMonth, calendarMonthKey, isCalendarOpen, place])
 
   return (
     <div
@@ -2650,6 +2732,10 @@ function BookingStatusModal({
           {isCalendarOpen ? (
             <BookingCalendarModal
               selectedDate={date}
+              dateCounts={calendarCountsByMonth[calendarMonthKey] ?? {}}
+              isCountsLoading={isCalendarCountsLoading}
+              countsError={calendarCountsError}
+              onVisibleMonthChange={setCalendarMonthKey}
               onSelect={(nextDate) => {
                 setIsCalendarOpen(false)
                 onDateChange(nextDate)
@@ -2966,12 +3052,20 @@ function ReviewBottomSheet({ place, onClose }: ReviewBottomSheetProps) {
 
 type BookingCalendarModalProps = {
   selectedDate: string
+  dateCounts?: PlaceBookingCalendarResponse['days']
+  isCountsLoading?: boolean
+  countsError?: string
+  onVisibleMonthChange?: (yearMonth: string) => void
   onSelect: (date: string) => void
   onClose: () => void
 }
 
 function BookingCalendarModal({
   selectedDate,
+  dateCounts = {},
+  isCountsLoading = false,
+  countsError = '',
+  onVisibleMonthChange,
   onSelect,
   onClose,
 }: BookingCalendarModalProps) {
@@ -2981,6 +3075,14 @@ function BookingCalendarModal({
     monthIndex: selectedParts.monthIndex,
   })
   const calendarCells = getCalendarCells(visibleMonth.year, visibleMonth.monthIndex)
+  const visibleMonthKey = formatYearMonthFromParts(
+    visibleMonth.year,
+    visibleMonth.monthIndex,
+  )
+
+  useEffect(() => {
+    onVisibleMonthChange?.(visibleMonthKey)
+  }, [onVisibleMonthChange, visibleMonthKey])
 
   const moveMonth = (offset: number) => {
     setVisibleMonth((current) => {
@@ -3027,6 +3129,34 @@ function BookingCalendarModal({
           </button>
         </div>
 
+        {isCountsLoading || countsError ? (
+          <div
+            className={`mt-4 overflow-hidden rounded-md border px-3 py-2 ${
+              countsError
+                ? 'border-rose-300/20 bg-rose-400/[0.08]'
+                : 'border-cyan-300/20 bg-cyan-300/[0.06]'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              {isCountsLoading ? (
+                <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-cyan-100/25 border-t-cyan-100" />
+              ) : null}
+              <p
+                className={`text-center text-xs font-black ${
+                  countsError ? 'text-rose-100/85' : 'text-cyan-100/80'
+                }`}
+              >
+                {countsError || '날짜별 예약 수를 불러오는 중입니다.'}
+              </p>
+            </div>
+            {isCountsLoading ? (
+              <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="mt-4 grid grid-cols-7 gap-1 text-center">
           {calendarWeekdayLabels.map((label) => (
             <span
@@ -3038,18 +3168,37 @@ function BookingCalendarModal({
           ))}
           {calendarCells.map((cell, index) =>
             cell ? (
-              <button
-                key={cell.value}
-                type="button"
-                onClick={() => onSelect(cell.value)}
-                className={`min-h-10 rounded-md text-sm font-black transition ${
-                  cell.value === selectedDate
+              (() => {
+                const daySummary = dateCounts[cell.value]
+                const bookedCount = daySummary?.bookedSlots ?? 0
+                const isSelected = cell.value === selectedDate
+
+                return (
+                  <button
+                    key={cell.value}
+                    type="button"
+                    onClick={() => onSelect(cell.value)}
+                    className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-sm font-black transition ${
+                      isSelected
                     ? 'bg-cyan-100 text-[#07111f]'
                     : 'border border-white/10 bg-white/[0.04] text-slate-200 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
-                }`}
-              >
-                {cell.day}
-              </button>
+                    }`}
+                  >
+                    <span>{cell.day}</span>
+                    {bookedCount > 0 ? (
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none ${
+                          isSelected
+                            ? 'bg-[#07111f]/12 text-[#07111f]'
+                            : 'bg-fuchsia-300/12 text-fuchsia-100'
+                        }`}
+                      >
+                        예약 {bookedCount}
+                      </span>
+                    ) : null}
+                  </button>
+                )
+              })()
             ) : (
               <span key={`blank-${index}`} aria-hidden="true" />
             ),
@@ -3174,6 +3323,16 @@ function formatCalendarDateLabel(value: string) {
   const { year, monthIndex, day } = parseDateValue(value)
 
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function formatYearMonthValue(value: string) {
+  const { year, monthIndex } = parseDateValue(value)
+
+  return formatYearMonthFromParts(year, monthIndex)
+}
+
+function formatYearMonthFromParts(year: number, monthIndex: number) {
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}`
 }
 
 function formatBookingTopDateLabel(value: string) {

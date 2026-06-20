@@ -243,6 +243,26 @@ export type PlaceBookingStatusRequest = {
   date?: string
 }
 
+export type PlaceBookingCalendarRequest = {
+  bookingUrl?: string
+  bookingBusinessId?: string
+  yearMonth?: string
+}
+
+export type PlaceBookingCalendarDaySummary = {
+  date: string
+  status: 'ready' | 'failed'
+  bookedSlots: number
+  availableSlots: number
+  productCount: number
+  message?: string
+}
+
+export type PlaceBookingCalendarResponse = {
+  yearMonth: string
+  days: Record<string, PlaceBookingCalendarDaySummary>
+}
+
 export type PlaceBookingSummaryRequestItem = {
   placeId: string
   rank: number
