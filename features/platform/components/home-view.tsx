@@ -11,11 +11,13 @@ type HomeFeature = {
 export function HomeView({
   onOpenBlogPosting,
   onOpenKeyword,
+  onOpenPlaceDiagnosis,
   onOpenPlaceRanking,
   onOpenPlaceTracking,
 }: {
   onOpenBlogPosting: () => void
   onOpenKeyword: () => void
+  onOpenPlaceDiagnosis: () => void
   onOpenPlaceRanking: () => void
   onOpenPlaceTracking: () => void
 }) {
@@ -26,6 +28,12 @@ export function HomeView({
       status: 'open',
       primary: true,
       action: onOpenPlaceRanking,
+    },
+    {
+      title: 'AI 플레이스 진단',
+      description: '플레이스명을 검색해 선택하고 AI 노출 진단 점수와 개선 피드백을 생성합니다.',
+      status: 'open',
+      action: onOpenPlaceDiagnosis,
     },
     {
       title: 'AI 키워드 분석',

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { AiPlaceDiagnosisTool } from '@/features/ai-place-diagnosis/components/ai-place-diagnosis-tool'
 import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
 import type { AuthUser } from '@/features/auth/types'
 import { KeywordTool } from '@/features/keyword-analysis/components/keyword-tool'
@@ -10,7 +11,7 @@ import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
 import { MenuButton } from './menu-button'
 
-type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'tracking'
+type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'diagnosis' | 'tracking'
 
 const refreshViewStorageKey = 'aiva-refresh-view'
 const pullRefreshThreshold = 84
@@ -20,6 +21,7 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   keyword: '키워드 분석',
   blog: '블로그 원고 작성',
   place: '플레이스 순위 조회',
+  diagnosis: 'AI 플레이스 진단',
   tracking: '플레이스 관리',
 }
 
@@ -115,6 +117,7 @@ export function MarketingWorkspace() {
       savedView === 'keyword'
       || savedView === 'blog'
       || savedView === 'place'
+      || savedView === 'diagnosis'
       || savedView === 'tracking'
     ) {
       setView(savedView)
@@ -298,6 +301,7 @@ export function MarketingWorkspace() {
             onClose={() => setIsMenuOpen(false)}
             onLogout={handleLogout}
             onOpenBlogPosting={() => openView('blog')}
+            onOpenPlaceDiagnosis={() => openView('diagnosis')}
             onOpenKeyword={() => openView('keyword')}
             onOpenPlaceRanking={() => openView('place')}
             onOpenPlaceTracking={openPlaceTrackingManager}
@@ -313,6 +317,7 @@ export function MarketingWorkspace() {
             {view === 'home' ? (
               <HomeView
                 onOpenBlogPosting={() => openView('blog')}
+                onOpenPlaceDiagnosis={() => openView('diagnosis')}
                 onOpenKeyword={() => openView('keyword')}
                 onOpenPlaceRanking={() => openView('place')}
                 onOpenPlaceTracking={openPlaceTrackingManager}
@@ -330,6 +335,7 @@ export function MarketingWorkspace() {
               />
             ) : null}
             {view === 'place' ? <PlaceRankingTool /> : null}
+            {view === 'diagnosis' ? <AiPlaceDiagnosisTool /> : null}
             {view === 'tracking' ? <PlaceTrackingDashboard mode="manager" /> : null}
           </section>
         </div>
@@ -346,6 +352,7 @@ function SideMenu({
   onLogout,
   onOpenBlogPosting,
   onOpenKeyword,
+  onOpenPlaceDiagnosis,
   onOpenPlaceRanking,
   onOpenPlaceTracking,
   user,
@@ -357,6 +364,7 @@ function SideMenu({
   onLogout: () => void
   onOpenBlogPosting: () => void
   onOpenKeyword: () => void
+  onOpenPlaceDiagnosis: () => void
   onOpenPlaceRanking: () => void
   onOpenPlaceTracking: () => void
   user: AuthUser | null
@@ -410,6 +418,11 @@ function SideMenu({
             active={activeView === 'place'}
             label="플레이스 순위 조회"
             onClick={onOpenPlaceRanking}
+          />
+          <MenuButton
+            active={activeView === 'diagnosis'}
+            label="AI 플레이스 진단"
+            onClick={onOpenPlaceDiagnosis}
           />
           <MenuButton
             active={activeView === 'keyword'}
