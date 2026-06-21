@@ -8,13 +8,16 @@ export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
   const authHeader = request.headers.get('authorization')
   const cronSchedule = request.headers.get('x-vercel-cron-schedule')
+  const isVercelCronRequest = Boolean(cronSchedule)
+  const isSecretAuthorized = Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`)
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}` && !cronSchedule) {
+  if (!isVercelCronRequest && !isSecretAuthorized) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    const result = await runPlaceRankingDailyBatch()
+    const snapshotDate = createDailyCronSnapshotDate()
+    const result = await runPlaceRankingDailyBatch({ snapshotDate })
 
     return NextResponse.json(result)
   } catch (error) {
@@ -40,4 +43,40 @@ export async function GET(request: Request) {
       { status: 500 },
     )
   }
+}
+
+function createDailyCronSnapshotDate(now = new Date()) {
+  const koreaNow = getKoreaDateParts(now)
+
+  if (koreaNow.hour < 3) {
+    return toKoreaDateString(addDays(now, -1))
+  }
+
+  return toKoreaDateString(now)
+}
+
+function toKoreaDateString(date: Date) {
+  return date.toLocaleDateString('sv-SE', {
+    timeZone: 'Asia/Seoul',
+  })
+}
+
+function addDays(date: Date, days: number) {
+  const nextDate = new Date(date)
+
+  nextDate.setUTCDate(nextDate.getUTCDate() + days)
+
+  return nextDate
+}
+
+function getKoreaDateParts(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    hour: 'numeric',
+    hourCycle: 'h23',
+    hour12: false,
+  }).formatToParts(date)
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0) % 24
+
+  return { hour }
 }

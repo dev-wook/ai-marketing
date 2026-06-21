@@ -33,12 +33,16 @@ export async function removePlaceRankingBatchKeyword(id: number) {
   await deletePlaceRankingBatchKeyword(id)
 }
 
-export async function runPlaceRankingDailyBatch(): Promise<PlaceRankingBatchRunResponse> {
+export async function runPlaceRankingDailyBatch({
+  snapshotDate,
+}: {
+  snapshotDate?: string
+} = {}): Promise<PlaceRankingBatchRunResponse> {
   const keywords = await listPlaceRankingBatchKeywords({ activeOnly: true })
   const results: PlaceRankingBatchRunResponse['results'] = []
 
   for (const item of keywords) {
-    const result = await runSingleKeyword(item)
+    const result = await runSingleKeyword(item, { snapshotDate })
 
     results.push(result)
   }
@@ -54,7 +58,14 @@ export async function runPlaceRankingDailyBatch(): Promise<PlaceRankingBatchRunR
   }
 }
 
-async function runSingleKeyword(item: PlaceRankingBatchKeyword) {
+async function runSingleKeyword(
+  item: PlaceRankingBatchKeyword,
+  {
+    snapshotDate,
+  }: {
+    snapshotDate?: string
+  } = {},
+) {
   try {
     const ranking = await collectNaverPlaceRankings({
       keyword: item.keyword,
@@ -62,9 +73,12 @@ async function runSingleKeyword(item: PlaceRankingBatchKeyword) {
     })
     const snapshot = await recordPlaceRankingSnapshots({
       keyword: ranking.keyword,
+      snapshotDate,
       items: ranking.items,
     })
-    const message = `${snapshot.totalSaved}개 순위를 기록했습니다.`
+    const message = snapshot.snapshotDate
+      ? `${snapshot.snapshotDate} 기준 ${snapshot.totalSaved}개 순위를 기록했습니다.`
+      : `${snapshot.totalSaved}개 순위를 기록했습니다.`
 
     await updatePlaceRankingBatchKeywordRunStatus({
       id: item.id,

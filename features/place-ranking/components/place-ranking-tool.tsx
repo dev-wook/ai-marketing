@@ -1733,11 +1733,21 @@ function BatchKeywordModal({
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-black text-cyan-50">{item.keyword}</p>
-                    <p className="mt-1 text-xs font-bold text-slate-500">
-                      {item.lastRunAt
-                        ? `마지막 기록: ${formatBatchRunAt(item.lastRunAt)} · ${formatBatchRunStatus(item.lastRunStatus)}`
-                        : '아직 자동 기록 전입니다.'}
-                    </p>
+                    {item.lastRunAt ? (
+                      <div className="mt-1 grid gap-0.5 text-xs font-bold text-slate-500">
+                        {item.lastRunMessage ? (
+                          <p className="truncate text-slate-400">{item.lastRunMessage}</p>
+                        ) : null}
+                        <p>
+                          실행 시각: {formatBatchRunAt(item.lastRunAt)} ·{' '}
+                          {formatBatchRunStatus(item.lastRunStatus)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        아직 자동 기록 전입니다.
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
