@@ -15,11 +15,14 @@ export async function GET(request: NextRequest) {
     const rows = await listAiPlaceBenchmarkRefreshStatuses()
     const now = Date.now()
     const keywords = rows.map((row) => {
-      const isRunning = row.job_status === 'PENDING' || row.job_status === 'RUNNING'
+      const isQueued = row.job_status === 'PENDING' || row.job_status === 'RETRY_WAIT'
+      const isRunning = row.job_status === 'RUNNING'
       const profileCreatedAt = row.profile_created_at
       const profileAgeMs = profileCreatedAt ? now - new Date(profileCreatedAt).getTime() : null
       const isStale = profileAgeMs === null || profileAgeMs > staleAfterMs
-      const status = isRunning
+      const status = isQueued
+        ? 'QUEUED'
+        : isRunning
         ? 'UPDATING'
         : row.job_status === 'FAILED'
           ? 'FAILED'
@@ -51,6 +54,8 @@ export async function GET(request: NextRequest) {
               totalCount: row.job_total_count ?? 0,
               nextRankStart: row.job_next_rank_start ?? 0,
               errorMessage: row.job_error_message,
+              retryCount: row.job_retry_count ?? 0,
+              nextAttemptAt: row.job_next_attempt_at,
             }
           : null,
       }
@@ -58,7 +63,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       checkedAt: new Date(now).toISOString(),
-      hasUpdatingKeyword: keywords.some((keyword) => keyword.status === 'UPDATING'),
+      hasUpdatingKeyword: keywords.some(
+        (keyword) => keyword.status === 'QUEUED' || keyword.status === 'UPDATING',
+      ),
       keywords,
     })
   } catch (error) {

@@ -16,6 +16,53 @@ type DiagnosisErrorBody = {
   debug?: unknown
 }
 
+type AiDiagnosisBenchmarkKeyword = {
+  id: string
+  keyword: string
+  normalized_keyword: string
+  active_profile_id: string | null
+  region_term: string | null
+  service_term: string | null
+  need_term: string | null
+  intent_cluster_key: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+type AiDiagnosisDataRefreshStatus = {
+  checkedAt: string
+  hasUpdatingKeyword: boolean
+  keywords: Array<{
+    keyword: string
+    normalizedKeyword: string
+    status: 'FRESH' | 'NEEDS_REFRESH' | 'QUEUED' | 'UPDATING' | 'PARTIAL' | 'FAILED'
+    latestProfile: {
+      status: string | null
+      createdAt: string
+      sampleCount: number
+      dataConfidence: number
+    } | null
+    latestRun: {
+      id: string
+      status: string | null
+      createdAt: string | null
+      completedAt: string | null
+      evaluatedCount: number
+      totalCount: number
+      nextRankStart: number
+      errorMessage: string | null
+      retryCount?: number
+      nextAttemptAt?: string | null
+    } | null
+  }>
+}
+
+type AiDiagnosisDataMessage = {
+  type: 'success' | 'warning' | 'error' | 'info'
+  message: string
+}
+
 const loadingSteps = [
   '키워드 기준 플레이스 신호를 수집하고 있습니다.',
   '소개글과 예약상품 상세 데이터를 자동 보강하고 있습니다.',
@@ -87,6 +134,122 @@ async function requestDiagnosis({
   return body as AiPlaceDiagnosisResponse
 }
 
+async function requestAiDiagnosisBenchmarkKeywords() {
+  const response = await fetch('/api/ai-place-diagnosis/benchmark/keywords')
+  const body = (await response.json()) as
+    | { keywords: AiDiagnosisBenchmarkKeyword[] }
+    | DiagnosisErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as DiagnosisErrorBody
+    const error = new Error(errorBody.message ?? 'AI 진단 기준 키워드 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return (body as { keywords: AiDiagnosisBenchmarkKeyword[] }).keywords
+}
+
+async function requestAddAiDiagnosisBenchmarkKeyword(keyword: string) {
+  const response = await fetch('/api/ai-place-diagnosis/benchmark/keywords', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword }),
+  })
+  const body = (await response.json()) as
+    | { keyword: AiDiagnosisBenchmarkKeyword }
+    | DiagnosisErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as DiagnosisErrorBody
+    const error = new Error(errorBody.message ?? 'AI 진단 기준 키워드 추가에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return (body as { keyword: AiDiagnosisBenchmarkKeyword }).keyword
+}
+
+async function requestDeleteAiDiagnosisBenchmarkKeyword(id: string) {
+  const response = await fetch('/api/ai-place-diagnosis/benchmark/keywords', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  const body = (await response.json()) as { ok: boolean } | DiagnosisErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as DiagnosisErrorBody
+    const error = new Error(errorBody.message ?? 'AI 진단 기준 키워드 삭제에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as { ok: boolean }
+}
+
+async function requestAiPlaceBenchmarkDailyRun() {
+  const response = await fetch('/api/ai-place-diagnosis/benchmark/daily', {
+    method: 'POST',
+  })
+  const body = (await response.json()) as
+    | {
+        totalKeywords?: number
+        successCount?: number
+        failureCount?: number
+        results?: Array<{ keyword?: string; ok?: boolean; result?: unknown; message?: string }>
+      }
+    | DiagnosisErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as DiagnosisErrorBody
+    const error = new Error(errorBody.message ?? 'AI 진단 데이터 최신화에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as {
+    totalKeywords?: number
+    successCount?: number
+    failureCount?: number
+    results?: Array<{ keyword?: string; ok?: boolean; result?: unknown; message?: string }>
+  }
+}
+
+async function requestAiDiagnosisDataRefreshStatus() {
+  const response = await fetch('/api/ai-place-diagnosis/benchmark/status')
+  const body = (await response.json()) as AiDiagnosisDataRefreshStatus | DiagnosisErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as DiagnosisErrorBody
+    const error = new Error(errorBody.message ?? 'AI 진단 기준 데이터 상태 조회에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as AiDiagnosisDataRefreshStatus
+}
+
 export function AiPlaceDiagnosisTool() {
   const [placeSearchQuery, setPlaceSearchQuery] = useState('')
   const [recentPlaceSearches, setRecentPlaceSearches] = useState<string[]>([])
@@ -101,6 +264,17 @@ export function AiPlaceDiagnosisTool() {
   const [errorMessage, setErrorMessage] = useState('')
   const [errorRetryNotice, setErrorRetryNotice] = useState('')
   const [errorLog, setErrorLog] = useState('')
+  const [benchmarkKeywords, setBenchmarkKeywords] = useState<AiDiagnosisBenchmarkKeyword[]>([])
+  const [benchmarkKeywordInput, setBenchmarkKeywordInput] = useState('')
+  const [isBenchmarkKeywordLoading, setIsBenchmarkKeywordLoading] = useState(false)
+  const [aiDiagnosisDataStatus, setAiDiagnosisDataStatus] =
+    useState<AiDiagnosisDataRefreshStatus | null>(null)
+  const [isAiDiagnosisDataStatusLoading, setIsAiDiagnosisDataStatusLoading] = useState(false)
+  const [isAiDiagnosisDataRefreshLoading, setIsAiDiagnosisDataRefreshLoading] = useState(false)
+  const [aiDiagnosisDataMessage, setAiDiagnosisDataMessage] =
+    useState<AiDiagnosisDataMessage | null>(null)
+  const [isAiDiagnosisDataModalOpen, setIsAiDiagnosisDataModalOpen] = useState(false)
+  const [isAiDiagnosisRefreshConfirmOpen, setIsAiDiagnosisRefreshConfirmOpen] = useState(false)
 
   const canSubmit = useMemo(
     () => Boolean(selectedPlace && keyword.trim() && !isLoading && !isSearching),
@@ -114,7 +288,168 @@ export function AiPlaceDiagnosisTool() {
 
   useEffect(() => {
     setRecentPlaceSearches(readRecentPlaceSearches())
+    loadBenchmarkKeywords()
+    loadAiDiagnosisDataStatus({ silent: true })
   }, [])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      loadAiDiagnosisDataStatus({ silent: true })
+    }, 10000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isAiDiagnosisDataModalOpen && !isAiDiagnosisRefreshConfirmOpen) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isAiDiagnosisDataModalOpen, isAiDiagnosisRefreshConfirmOpen])
+
+  const loadBenchmarkKeywords = async () => {
+    setIsBenchmarkKeywordLoading(true)
+
+    try {
+      setBenchmarkKeywords(await requestAiDiagnosisBenchmarkKeywords())
+    } catch (error) {
+      setAiDiagnosisDataMessage({
+        type: 'error',
+        message:
+          error instanceof Error ? error.message : 'AI 진단 기준 키워드 조회에 실패했습니다.',
+      })
+    } finally {
+      setIsBenchmarkKeywordLoading(false)
+    }
+  }
+
+  const loadAiDiagnosisDataStatus = async ({ silent = false }: { silent?: boolean } = {}) => {
+    setIsAiDiagnosisDataStatusLoading(true)
+
+    try {
+      setAiDiagnosisDataStatus(await requestAiDiagnosisDataRefreshStatus())
+    } catch (error) {
+      if (!silent) {
+        setAiDiagnosisDataMessage({
+          type: 'error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'AI 진단 기준 데이터 상태 조회에 실패했습니다.',
+        })
+      }
+    } finally {
+      setIsAiDiagnosisDataStatusLoading(false)
+    }
+  }
+
+  const submitBenchmarkKeyword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const nextKeyword = benchmarkKeywordInput.trim()
+
+    if (!nextKeyword || isBenchmarkKeywordLoading) {
+      return
+    }
+
+    setIsBenchmarkKeywordLoading(true)
+
+    try {
+      const created = await requestAddAiDiagnosisBenchmarkKeyword(nextKeyword)
+
+      setBenchmarkKeywords((current) => [
+        created,
+        ...current.filter(
+          (item) => item.id !== created.id && item.normalized_keyword !== created.normalized_keyword,
+        ),
+      ])
+      setBenchmarkKeywordInput('')
+      setAiDiagnosisDataMessage({
+        type: 'success',
+        message: 'AI 진단 기준 키워드를 추가했습니다.',
+      })
+      await loadAiDiagnosisDataStatus({ silent: true })
+    } catch (error) {
+      setAiDiagnosisDataMessage({
+        type: 'error',
+        message:
+          error instanceof Error ? error.message : 'AI 진단 기준 키워드 추가에 실패했습니다.',
+      })
+    } finally {
+      setIsBenchmarkKeywordLoading(false)
+    }
+  }
+
+  const removeBenchmarkKeyword = async (id: string) => {
+    if (isBenchmarkKeywordLoading) {
+      return
+    }
+
+    setIsBenchmarkKeywordLoading(true)
+
+    try {
+      await requestDeleteAiDiagnosisBenchmarkKeyword(id)
+      setBenchmarkKeywords((current) => current.filter((item) => item.id !== id))
+      setAiDiagnosisDataMessage({
+        type: 'success',
+        message: 'AI 진단 기준 키워드를 삭제했습니다.',
+      })
+      await loadAiDiagnosisDataStatus({ silent: true })
+    } catch (error) {
+      setAiDiagnosisDataMessage({
+        type: 'error',
+        message:
+          error instanceof Error ? error.message : 'AI 진단 기준 키워드 삭제에 실패했습니다.',
+      })
+    } finally {
+      setIsBenchmarkKeywordLoading(false)
+    }
+  }
+
+  const runAiDiagnosisDataRefresh = async () => {
+    if (isAiDiagnosisDataRefreshLoading || aiDiagnosisDataStatus?.hasUpdatingKeyword) {
+      return
+    }
+
+    setIsAiDiagnosisDataRefreshLoading(true)
+    setAiDiagnosisDataMessage({
+      type: 'info',
+      message: '등록된 AI 진단 기준 키워드의 플레이스 관찰 데이터를 최신화합니다.',
+    })
+
+    try {
+      const refreshResult = await requestAiPlaceBenchmarkDailyRun()
+      const successCount = refreshResult.successCount ?? 0
+      const totalKeywords = refreshResult.totalKeywords ?? 0
+      const failureCount = refreshResult.failureCount ?? 0
+      const message =
+        failureCount > 0
+          ? `AI 진단 데이터 최신화가 일부 시작되었습니다. ${successCount}/${totalKeywords}개 성공, ${failureCount}개 실패`
+          : `AI 진단 데이터 최신화가 시작되었습니다. 등록 키워드 ${successCount}개를 수집하고 분석합니다.`
+
+      setAiDiagnosisDataMessage({
+        type: failureCount > 0 ? 'warning' : 'success',
+        message,
+      })
+      await loadAiDiagnosisDataStatus()
+    } catch (error) {
+      setAiDiagnosisDataMessage({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'AI 진단 데이터 최신화에 실패했습니다.',
+      })
+    } finally {
+      setIsAiDiagnosisDataRefreshLoading(false)
+    }
+  }
 
   const searchPlaces = async (query: string) => {
     const trimmedQuery = query.trim()
@@ -206,18 +541,37 @@ export function AiPlaceDiagnosisTool() {
   return (
     <div className="grid min-w-0 gap-6">
       <section className="grid gap-5 rounded-md border border-cyan-300/20 bg-[#0b1727]/82 p-5 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:p-6">
-        <div className="grid gap-2">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/75">
-            AI Place Diagnosis
-          </p>
-          <h1 className="break-keep text-2xl font-black text-white md:text-3xl">
-            AI 플레이스 진단
-          </h1>
-          <p className="break-keep text-sm font-semibold leading-7 text-slate-300">
-            플레이스명을 검색해 매장을 선택하고, 분석 키워드를 입력하면 소개글, 예약상품,
-            리뷰, 이미지, 전환 기능을 자동 수집해 AI 관점의 진단 점수와 개선 피드백을
-            생성합니다.
-          </p>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+          <div className="grid gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/75">
+              AI Place Diagnosis
+            </p>
+            <h1 className="break-keep text-2xl font-black text-white md:text-3xl">
+              AI 플레이스 진단
+            </h1>
+            <p className="break-keep text-sm font-semibold leading-7 text-slate-300">
+              플레이스명을 검색해 매장을 선택하고, 분석 키워드를 입력하면 소개글, 예약상품,
+              리뷰, 이미지, 전환 기능을 자동 수집해 AI 관점의 진단 점수와 개선 피드백을
+              생성합니다.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsAiDiagnosisDataModalOpen(true)
+              loadBenchmarkKeywords()
+              loadAiDiagnosisDataStatus({ silent: true })
+            }}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.045] px-4 text-xs font-black text-slate-200 transition hover:border-cyan-300/30 hover:bg-cyan-300/[0.08] hover:text-cyan-50"
+          >
+            <span className="text-cyan-200/75">운영 설정</span>
+            <span className="h-3 w-px bg-white/15" aria-hidden="true" />
+            AI 진단 데이터 관리
+            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-2 py-0.5 text-[11px] text-cyan-100/80">
+              {benchmarkKeywords.length}
+            </span>
+          </button>
         </div>
 
         <form
@@ -348,6 +702,286 @@ export function AiPlaceDiagnosisTool() {
       </section>
 
       {result ? <DiagnosisResult result={result} /> : null}
+
+      {isAiDiagnosisDataModalOpen ? (
+        <AiDiagnosisDataManagementModal
+          keywordInput={benchmarkKeywordInput}
+          keywords={benchmarkKeywords}
+          message={aiDiagnosisDataMessage}
+          status={aiDiagnosisDataStatus}
+          isKeywordLoading={isBenchmarkKeywordLoading}
+          isStatusLoading={isAiDiagnosisDataStatusLoading}
+          isRefreshLoading={isAiDiagnosisDataRefreshLoading}
+          onKeywordInputChange={setBenchmarkKeywordInput}
+          onSubmitKeyword={submitBenchmarkKeyword}
+          onRemoveKeyword={removeBenchmarkKeyword}
+          onRequestDataRefresh={() => setIsAiDiagnosisRefreshConfirmOpen(true)}
+          onClose={() => setIsAiDiagnosisDataModalOpen(false)}
+        />
+      ) : null}
+
+      {isAiDiagnosisRefreshConfirmOpen ? (
+        <AiDiagnosisDataRefreshConfirmModal
+          isLoading={isAiDiagnosisDataRefreshLoading}
+          onCancel={() => setIsAiDiagnosisRefreshConfirmOpen(false)}
+          onConfirm={() => {
+            setIsAiDiagnosisRefreshConfirmOpen(false)
+            runAiDiagnosisDataRefresh()
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+type AiDiagnosisDataManagementModalProps = {
+  keywordInput: string
+  keywords: AiDiagnosisBenchmarkKeyword[]
+  message: AiDiagnosisDataMessage | null
+  status: AiDiagnosisDataRefreshStatus | null
+  isKeywordLoading: boolean
+  isStatusLoading: boolean
+  isRefreshLoading: boolean
+  onKeywordInputChange: (value: string) => void
+  onSubmitKeyword: (event: FormEvent<HTMLFormElement>) => void
+  onRemoveKeyword: (id: string) => void
+  onRequestDataRefresh: () => void
+  onClose: () => void
+}
+
+function AiDiagnosisDataManagementModal({
+  keywordInput,
+  keywords,
+  message,
+  status,
+  isKeywordLoading,
+  isStatusLoading,
+  isRefreshLoading,
+  onKeywordInputChange,
+  onSubmitKeyword,
+  onRemoveKeyword,
+  onRequestDataRefresh,
+  onClose,
+}: AiDiagnosisDataManagementModalProps) {
+  const latestStatus = getRepresentativeAiDiagnosisDataStatus(status)
+  const isDataUpdating = isRefreshLoading || Boolean(status?.hasUpdatingKeyword)
+  const statusLabel = latestStatus
+    ? formatAiDiagnosisDataStatusLabel(latestStatus.status)
+    : keywords.length > 0
+      ? '갱신 필요'
+      : '키워드 없음'
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="AI 진단 데이터 관리"
+      onClick={onClose}
+    >
+      <section
+        className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.52)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              AI Diagnosis Data
+            </p>
+            <h2 className="mt-1 break-keep text-2xl font-black text-white">
+              AI 진단 데이터 관리
+            </h2>
+            <p className="mt-2 break-keep text-sm font-bold leading-6 text-slate-400">
+              AI 플레이스 진단 기준으로 사용할 키워드와 최신화 상태를 관리합니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="min-h-0 overflow-y-auto p-5">
+          <div className="grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-3 text-xs font-bold text-slate-300 sm:grid-cols-2">
+            <p>
+              최근 최신화:{' '}
+              <span className="text-slate-100">
+                {latestStatus?.latestProfile?.createdAt
+                  ? formatDateTime(latestStatus.latestProfile.createdAt)
+                  : '아직 없음'}
+              </span>
+            </p>
+            <p>
+              등록 키워드: <span className="text-slate-100">{keywords.length}개</span>
+            </p>
+            <p>
+              분석 범위: <span className="text-slate-100">플레이스 1~50위</span>
+            </p>
+            <p>
+              상태: <span className="text-slate-100">{statusLabel}</span>
+            </p>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_13rem]">
+            <button
+              type="button"
+              onClick={onRequestDataRefresh}
+              disabled={isDataUpdating || isKeywordLoading || keywords.length === 0}
+              className="min-h-12 rounded-md border border-cyan-300/35 bg-cyan-300/14 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/22 disabled:cursor-not-allowed disabled:opacity-50 sm:order-2"
+            >
+              {isDataUpdating ? 'AI 진단 데이터 최신화 중...' : 'AI 진단 데이터 최신화'}
+            </button>
+            <p className="break-keep text-xs font-bold leading-5 text-slate-400 sm:order-1">
+              {isStatusLoading ? '현재 상태 확인 중...' : '실행 상태는 자동으로 반영됩니다.'}
+            </p>
+          </div>
+
+          <form
+            onSubmit={onSubmitKeyword}
+            className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px]"
+          >
+            <input
+              value={keywordInput}
+              onChange={(event) => onKeywordInputChange(event.target.value)}
+              placeholder="예: 노원 속눈썹펌"
+              disabled={isKeywordLoading}
+              className="min-h-12 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={!keywordInput.trim() || isKeywordLoading}
+              className="min-h-12 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              추가
+            </button>
+          </form>
+
+          <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/65">
+                AI 진단 기준 키워드 {keywords.length}개
+              </p>
+            </div>
+
+            <div className="grid max-h-52 gap-2 overflow-y-auto pr-1">
+              {keywords.length ? (
+                keywords.map((keyword) => (
+                  <div
+                    key={keyword.id}
+                    className="grid gap-2 rounded-md border border-white/10 bg-[#090d18]/75 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-cyan-50">
+                        {keyword.keyword}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveKeyword(keyword.id)}
+                      disabled={isKeywordLoading}
+                      className="min-h-9 rounded-md border border-white/10 bg-white/[0.05] px-3 text-xs font-black text-slate-200 transition hover:bg-rose-400/15 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-400">
+                  AI 진단 기준 키워드를 추가하면 배치가 해당 키워드의 플레이스 관찰 데이터를
+                  관리합니다.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {latestStatus?.status === 'NEEDS_REFRESH' ? (
+            <p className="mt-3 rounded-md border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-bold leading-5 text-amber-100">
+              마지막 최신화 이후 24시간이 지났습니다.
+            </p>
+          ) : null}
+          {message ? (
+            <p
+              className={[
+                'mt-3 rounded-md border px-3 py-2 text-xs font-bold leading-5',
+                message.type === 'error'
+                  ? 'border-rose-300/20 bg-rose-300/[0.08] text-rose-100'
+                  : message.type === 'warning'
+                    ? 'border-amber-300/20 bg-amber-300/[0.08] text-amber-100'
+                  : message.type === 'success'
+                    ? 'border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-100'
+                    : 'border-cyan-300/20 bg-cyan-300/[0.08] text-cyan-100',
+              ].join(' ')}
+            >
+              {message.message}
+            </p>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+type AiDiagnosisDataRefreshConfirmModalProps = {
+  isLoading: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}
+
+function AiDiagnosisDataRefreshConfirmModal({
+  isLoading,
+  onCancel,
+  onConfirm,
+}: AiDiagnosisDataRefreshConfirmModalProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[9999] grid place-items-center bg-black/75 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="AI 진단 데이터 최신화 확인"
+      onClick={onCancel}
+    >
+      <section
+        className="w-full max-w-lg rounded-2xl border border-cyan-300/20 bg-[#070b15] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.56)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+          AI Diagnosis Data
+        </p>
+        <h3 className="mt-2 break-keep text-2xl font-black text-white">
+          AI 진단 데이터를 최신화할까요?
+        </h3>
+        <div className="mt-4 grid gap-3 text-sm font-bold leading-6 text-slate-300">
+          <p>
+            등록된 AI 진단 기준 키워드의 플레이스 1~50위 데이터를 다시 수집하고
+            분석합니다.
+          </p>
+          <p>
+            최신화가 완료되면 이후 실행되는 AI 플레이스 진단에 새로운 기준 데이터가
+            반영됩니다. 작업 중에는 기존 활성 진단 데이터를 계속 사용합니다.
+          </p>
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="min-h-11 rounded-md border border-white/10 bg-white/[0.05] px-4 text-sm font-black text-slate-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isLoading}
+            className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/14 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/22 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isLoading ? '데이터 최신화 중...' : '최신화 시작'}
+          </button>
+        </div>
+      </section>
     </div>
   )
 }
@@ -792,6 +1426,56 @@ function formatAvailableAt(value: string) {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+  }).format(date)
+}
+
+function getRepresentativeAiDiagnosisDataStatus(status: AiDiagnosisDataRefreshStatus | null) {
+  if (!status?.keywords.length) {
+    return null
+  }
+
+  return (
+    status.keywords.find((keyword) => keyword.status === 'UPDATING') ??
+    status.keywords.find((keyword) => keyword.status === 'QUEUED') ??
+    status.keywords.find((keyword) => keyword.status === 'FAILED') ??
+    status.keywords.find((keyword) => keyword.status === 'PARTIAL') ??
+    status.keywords[0]
+  )
+}
+
+function formatAiDiagnosisDataStatusLabel(
+  status: AiDiagnosisDataRefreshStatus['keywords'][number]['status'],
+) {
+  switch (status) {
+    case 'FRESH':
+      return '최신'
+    case 'NEEDS_REFRESH':
+      return '갱신 필요'
+    case 'QUEUED':
+      return '대기중'
+    case 'UPDATING':
+      return '최신화 중'
+    case 'PARTIAL':
+      return '일부 완료'
+    case 'FAILED':
+      return '실패'
+    default:
+      return '갱신 필요'
+  }
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(date)
 }
 

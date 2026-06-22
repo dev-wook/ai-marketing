@@ -4,7 +4,6 @@ type HomeFeature = {
   title: string
   description: string
   status: 'open' | 'soon'
-  primary?: boolean
   action?: () => void
 }
 
@@ -26,7 +25,6 @@ export function HomeView({
       title: '플레이스 순위 조회',
       description: '키워드별 플레이스 노출 순서와 예약 흐름을 확인합니다.',
       status: 'open',
-      primary: true,
       action: onOpenPlaceRanking,
     },
     {
@@ -69,17 +67,13 @@ export function HomeView({
 
 function FeatureCard({ feature }: { feature: HomeFeature }) {
   const isOpen = feature.status === 'open'
-
-  return (
-    <article
-      className={`group grid min-h-56 min-w-0 content-between rounded-md border p-5 transition md:min-h-64 ${
-        isOpen
-          ? feature.primary
-            ? 'border-cyan-300/50 bg-[#0b1727]/88 shadow-[0_0_30px_rgba(34,211,238,0.12)] hover:-translate-y-0.5 hover:border-cyan-200/75'
-            : 'border-cyan-300/24 bg-[#0b1727]/82 hover:-translate-y-0.5 hover:border-cyan-200/50'
-          : 'border-white/10 bg-white/[0.025] opacity-75'
-      }`}
-    >
+  const className = `group grid min-h-56 min-w-0 content-between rounded-md border p-5 text-left transition md:min-h-64 ${
+    isOpen
+      ? 'cursor-pointer border-cyan-300/24 bg-[#0b1727]/82 md:hover:-translate-y-0.5 md:hover:border-cyan-200/50 md:hover:bg-[#102033]/88 md:hover:shadow-[0_18px_42px_rgba(0,0,0,0.22)] focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/18'
+      : 'border-white/10 bg-white/[0.025] opacity-75'
+  }`
+  const content = (
+    <>
       <div className="min-w-0">
         {!isOpen ? (
           <span className="inline-flex rounded-full bg-fuchsia-300/10 px-3 py-1 text-[11px] font-black tracking-[0.08em] text-fuchsia-200/80">
@@ -98,19 +92,25 @@ function FeatureCard({ feature }: { feature: HomeFeature }) {
         </p>
       </div>
 
-      {isOpen ? (
-        <button
-          type="button"
-          onClick={feature.action}
-          className="mt-6 inline-flex h-12 w-fit items-center justify-center rounded-md bg-cyan-100 px-5 text-sm font-black text-[#071018] transition hover:bg-white"
-        >
-          시작하기
-        </button>
-      ) : (
+      {!isOpen ? (
         <span className="mt-6 inline-flex h-12 w-fit items-center justify-center rounded-md border border-white/10 px-5 text-sm font-black text-slate-500">
           준비 중
         </span>
-      )}
+      ) : null}
+    </>
+  )
+
+  if (isOpen) {
+    return (
+      <button type="button" onClick={feature.action} className={className}>
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <article className={className}>
+      {content}
     </article>
   )
 }

@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getAuthUserFromRequest } from '@/features/auth/server/session'
-import { readPlaceRankingBatchKeywords } from '@/features/place-ranking/server/batch-keyword-service'
 import { refreshAiPlaceBenchmarkProfile } from '../server/benchmark-profile-service'
+import {
+  completeAiPlaceHarnessRun,
+  createAiPlaceHarnessRun,
+  listAiPlaceKeywords,
+} from '../server/repository'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -12,7 +16,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
-  return handleBenchmarkDailyRun()
+  return handleBenchmarkDailyRun('CRON')
 }
 
 export async function POST(request: NextRequest) {
@@ -20,23 +24,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
-  return handleBenchmarkDailyRun()
+  return handleBenchmarkDailyRun('MANUAL')
 }
 
-async function handleBenchmarkDailyRun() {
+async function handleBenchmarkDailyRun(triggerSource: 'CRON' | 'MANUAL') {
   try {
-    const keywords = await readPlaceRankingBatchKeywords()
-    const activeKeywords = keywords.filter((keyword) => keyword.isActive)
+    const activeKeywords = await listAiPlaceKeywords({ activeOnly: true })
+    const runId = await createAiPlaceHarnessRun({
+      totalKeywords: activeKeywords.length,
+      triggerSource,
+    })
     const results = []
 
     for (const keyword of activeKeywords) {
       try {
+        const result = await refreshAiPlaceBenchmarkProfile({
+          keyword: keyword.keyword,
+          runId,
+          triggerSource,
+        })
+
         results.push({
           keyword: keyword.keyword,
           ok: true,
-          result: await refreshAiPlaceBenchmarkProfile({
-            keyword: keyword.keyword,
-          }),
+          result,
+          skipped: result.status === 'PENDING' || result.status === 'RUNNING' || result.status === 'RETRY_WAIT',
         })
       } catch (error) {
         results.push({
@@ -47,11 +59,25 @@ async function handleBenchmarkDailyRun() {
       }
     }
 
+    const queuedCount = results.filter((result) => result.ok && !result.skipped).length
+    const skippedCount = results.filter((result) => result.skipped).length
+    const failureCount = results.filter((result) => !result.ok).length
+
+    await completeAiPlaceHarnessRun({
+      failureCount,
+      queuedCount,
+      runId,
+      skippedCount,
+    })
+
     return NextResponse.json({
+      runId,
       ranAt: new Date().toISOString(),
       totalKeywords: activeKeywords.length,
       successCount: results.filter((result) => result.ok).length,
-      failureCount: results.filter((result) => !result.ok).length,
+      queuedCount,
+      skippedCount,
+      failureCount,
       results,
     })
   } catch (error) {

@@ -32,6 +32,7 @@ import {
   saveAiPlaceSnapshot,
   saveAiPlaceHarnessPlaceScore,
   saveAndActivateBenchmarkProfile,
+  scheduleAiPlaceHarnessJobRetry,
   upsertAiPlaceKeyword,
 } from './repository'
 import { scoreAiPlace } from './scorer'
@@ -60,8 +61,12 @@ const emptyProfile: AiPlaceDiagnosisPlaceProfile = {
 
 export async function refreshAiPlaceBenchmarkProfile({
   keyword,
+  runId,
+  triggerSource,
 }: {
   keyword: string
+  runId?: string
+  triggerSource?: 'CRON' | 'MANUAL'
 }) {
   const keywordRow = await upsertAiPlaceKeyword(keyword)
   const activeJob = await findActiveAiPlaceHarnessJob(keywordRow.id)
@@ -129,11 +134,33 @@ export async function refreshAiPlaceBenchmarkProfile({
       resultCount: snapshots.length,
       status: snapshots.length >= benchmarkLimit ? 'COMPLETED' : 'PARTIAL',
     })
-    const jobId = await createAiPlaceHarnessJob({
-      collectionRunId,
-      keywordId: keywordRow.id,
-      totalCount: snapshots.length,
-    })
+    let jobId: string
+
+    try {
+      jobId = await createAiPlaceHarnessJob({
+        collectionRunId,
+        keywordId: keywordRow.id,
+        runId,
+        triggerSource,
+        totalCount: snapshots.length,
+      })
+    } catch (error) {
+      const nextActiveJob = await findActiveAiPlaceHarnessJob(keywordRow.id)
+
+      if (!nextActiveJob) {
+        throw error
+      }
+
+      return {
+        keyword: keywordRow.keyword,
+        normalizedKeyword: keywordRow.normalized_keyword,
+        collectionRunId: nextActiveJob.collection_run_id,
+        jobId: nextActiveJob.id,
+        status: nextActiveJob.status,
+        sampleCount: nextActiveJob.total_count,
+        message: '현재 AI 진단 데이터 최신화가 진행 중입니다.',
+      }
+    }
 
     return {
       keyword: keywordRow.keyword,
@@ -236,6 +263,30 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
       })
       processedCount += 1
     } catch (error) {
+      if (isRetryableGeminiError(error)) {
+        const retryAfterMs = getRetryAfterMs(error)
+
+        await scheduleAiPlaceHarnessJobRetry({
+          jobId: job.id,
+          retryAfterMs,
+          errorMessage:
+            error instanceof Error
+              ? error.message
+              : 'Gemini API 사용량 제한으로 다음 실행에서 재시도합니다.',
+        })
+
+        return {
+          ok: true,
+          jobId: job.id,
+          processedCount,
+          rankStart,
+          rankEnd,
+          completed: false,
+          retryWait: true,
+          retryAfterMs,
+        }
+      }
+
       await saveAiPlaceHarnessPlaceScore({
         jobId: job.id,
         keywordId: job.keyword_id,
@@ -270,11 +321,48 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
   let profileResult = null
 
   if (isComplete) {
-    profileResult = await finalizeAiPlaceHarnessJobProfile({
-      collectionRunId: job.collection_run_id,
-      jobId: job.id,
-      keywordId: job.keyword_id,
-    })
+    try {
+      profileResult = await finalizeAiPlaceHarnessJobProfile({
+        collectionRunId: job.collection_run_id,
+        jobId: job.id,
+        keywordId: job.keyword_id,
+      })
+    } catch (error) {
+      if (isRetryableGeminiError(error)) {
+        const retryAfterMs = getRetryAfterMs(error)
+
+        await scheduleAiPlaceHarnessJobRetry({
+          jobId: job.id,
+          retryAfterMs,
+          errorMessage:
+            error instanceof Error
+              ? error.message
+              : 'Gemini API 사용량 제한으로 프로필 생성을 재시도합니다.',
+        })
+
+        return {
+          ok: true,
+          jobId: job.id,
+          processedCount,
+          rankStart,
+          rankEnd,
+          completed: false,
+          retryWait: true,
+          retryAfterMs,
+        }
+      }
+
+      await advanceAiPlaceHarnessJob({
+        jobId: job.id,
+        nextRankStart,
+        evaluatedCount: 0,
+        status: 'FAILED',
+        errorMessage:
+          error instanceof Error ? error.message : 'AI 진단 기준 프로필 생성에 실패했습니다.',
+      })
+
+      throw error
+    }
   }
 
   return {
@@ -385,6 +473,31 @@ export function createDefaultBenchmarkProfile(): AiPlaceBenchmarkProfileSummary 
       ],
     },
   }
+}
+
+function isRetryableGeminiError(error: unknown) {
+  const status = (error as { status?: unknown }).status
+  const metadataStatus = (error as { metadata?: { status?: unknown } }).metadata?.status
+  const message = error instanceof Error ? error.message : ''
+
+  return (
+    status === 429 ||
+    status === 503 ||
+    metadataStatus === 429 ||
+    metadataStatus === 503 ||
+    /429|503|rate limit|quota|high demand|사용량 제한/i.test(message)
+  )
+}
+
+function getRetryAfterMs(error: unknown) {
+  const metadata = (error as { metadata?: { retryAfterMs?: unknown } }).metadata
+  const retryAfterMs = metadata?.retryAfterMs
+
+  if (typeof retryAfterMs === 'number' && retryAfterMs > 0) {
+    return retryAfterMs
+  }
+
+  return 60 * 1000
 }
 
 function createBenchmarkStatistics(

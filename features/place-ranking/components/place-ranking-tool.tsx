@@ -32,37 +32,6 @@ type SnapshotToast = {
   message: string
 }
 
-type AiHarnessManualStatus = {
-  type: 'info' | 'success' | 'warning' | 'error'
-  message: string
-}
-
-type AiDiagnosisDataRefreshStatus = {
-  checkedAt: string
-  hasUpdatingKeyword: boolean
-  keywords: Array<{
-    keyword: string
-    normalizedKeyword: string
-    status: 'FRESH' | 'NEEDS_REFRESH' | 'UPDATING' | 'PARTIAL' | 'FAILED'
-    latestProfile: {
-      status: string | null
-      createdAt: string
-      sampleCount: number
-      dataConfidence: number
-    } | null
-    latestRun: {
-      id: string
-      status: string | null
-      createdAt: string | null
-      completedAt: string | null
-      evaluatedCount: number
-      totalCount: number
-      nextRankStart: number
-      errorMessage: string | null
-    } | null
-  }>
-}
-
 const rankingPageSize = 50
 const fetchLimit = 300
 const initialVisibleCount = rankingPageSize
@@ -315,56 +284,6 @@ async function requestDeleteBatchKeyword(id: number) {
   return body as { ok: boolean }
 }
 
-async function requestAiPlaceBenchmarkDailyRun() {
-  const response = await fetch('/api/ai-place-diagnosis/benchmark/daily', {
-    method: 'POST',
-  })
-  const body = (await response.json()) as
-    | {
-        totalKeywords?: number
-        successCount?: number
-        failureCount?: number
-        results?: Array<{ keyword?: string; ok?: boolean; result?: unknown; message?: string }>
-      }
-    | PlaceRankingErrorBody
-
-  if (!response.ok) {
-    const errorBody = body as PlaceRankingErrorBody
-    const error = new Error(errorBody.message ?? 'AI 기준 갱신 준비에 실패했습니다.')
-
-    Object.assign(error, {
-      debug: errorBody.debug,
-    })
-
-    throw error
-  }
-
-  return body as {
-    totalKeywords?: number
-    successCount?: number
-    failureCount?: number
-    results?: Array<{ keyword?: string; ok?: boolean; result?: unknown; message?: string }>
-  }
-}
-
-async function requestAiDiagnosisDataRefreshStatus() {
-  const response = await fetch('/api/ai-place-diagnosis/benchmark/status')
-  const body = (await response.json()) as AiDiagnosisDataRefreshStatus | PlaceRankingErrorBody
-
-  if (!response.ok) {
-    const errorBody = body as PlaceRankingErrorBody
-    const error = new Error(errorBody.message ?? 'AI 진단 기준 데이터 상태 조회에 실패했습니다.')
-
-    Object.assign(error, {
-      debug: errorBody.debug,
-    })
-
-    throw error
-  }
-
-  return body as AiDiagnosisDataRefreshStatus
-}
-
 async function requestBlacklistEntries(keyword: string) {
   const params = new URLSearchParams({ keyword })
   const response = await fetch(`/api/place-ranking/blacklist?${params.toString()}`)
@@ -500,6 +419,7 @@ export function PlaceRankingTool() {
   const [openedAddressId, setOpenedAddressId] = useState<string | null>(null)
   const [placeNameFilterInput, setPlaceNameFilterInput] = useState('')
   const [appliedPlaceNameFilter, setAppliedPlaceNameFilter] = useState('')
+  const [placeNameFilterNotice, setPlaceNameFilterNotice] = useState('')
   const [recentKeywords, setRecentKeywords] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null)
   const [reviewPlace, setReviewPlace] = useState<PlaceRankingItem | null>(null)
@@ -527,12 +447,6 @@ export function PlaceRankingTool() {
   const [batchKeywordInput, setBatchKeywordInput] = useState('')
   const [isBatchLoading, setIsBatchLoading] = useState(false)
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false)
-  const [isAiHarnessManualLoading, setIsAiHarnessManualLoading] = useState(false)
-  const [aiHarnessManualStatus, setAiHarnessManualStatus] = useState<AiHarnessManualStatus | null>(null)
-  const [aiDiagnosisDataStatus, setAiDiagnosisDataStatus] =
-    useState<AiDiagnosisDataRefreshStatus | null>(null)
-  const [isAiDiagnosisDataStatusLoading, setIsAiDiagnosisDataStatusLoading] = useState(false)
-  const [isAiDiagnosisRefreshConfirmOpen, setIsAiDiagnosisRefreshConfirmOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const keywordInputRef = useRef<HTMLInputElement | null>(null)
   const resultSectionRef = useRef<HTMLElement | null>(null)
@@ -576,9 +490,8 @@ export function PlaceRankingTool() {
       item.name.toLocaleLowerCase('ko-KR').includes(filterText),
     )
   }, [appliedPlaceNameFilter, visibleItems])
-  const canTryLoadMore = Boolean(
-    result && visibleCount < result.items.length && !appliedPlaceNameFilter,
-  )
+  const canTryLoadMore = Boolean(result && visibleCount < result.items.length)
+  const shouldShowLoadMorePrompt = canTryLoadMore && !appliedPlaceNameFilter
 
   useEffect(() => {
     setIsMounted(true)
@@ -646,7 +559,7 @@ export function PlaceRankingTool() {
   useEffect(() => {
     const target = loadMoreRef.current
 
-    if (!target || !canTryLoadMore) {
+    if (!target || !shouldShowLoadMorePrompt) {
       return
     }
 
@@ -662,7 +575,7 @@ export function PlaceRankingTool() {
     observer.observe(target)
 
     return () => observer.disconnect()
-  }, [canTryLoadMore, result])
+  }, [result, shouldShowLoadMorePrompt])
 
   const runKeywordSearch = async (nextKeyword: string) => {
     if (!nextKeyword) {
@@ -679,6 +592,7 @@ export function PlaceRankingTool() {
     setOpenedAddressId(null)
     setPlaceNameFilterInput('')
     setAppliedPlaceNameFilter('')
+    setPlaceNameFilterNotice('')
     setExpandedImage(null)
     setReviewPlace(null)
     setBookingPlace(null)
@@ -741,12 +655,58 @@ export function PlaceRankingTool() {
 
   const submitPlaceNameFilter = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setAppliedPlaceNameFilter(placeNameFilterInput.trim())
+
+    const nextFilter = placeNameFilterInput.trim()
+
+    setAppliedPlaceNameFilter(nextFilter)
+
+    if (!nextFilter) {
+      setPlaceNameFilterNotice('')
+      return
+    }
+
+    if (!result) {
+      setPlaceNameFilterNotice('')
+      return
+    }
+
+    const filterText = nextFilter.toLocaleLowerCase('ko-KR')
+    const currentMatchCount = result.items
+      .slice(0, visibleCount)
+      .filter((item) => item.name.toLocaleLowerCase('ko-KR').includes(filterText)).length
+
+    if (currentMatchCount > 0) {
+      setPlaceNameFilterNotice('')
+      return
+    }
+
+    const firstMatchIndex = result.items.findIndex((item) =>
+      item.name.toLocaleLowerCase('ko-KR').includes(filterText),
+    )
+
+    if (firstMatchIndex >= 0) {
+      const nextVisibleCount = Math.min(
+        Math.ceil((firstMatchIndex + 1) / rankingPageSize) * rankingPageSize,
+        result.items.length,
+      )
+
+      setVisibleCount((current) => Math.max(current, nextVisibleCount))
+      setPlaceNameFilterNotice(
+        `${nextVisibleCount}위까지 검색 범위를 확장해 일치하는 플레이스를 찾았습니다.`,
+      )
+      return
+    }
+
+    setVisibleCount(result.items.length)
+    setPlaceNameFilterNotice(
+      `${result.items.length}위까지 검색 범위를 확장했지만 일치하는 플레이스명이 없습니다.`,
+    )
   }
 
   const clearPlaceNameFilter = () => {
     setPlaceNameFilterInput('')
     setAppliedPlaceNameFilter('')
+    setPlaceNameFilterNotice('')
   }
 
   const applyRecentKeyword = async (nextKeyword: string) => {
@@ -1077,42 +1037,6 @@ export function PlaceRankingTool() {
     }
   }
 
-  const loadAiDiagnosisDataStatus = async ({ silent = false }: { silent?: boolean } = {}) => {
-    setIsAiDiagnosisDataStatusLoading(true)
-
-    try {
-      setAiDiagnosisDataStatus(await requestAiDiagnosisDataRefreshStatus())
-    } catch (error) {
-      if (!silent) {
-        showSnapshotToast({
-          type: 'error',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'AI 진단 기준 데이터 상태 조회에 실패했습니다.',
-        })
-      }
-    } finally {
-      setIsAiDiagnosisDataStatusLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (!isBatchModalOpen) {
-      return
-    }
-
-    loadAiDiagnosisDataStatus({ silent: true })
-
-    const intervalId = window.setInterval(() => {
-      loadAiDiagnosisDataStatus({ silent: true })
-    }, 10000)
-
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [isBatchModalOpen])
-
   const submitBatchKeyword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -1170,46 +1094,6 @@ export function PlaceRankingTool() {
     }
   }
 
-  const runAiBenchmarkDailyManually = async () => {
-    if (isAiHarnessManualLoading) {
-      return
-    }
-
-    setIsAiHarnessManualLoading(true)
-    setAiHarnessManualStatus({
-      type: 'info',
-      message: '등록 키워드 기준으로 1~50위 데이터를 수집하고 AI 기준 갱신을 준비합니다.',
-    })
-
-    try {
-      const result = await requestAiPlaceBenchmarkDailyRun()
-      const successCount = result.successCount ?? 0
-      const totalKeywords = result.totalKeywords ?? 0
-      const failureCount = result.failureCount ?? 0
-      const message =
-        failureCount > 0
-          ? `AI 진단 데이터 최신화가 일부 시작되었습니다. ${successCount}/${totalKeywords}개 성공, ${failureCount}개 실패`
-          : `AI 진단 데이터 최신화가 시작되었습니다. 등록 키워드 ${successCount}개를 수집하고 분석합니다.`
-
-      setAiHarnessManualStatus({
-        type: failureCount > 0 ? 'warning' : 'success',
-        message,
-      })
-      showSnapshotToast({
-        type: failureCount > 0 ? 'error' : 'success',
-        message,
-      })
-      await loadAiDiagnosisDataStatus()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'AI 기준 갱신 준비에 실패했습니다.'
-
-      setAiHarnessManualStatus({ type: 'error', message })
-      showSnapshotToast({ type: 'error', message })
-    } finally {
-      setIsAiHarnessManualLoading(false)
-    }
-  }
-
   const clearKeywordInput = () => {
     setKeyword('')
     setErrorMessage('')
@@ -1236,7 +1120,6 @@ export function PlaceRankingTool() {
             onClick={() => {
               setIsBatchModalOpen(true)
               loadBatchKeywords()
-              loadAiDiagnosisDataStatus()
             }}
             className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.045] px-4 text-xs font-black text-slate-200 transition hover:border-cyan-300/30 hover:bg-cyan-300/[0.08] hover:text-cyan-50"
           >
@@ -1398,7 +1281,7 @@ export function PlaceRankingTool() {
                 Filter
               </p>
               <p className="mt-1 text-sm font-bold text-slate-400">
-                현재 표시된 결과 안에서 플레이스명을 빠르게 찾습니다.
+                현재 표시된 결과에 없으면 50위 단위로 검색 범위를 자동 확장합니다.
               </p>
             </div>
             <div className="flex w-full flex-col gap-2 sm:flex-row md:max-w-md">
@@ -1427,9 +1310,17 @@ export function PlaceRankingTool() {
           </form>
 
           {appliedPlaceNameFilter ? (
-            <p className="mt-3 text-sm font-bold text-slate-400">
-              "{appliedPlaceNameFilter}" 검색 결과 {filteredItems.length}개
-            </p>
+            <div className="mt-3 grid gap-2">
+              <p className="text-sm font-bold text-slate-400">
+                "{appliedPlaceNameFilter}" 검색 결과 {filteredItems.length}개 · 현재 확인 범위{' '}
+                {visibleItems.length}위까지
+              </p>
+              {placeNameFilterNotice ? (
+                <p className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2 text-xs font-black leading-5 text-cyan-100">
+                  {placeNameFilterNotice}
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           <div className="mt-5 grid gap-3">
@@ -1663,11 +1554,15 @@ export function PlaceRankingTool() {
 
           {filteredItems.length === 0 ? (
             <div className="mt-5 rounded-md border border-white/10 bg-[#080c17]/70 p-5 text-center text-sm font-black text-slate-300">
-              현재 표시된 {visibleItems.length}개 결과 안에서 일치하는 플레이스명이 없습니다.
+              {appliedPlaceNameFilter
+                ? `${visibleItems.length}위까지 확인했지만 일치하는 플레이스명이 없습니다.`
+                : canTryLoadMore
+                ? `현재 ${visibleItems.length}위까지 확인했습니다. 아래로 스크롤하면 다음 50개를 이어서 확인합니다.`
+                : `${visibleItems.length}위까지 확인했지만 일치하는 플레이스명이 없습니다.`}
             </div>
           ) : null}
 
-          {canTryLoadMore ? (
+          {shouldShowLoadMorePrompt ? (
             <div
               ref={loadMoreRef}
               className="mt-5 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4 text-center text-sm font-black text-cyan-100"
@@ -1732,15 +1627,9 @@ export function PlaceRankingTool() {
               keywords={batchKeywords}
               keywordInput={batchKeywordInput}
               isLoading={isBatchLoading}
-              isAiHarnessLoading={isAiHarnessManualLoading}
-              aiHarnessStatus={aiHarnessManualStatus}
-              aiDiagnosisDataStatus={aiDiagnosisDataStatus}
-              isAiDiagnosisDataStatusLoading={isAiDiagnosisDataStatusLoading}
               onKeywordInputChange={setBatchKeywordInput}
               onSubmit={submitBatchKeyword}
               onRemove={removeBatchKeyword}
-              onRefresh={loadBatchKeywords}
-              onRequestAiDiagnosisDataRefresh={() => setIsAiDiagnosisRefreshConfirmOpen(true)}
               onClose={() => setIsBatchModalOpen(false)}
             />,
             document.body,
@@ -1755,20 +1644,6 @@ export function PlaceRankingTool() {
               onRemove={removeBlacklistEntry}
               onRefresh={loadBlacklistGroups}
               onClose={() => setIsBlacklistModalOpen(false)}
-            />,
-            document.body,
-          )
-        : null}
-
-      {isMounted && isAiDiagnosisRefreshConfirmOpen
-        ? createPortal(
-            <AiDiagnosisDataRefreshConfirmModal
-              isLoading={isAiHarnessManualLoading}
-              onCancel={() => setIsAiDiagnosisRefreshConfirmOpen(false)}
-              onConfirm={() => {
-                setIsAiDiagnosisRefreshConfirmOpen(false)
-                runAiBenchmarkDailyManually()
-              }}
             />,
             document.body,
           )
@@ -1796,129 +1671,21 @@ type BatchKeywordModalProps = {
   keywords: PlaceRankingBatchKeyword[]
   keywordInput: string
   isLoading: boolean
-  isAiHarnessLoading: boolean
-  aiHarnessStatus: AiHarnessManualStatus | null
-  aiDiagnosisDataStatus: AiDiagnosisDataRefreshStatus | null
-  isAiDiagnosisDataStatusLoading: boolean
   onKeywordInputChange: (value: string) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onRemove: (id: number) => void
-  onRefresh: () => void
-  onRequestAiDiagnosisDataRefresh: () => void
   onClose: () => void
-}
-
-function getRepresentativeAiDiagnosisDataStatus(status: AiDiagnosisDataRefreshStatus | null) {
-  if (!status?.keywords.length) {
-    return null
-  }
-
-  return (
-    status.keywords.find((keyword) => keyword.status === 'UPDATING') ??
-    status.keywords.find((keyword) => keyword.status === 'FAILED') ??
-    status.keywords.find((keyword) => keyword.status === 'PARTIAL') ??
-    status.keywords[0]
-  )
-}
-
-function formatAiDiagnosisDataStatusLabel(status: AiDiagnosisDataRefreshStatus['keywords'][number]['status']) {
-  switch (status) {
-    case 'FRESH':
-      return '최신'
-    case 'NEEDS_REFRESH':
-      return '갱신 필요'
-    case 'UPDATING':
-      return '최신화 중'
-    case 'PARTIAL':
-      return '일부 완료'
-    case 'FAILED':
-      return '실패'
-    default:
-      return '갱신 필요'
-  }
-}
-
-type AiDiagnosisDataRefreshConfirmModalProps = {
-  isLoading: boolean
-  onCancel: () => void
-  onConfirm: () => void
-}
-
-function AiDiagnosisDataRefreshConfirmModal({
-  isLoading,
-  onCancel,
-  onConfirm,
-}: AiDiagnosisDataRefreshConfirmModalProps) {
-  return (
-    <div
-      className="fixed inset-0 z-[9999] grid place-items-center bg-black/75 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label="AI 진단 데이터 최신화 확인"
-      onClick={onCancel}
-    >
-      <section
-        className="w-full max-w-lg rounded-2xl border border-cyan-300/20 bg-[#070b15] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.56)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
-          AI Diagnosis Data
-        </p>
-        <h3 className="mt-2 text-2xl font-black text-white">AI 진단 데이터를 최신화할까요?</h3>
-        <div className="mt-4 grid gap-3 text-sm font-bold leading-6 text-slate-300">
-          <p>현재 등록된 키워드의 플레이스 1~50위 데이터를 다시 수집하고 분석합니다.</p>
-          <p>
-            최신화가 완료되면 이후 실행되는 AI 플레이스 진단에 새로운 기준 데이터가
-            반영됩니다. 작업이 진행되는 동안에는 기존 진단 데이터를 계속 사용합니다.
-          </p>
-        </div>
-        <div className="mt-5 grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isLoading}
-            className="min-h-11 rounded-md border border-white/10 bg-white/[0.05] px-4 text-sm font-black text-slate-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            취소
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isLoading}
-            className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/14 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/22 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isLoading ? '데이터 최신화 중...' : '최신화 시작'}
-          </button>
-        </div>
-      </section>
-    </div>
-  )
 }
 
 function BatchKeywordModal({
   keywords,
   keywordInput,
   isLoading,
-  isAiHarnessLoading,
-  aiHarnessStatus,
-  aiDiagnosisDataStatus,
-  isAiDiagnosisDataStatusLoading,
   onKeywordInputChange,
   onSubmit,
   onRemove,
-  onRefresh,
-  onRequestAiDiagnosisDataRefresh,
   onClose,
 }: BatchKeywordModalProps) {
-  const latestStatus = getRepresentativeAiDiagnosisDataStatus(aiDiagnosisDataStatus)
-  const isAiDiagnosisDataUpdating =
-    isAiHarnessLoading || Boolean(aiDiagnosisDataStatus?.hasUpdatingKeyword)
-  const aiDiagnosisDataStatusLabel = latestStatus
-    ? formatAiDiagnosisDataStatusLabel(latestStatus.status)
-    : keywords.length > 0
-      ? '갱신 필요'
-      : '키워드 없음'
-
   return (
     <div
       className="fixed inset-0 z-[9998] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
@@ -1938,8 +1705,7 @@ function BatchKeywordModal({
             </p>
             <h3 className="mt-1 text-2xl font-black text-white">자동 기록 키워드 관리</h3>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
-              등록된 키워드는 매일 16:00에 순위 기록, 16:40 이후 AI 진단 기준 데이터
-              최신화에 사용됩니다.
+              등록된 키워드는 매일 23:30에 플레이스 순위 기록에 사용됩니다.
             </p>
           </div>
           <button
@@ -1968,98 +1734,10 @@ function BatchKeywordModal({
             </button>
           </form>
 
-          <div className="mt-4 rounded-md border border-cyan-300/15 bg-cyan-300/[0.045] p-4">
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-              <div className="min-w-0">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/70">
-                  AI 진단 기준 데이터
-                </p>
-                <p className="mt-1 break-keep text-sm font-extrabold leading-6 text-slate-200">
-                  키워드별 플레이스 1~50위를 수집하고 분석하여 AI 플레이스 진단에 사용되는
-                  기준 데이터를 관리합니다.
-                </p>
-              </div>
-              <div className="grid gap-2 md:min-w-[13.5rem]">
-                <button
-                  type="button"
-                  onClick={onRequestAiDiagnosisDataRefresh}
-                  disabled={isAiDiagnosisDataUpdating || isLoading || keywords.length === 0}
-                  className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-xs font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isAiDiagnosisDataUpdating
-                    ? 'AI 진단 데이터 최신화 중...'
-                    : 'AI 진단 데이터 최신화'}
-                </button>
-                <p className="text-center text-[11px] font-bold leading-5 text-slate-400">
-                  {isAiDiagnosisDataStatusLoading
-                    ? '현재 상태 확인 중...'
-                    : '상태는 자동으로 반영됩니다.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-2 rounded-md border border-white/10 bg-black/15 p-3 text-xs font-bold text-slate-300 sm:grid-cols-2">
-              <p>
-                최근 최신화:{' '}
-                <span className="text-slate-100">
-                  {latestStatus?.latestProfile?.createdAt
-                    ? formatBatchRunAt(latestStatus.latestProfile.createdAt)
-                    : '아직 없음'}
-                </span>
-              </p>
-              <p>
-                분석 키워드:{' '}
-                <span className="text-slate-100">
-                  {aiDiagnosisDataStatus?.keywords.length
-                    ? `${aiDiagnosisDataStatus.keywords.length}개 키워드`
-                    : keywords.length
-                      ? `${keywords.length}개 등록됨`
-                      : '없음'}
-                </span>
-              </p>
-              <p>
-                분석 범위: <span className="text-slate-100">플레이스 1~50위</span>
-              </p>
-              <p>
-                상태: <span className="text-slate-100">{aiDiagnosisDataStatusLabel}</span>
-              </p>
-            </div>
-
-            {latestStatus?.status === 'NEEDS_REFRESH' ? (
-              <p className="mt-3 rounded-md border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-bold leading-5 text-amber-100">
-                마지막 최신화 이후 24시간이 지났습니다.
-              </p>
-            ) : null}
-            {aiHarnessStatus ? (
-              <p
-                className={[
-                  'mt-3 rounded-md border px-3 py-2 text-xs font-bold leading-5',
-                  aiHarnessStatus.type === 'error'
-                    ? 'border-rose-300/20 bg-rose-300/[0.08] text-rose-100'
-                    : aiHarnessStatus.type === 'warning'
-                      ? 'border-amber-300/20 bg-amber-300/[0.08] text-amber-100'
-                    : aiHarnessStatus.type === 'success'
-                      ? 'border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-100'
-                      : 'border-cyan-300/20 bg-cyan-300/[0.08] text-cyan-100',
-                ].join(' ')}
-              >
-                {aiHarnessStatus.message}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="mt-4">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/65">
               등록 키워드 {keywords.length}개
             </p>
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={isLoading}
-              className="rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-black text-slate-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              새로고침
-            </button>
           </div>
 
           <div className="mt-3 grid gap-2">

@@ -11,6 +11,16 @@ type KeywordRow = {
   active_profile_id: string | null
 }
 
+export type AiPlaceKeywordRow = KeywordRow & {
+  region_term: string | null
+  service_term: string | null
+  need_term: string | null
+  intent_cluster_key: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 type BenchmarkProfileRow = {
   id: string
   status: AiPlaceBenchmarkProfileSummary['status']
@@ -40,11 +50,13 @@ export type AiPlaceHarnessJobRow = {
   id: string
   keyword_id: string
   collection_run_id: string | null
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED'
+  status: 'PENDING' | 'RUNNING' | 'RETRY_WAIT' | 'COMPLETED' | 'PARTIAL' | 'FAILED'
   next_rank_start: number
   batch_size: number
   total_count: number
   evaluated_count: number
+  retry_count?: number
+  next_attempt_at?: string
 }
 
 export type AiPlaceBenchmarkRefreshStatusRow = {
@@ -55,13 +67,15 @@ export type AiPlaceBenchmarkRefreshStatusRow = {
   profile_sample_count: number | null
   profile_data_confidence: string | number | null
   job_id: string | null
-  job_status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | null
+  job_status: 'PENDING' | 'RUNNING' | 'RETRY_WAIT' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | null
   job_next_rank_start: number | null
   job_total_count: number | null
   job_evaluated_count: number | null
   job_created_at: string | null
   job_completed_at: string | null
   job_error_message: string | null
+  job_retry_count: number | null
+  job_next_attempt_at: string | null
 }
 
 export type AiPlaceHarnessSnapshotRow = {
@@ -82,7 +96,7 @@ export async function upsertAiPlaceKeyword(keyword: string) {
   const normalizedKeyword = normalizeKeyword(keyword)
   const intent = parseKeywordIntent(normalizedKeyword)
   const pool = getPostgresPool()
-  const result = await pool.query<KeywordRow>(
+  const result = await pool.query<AiPlaceKeywordRow>(
     `
       insert into public.ai_place_keywords (
         keyword,
@@ -101,7 +115,18 @@ export async function upsertAiPlaceKeyword(keyword: string) {
         need_term = coalesce(public.ai_place_keywords.need_term, excluded.need_term),
         intent_cluster_key = coalesce(public.ai_place_keywords.intent_cluster_key, excluded.intent_cluster_key),
         is_active = true
-      returning id, keyword, normalized_keyword, active_profile_id
+      returning
+        id,
+        keyword,
+        normalized_keyword,
+        active_profile_id,
+        region_term,
+        service_term,
+        need_term,
+        intent_cluster_key,
+        is_active,
+        created_at,
+        updated_at
     `,
     [
       keyword.trim(),
@@ -114,6 +139,45 @@ export async function upsertAiPlaceKeyword(keyword: string) {
   )
 
   return result.rows[0]
+}
+
+export async function listAiPlaceKeywords({ activeOnly = false }: { activeOnly?: boolean } = {}) {
+  const pool = getPostgresPool()
+  const result = await pool.query<AiPlaceKeywordRow>(
+    `
+      select
+        id,
+        keyword,
+        normalized_keyword,
+        active_profile_id,
+        region_term,
+        service_term,
+        need_term,
+        intent_cluster_key,
+        is_active,
+        created_at,
+        updated_at
+      from public.ai_place_keywords
+      where ($1::boolean = false or is_active = true)
+      order by updated_at desc, created_at desc
+    `,
+    [activeOnly],
+  )
+
+  return result.rows
+}
+
+export async function deactivateAiPlaceKeyword(id: string) {
+  const pool = getPostgresPool()
+
+  await pool.query(
+    `
+      update public.ai_place_keywords
+      set is_active = false
+      where id = $1
+    `,
+    [id],
+  )
 }
 
 export async function createAiPlaceCollectionRun({
@@ -193,52 +257,132 @@ export async function saveAiPlaceSnapshot({
   collectorErrorCount: number
 }) {
   const pool = getPostgresPool()
-  const result = await pool.query<{ id: string }>(
-    `
-      insert into public.ai_place_snapshots (
-        collection_run_id,
-        place_id,
-        rank,
-        place_name,
-        category,
-        raw_payload_json,
-        normalized_payload_json,
-        field_status_json,
-        snapshot_hash,
-        data_completeness,
-        collector_error_count
-      )
-      values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11)
-      on conflict (collection_run_id, place_id)
-      do update set
-        rank = excluded.rank,
-        place_name = excluded.place_name,
-        category = excluded.category,
-        raw_payload_json = excluded.raw_payload_json,
-        normalized_payload_json = excluded.normalized_payload_json,
-        field_status_json = excluded.field_status_json,
-        snapshot_hash = excluded.snapshot_hash,
-        data_completeness = excluded.data_completeness,
-        collector_error_count = excluded.collector_error_count,
-        collected_at = now()
-      returning id
-    `,
-    [
-      collectionRunId,
-      placeId,
-      rank ?? null,
-      placeName ?? null,
-      category ?? null,
-      JSON.stringify(rawPayload ?? {}),
-      JSON.stringify(normalizedPayload ?? {}),
-      JSON.stringify(fieldStatus ?? {}),
-      snapshotHash,
-      dataCompleteness,
-      collectorErrorCount,
-    ],
-  )
+  const client = await pool.connect()
 
-  return result.rows[0].id
+  try {
+    await client.query('begin')
+
+    const legacySnapshotResult = await client.query<{ id: string }>(
+      `
+        insert into public.ai_place_snapshots (
+          collection_run_id,
+          place_id,
+          rank,
+          place_name,
+          category,
+          raw_payload_json,
+          normalized_payload_json,
+          field_status_json,
+          snapshot_hash,
+          data_completeness,
+          collector_error_count
+        )
+        values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11)
+        on conflict (collection_run_id, place_id)
+        do update set
+          rank = excluded.rank,
+          place_name = excluded.place_name,
+          category = excluded.category,
+          raw_payload_json = excluded.raw_payload_json,
+          normalized_payload_json = excluded.normalized_payload_json,
+          field_status_json = excluded.field_status_json,
+          snapshot_hash = excluded.snapshot_hash,
+          data_completeness = excluded.data_completeness,
+          collector_error_count = excluded.collector_error_count,
+          collected_at = now()
+        returning id
+      `,
+      [
+        collectionRunId,
+        placeId,
+        rank ?? null,
+        placeName ?? null,
+        category ?? null,
+        JSON.stringify(rawPayload ?? {}),
+        JSON.stringify(normalizedPayload ?? {}),
+        JSON.stringify(fieldStatus ?? {}),
+        snapshotHash,
+        dataCompleteness,
+        collectorErrorCount,
+      ],
+    )
+
+    await client.query(
+      `
+        with base_snapshot as (
+          insert into public.ai_place_base_snapshots (
+            place_id,
+            place_name,
+            category,
+            raw_payload_json,
+            normalized_payload_json,
+            field_status_json,
+            snapshot_hash,
+            data_completeness,
+            collector_error_count
+          )
+          values ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8, $9)
+          on conflict (place_id, snapshot_hash)
+          do update set
+            place_name = excluded.place_name,
+            category = excluded.category,
+            raw_payload_json = excluded.raw_payload_json,
+            normalized_payload_json = excluded.normalized_payload_json,
+            field_status_json = excluded.field_status_json,
+            data_completeness = excluded.data_completeness,
+            collector_error_count = excluded.collector_error_count,
+            collected_at = now()
+          returning id
+        ),
+        run_keyword as (
+          select keyword_id
+          from public.ai_place_collection_runs
+          where id = $10
+        )
+        insert into public.ai_place_keyword_observations (
+          keyword_id,
+          collection_run_id,
+          place_id,
+          place_snapshot_id,
+          rank
+        )
+        select
+          run_keyword.keyword_id,
+          $10,
+          $1,
+          base_snapshot.id,
+          $11
+        from run_keyword, base_snapshot
+        on conflict (collection_run_id, place_id)
+        do update set
+          place_snapshot_id = excluded.place_snapshot_id,
+          rank = excluded.rank,
+          observed_at = now()
+      `,
+      [
+        placeId,
+        placeName ?? null,
+        category ?? null,
+        JSON.stringify(rawPayload ?? {}),
+        JSON.stringify(normalizedPayload ?? {}),
+        JSON.stringify(fieldStatus ?? {}),
+        snapshotHash,
+        dataCompleteness,
+        collectorErrorCount,
+        collectionRunId,
+        rank ?? null,
+      ],
+    )
+
+    await client.query('commit')
+
+    return legacySnapshotResult.rows[0].id
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 export async function getActiveAiPlaceBenchmarkProfile(keywordId: string) {
@@ -538,10 +682,14 @@ export async function saveAiPlaceDiagnosisRun({
 export async function createAiPlaceHarnessJob({
   collectionRunId,
   keywordId,
+  runId,
+  triggerSource,
   totalCount = 50,
 }: {
   collectionRunId: string
   keywordId: string
+  runId?: string
+  triggerSource?: 'CRON' | 'MANUAL'
   totalCount?: number
 }) {
   const pool = getPostgresPool()
@@ -550,19 +698,74 @@ export async function createAiPlaceHarnessJob({
       insert into public.ai_place_harness_jobs (
         keyword_id,
         collection_run_id,
+        run_id,
+        trigger_source,
         status,
         next_rank_start,
         batch_size,
         total_count,
-        started_at
+        started_at,
+        next_attempt_at
       )
-      values ($1, $2, 'PENDING', 1, 10, $3, now())
+      values ($1, $2, $3, $4, 'PENDING', 1, 10, $5, now(), now())
       returning id
     `,
-    [keywordId, collectionRunId, totalCount],
+    [keywordId, collectionRunId, runId ?? null, triggerSource ?? null, totalCount],
   )
 
   return result.rows[0].id
+}
+
+export async function createAiPlaceHarnessRun({
+  totalKeywords,
+  triggerSource,
+}: {
+  totalKeywords: number
+  triggerSource: 'CRON' | 'MANUAL'
+}) {
+  const pool = getPostgresPool()
+  const result = await pool.query<{ id: string }>(
+    `
+      insert into public.ai_place_harness_runs (
+        trigger_source,
+        total_keywords,
+        status
+      )
+      values ($1, $2, 'RUNNING')
+      returning id
+    `,
+    [triggerSource, totalKeywords],
+  )
+
+  return result.rows[0].id
+}
+
+export async function completeAiPlaceHarnessRun({
+  failureCount,
+  queuedCount,
+  runId,
+  skippedCount,
+}: {
+  runId: string
+  queuedCount: number
+  skippedCount: number
+  failureCount: number
+}) {
+  const status = failureCount > 0 ? (queuedCount > 0 ? 'PARTIAL' : 'FAILED') : 'COMPLETED'
+  const pool = getPostgresPool()
+
+  await pool.query(
+    `
+      update public.ai_place_harness_runs
+      set status = $2,
+          queued_count = $3,
+          skipped_count = $4,
+          failure_count = $5,
+          completed_at = now()
+      where id = $1
+    `,
+    [runId, status, queuedCount, skippedCount, failureCount],
+  )
 }
 
 export async function findActiveAiPlaceHarnessJob(keywordId: string) {
@@ -577,10 +780,12 @@ export async function findActiveAiPlaceHarnessJob(keywordId: string) {
         next_rank_start,
         batch_size,
         total_count,
-        evaluated_count
+        evaluated_count,
+        retry_count,
+        next_attempt_at
       from public.ai_place_harness_jobs
       where keyword_id = $1
-        and status in ('PENDING', 'RUNNING')
+        and status in ('PENDING', 'RUNNING', 'RETRY_WAIT')
       order by created_at desc
       limit 1
     `,
@@ -607,10 +812,13 @@ export async function claimNextAiPlaceHarnessJob() {
           next_rank_start,
           batch_size,
           total_count,
-          evaluated_count
+          evaluated_count,
+          retry_count,
+          next_attempt_at
         from public.ai_place_harness_jobs
-        where status in ('PENDING', 'RUNNING')
+        where status in ('PENDING', 'RUNNING', 'RETRY_WAIT')
           and collection_run_id is not null
+          and next_attempt_at <= now()
           and (locked_at is null or locked_at < now() - interval '2 minutes')
         order by created_at asc
         limit 1
@@ -629,7 +837,8 @@ export async function claimNextAiPlaceHarnessJob() {
         update public.ai_place_harness_jobs
         set status = 'RUNNING',
             locked_at = now(),
-            started_at = coalesce(started_at, now())
+            started_at = coalesce(started_at, now()),
+            error_message = null
         where id = $1
       `,
       [job.id],
@@ -798,6 +1007,31 @@ export async function advanceAiPlaceHarnessJob({
   )
 }
 
+export async function scheduleAiPlaceHarnessJobRetry({
+  errorMessage,
+  jobId,
+  retryAfterMs,
+}: {
+  jobId: string
+  retryAfterMs: number
+  errorMessage: string
+}) {
+  const pool = getPostgresPool()
+
+  await pool.query(
+    `
+      update public.ai_place_harness_jobs
+      set status = 'RETRY_WAIT',
+          retry_count = retry_count + 1,
+          next_attempt_at = now() + ($2::text || ' milliseconds')::interval,
+          locked_at = null,
+          error_message = $3
+      where id = $1
+    `,
+    [jobId, Math.max(1000, retryAfterMs), errorMessage],
+  )
+}
+
 export async function listAiPlaceHarnessScores(jobId: string) {
   const pool = getPostgresPool()
   const result = await pool.query<{
@@ -842,7 +1076,9 @@ export async function listAiPlaceBenchmarkRefreshStatuses() {
         job.evaluated_count as job_evaluated_count,
         job.created_at as job_created_at,
         job.completed_at as job_completed_at,
-        job.error_message as job_error_message
+        job.error_message as job_error_message,
+        job.retry_count as job_retry_count,
+        job.next_attempt_at as job_next_attempt_at
       from public.ai_place_keywords keyword
       left join lateral (
         select
@@ -851,6 +1087,8 @@ export async function listAiPlaceBenchmarkRefreshStatuses() {
           next_rank_start,
           total_count,
           evaluated_count,
+          retry_count,
+          next_attempt_at,
           created_at,
           completed_at,
           error_message

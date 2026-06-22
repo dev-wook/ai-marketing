@@ -18,7 +18,7 @@ type AiDiagnosisDataRefreshStatus = {
   keywords: Array<{
     keyword: string
     normalizedKeyword: string
-    status: 'FRESH' | 'NEEDS_REFRESH' | 'UPDATING' | 'PARTIAL' | 'FAILED'
+    status: 'FRESH' | 'NEEDS_REFRESH' | 'QUEUED' | 'UPDATING' | 'PARTIAL' | 'FAILED'
     latestProfile: {
       status: string | null
       createdAt: string
@@ -34,6 +34,8 @@ type AiDiagnosisDataRefreshStatus = {
       totalCount: number
       nextRankStart: number
       errorMessage: string | null
+      retryCount?: number
+      nextAttemptAt?: string | null
     } | null
   }>
 }
@@ -173,13 +175,13 @@ export function MarketingWorkspace() {
     }
 
     loadStatus()
-    const intervalId = window.setInterval(loadStatus, 10000)
+    const intervalId = window.setInterval(loadStatus, isWorkStatusOpen ? 2000 : 10000)
 
     return () => {
       isMounted = false
       window.clearInterval(intervalId)
     }
-  }, [authUser])
+  }, [authUser, isWorkStatusOpen])
 
   const markAiDiagnosisRefreshJobsSeen = () => {
     const terminalIds = getTerminalAiDiagnosisRefreshJobIds(aiDiagnosisDataStatus)
@@ -228,7 +230,13 @@ export function MarketingWorkspace() {
     const isMobileViewport = () => window.matchMedia('(max-width: 767px)').matches
 
     const handleTouchStart = (event: TouchEvent) => {
-      if (!isMobileViewport() || isRefreshing || window.scrollY > 0) {
+      if (
+        !isMobileViewport() ||
+        isRefreshing ||
+        isWorkStatusOpen ||
+        isMenuOpen ||
+        window.scrollY > 0
+      ) {
         isPullingRef.current = false
         return
       }
@@ -238,7 +246,7 @@ export function MarketingWorkspace() {
     }
 
     const handleTouchMove = (event: TouchEvent) => {
-      if (!isPullingRef.current || !isMobileViewport() || isRefreshing) {
+      if (!isPullingRef.current || !isMobileViewport() || isRefreshing || isWorkStatusOpen || isMenuOpen) {
         return
       }
 
@@ -290,7 +298,24 @@ export function MarketingWorkspace() {
       window.removeEventListener('touchend', handleTouchEnd)
       window.removeEventListener('touchcancel', handleTouchEnd)
     }
-  }, [isRefreshing, view])
+  }, [isMenuOpen, isRefreshing, isWorkStatusOpen, view])
+
+  useEffect(() => {
+    if (!isWorkStatusOpen && !isMenuOpen) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    const previousTouchAction = document.body.style.touchAction
+
+    document.body.style.overflow = 'hidden'
+    document.body.style.touchAction = 'none'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.body.style.touchAction = previousTouchAction
+    }
+  }, [isMenuOpen, isWorkStatusOpen])
 
   const pullProgress = Math.min(pullDistance / pullRefreshThreshold, 1)
   const shouldShowPullRefresh = pullDistance > 0 || isRefreshing
@@ -506,7 +531,7 @@ function WorkStatusPanel({
 
   return (
     <div
-      className={`fixed inset-0 z-[75] overflow-hidden transition-opacity duration-200 ${
+      className={`fixed inset-0 z-[75] overflow-hidden overscroll-none transition-opacity duration-200 ${
         isOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
       }`}
       aria-hidden={!isOpen}
@@ -518,7 +543,7 @@ function WorkStatusPanel({
         className="absolute inset-0 bg-black/45"
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-[min(92vw,420px)] transform-gpu flex-col border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
+        className={`absolute right-0 top-0 flex h-[100dvh] w-[min(92vw,420px)] transform-gpu flex-col overflow-hidden overscroll-contain border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -542,7 +567,7 @@ function WorkStatusPanel({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]">
           {isLoading && !hasJobs ? (
             <div className="rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] p-4">
               <span className="block h-2 overflow-hidden rounded-full bg-white/10">
@@ -575,7 +600,7 @@ function WorkStatusPanel({
 type AiDiagnosisRefreshJobCardModel = {
   id: string
   keyword: string
-  status: 'FRESH' | 'NEEDS_REFRESH' | 'UPDATING' | 'PARTIAL' | 'FAILED'
+  status: 'FRESH' | 'NEEDS_REFRESH' | 'QUEUED' | 'UPDATING' | 'PARTIAL' | 'FAILED'
   label: string
   tone: 'cyan' | 'emerald' | 'amber' | 'rose' | 'slate'
   progress: number
@@ -696,6 +721,8 @@ function createAiDiagnosisRefreshJobCards(
       const progress =
         keyword.status === 'FRESH' || keyword.status === 'PARTIAL' || keyword.status === 'FAILED'
           ? 100
+          : keyword.status === 'QUEUED'
+            ? 0
           : Math.round((evaluatedCount / totalCount) * 100)
       const tone =
         keyword.status === 'FAILED'
@@ -704,7 +731,9 @@ function createAiDiagnosisRefreshJobCards(
             ? 'amber'
             : keyword.status === 'FRESH'
               ? 'emerald'
-              : 'cyan'
+              : keyword.status === 'QUEUED'
+                ? 'slate'
+                : 'cyan'
 
       return {
         id: run?.id ?? `${keyword.normalizedKeyword}:${keyword.latestProfile?.createdAt ?? 'none'}`,
@@ -716,12 +745,19 @@ function createAiDiagnosisRefreshJobCards(
         progressText:
           keyword.status === 'UPDATING'
             ? `${evaluatedCount}/${totalCount}개 분석 완료`
+            : keyword.status === 'QUEUED'
+              ? run?.status === 'RETRY_WAIT'
+                ? `재시도 대기${run.retryCount ? ` ${run.retryCount}회` : ''}`
+                : '큐 대기 중'
             : keyword.status === 'NEEDS_REFRESH'
               ? '최신화 필요'
               : `${totalCount}개 플레이스 기준 데이터`,
         startedAt: run?.createdAt ?? keyword.latestProfile?.createdAt ?? null,
         updatedAt: run?.completedAt ?? keyword.latestProfile?.createdAt ?? run?.createdAt ?? null,
-        errorMessage: run?.errorMessage ?? null,
+        errorMessage:
+          keyword.status === 'QUEUED' && run?.status === 'RETRY_WAIT'
+            ? run.errorMessage
+            : run?.errorMessage ?? null,
       } satisfies AiDiagnosisRefreshJobCardModel
     })
 }
@@ -730,13 +766,14 @@ function createAiDiagnosisRefreshSteps(job: AiDiagnosisRefreshJobCardModel) {
   const failed = job.status === 'FAILED'
   const completed = job.status === 'FRESH' || job.status === 'PARTIAL'
   const evaluating = job.status === 'UPDATING'
+  const queued = job.status === 'QUEUED'
 
   return [
     { label: '플레이스 데이터 수집', state: failed ? 'done' : 'done' },
     { label: '수집 데이터 정규화', state: failed ? 'done' : 'done' },
     {
       label: 'AI 평가',
-      state: failed ? 'failed' : completed ? 'done' : evaluating ? 'active' : 'pending',
+      state: failed ? 'failed' : completed ? 'done' : evaluating ? 'active' : queued ? 'pending' : 'pending',
     },
     {
       label: '기준 프로필 생성',
@@ -757,6 +794,8 @@ function formatAiDiagnosisRefreshStatusLabel(
       return '완료'
     case 'NEEDS_REFRESH':
       return '갱신 필요'
+    case 'QUEUED':
+      return '대기중'
     case 'UPDATING':
       return '진행 중'
     case 'PARTIAL':
