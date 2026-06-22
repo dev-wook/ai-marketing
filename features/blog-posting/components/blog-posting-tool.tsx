@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { ToolErrorMessage, ToolLoadingPanel } from '@/features/platform/components/tool-ui'
 import type {
   BlogDraftResponse,
   BlogInterviewAnswer,
@@ -274,13 +275,15 @@ export function BlogPostingTool({
         </form>
 
         {isLoading && step === 'input' ? (
-          <LoadingProgress
-            title="상위 블로그 흐름을 참고하고 있습니다."
-            description="주제 후보와 원고 방향을 정리하고 맞춤 질문을 준비합니다."
+          <ToolLoadingPanel
+            className="mx-auto mt-7 w-full max-w-3xl shadow-[0_16px_36px_rgba(0,0,0,0.18)]"
+            eyebrow="Preparing"
+            title="상위 블로그 흐름을 참고하고 있습니다"
+            subtitle="주제 후보와 원고 방향을 정리하고 맞춤 질문을 준비합니다."
           />
         ) : null}
 
-        {errorMessage ? <BlogErrorMessage message={errorMessage} log={errorLog} /> : null}
+        <ToolErrorMessage className="mx-auto max-w-3xl" log={errorLog} message={errorMessage} />
       </section>
 
       {analysis ? (
@@ -356,43 +359,6 @@ export function BlogPostingTool({
           onFeedbackChange={setFeedback}
           onRevise={reviseDraft}
         />
-      ) : null}
-    </div>
-  )
-}
-
-function LoadingProgress({ description, title }: { description: string; title: string }) {
-  return (
-    <div className="mx-auto mt-7 w-full max-w-3xl rounded-md border border-white/10 bg-white/[0.055] p-4 text-left shadow-[0_16px_36px_rgba(0,0,0,0.18)]">
-      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
-        <div className="min-w-0">
-          <p className="text-sm font-black text-cyan-100">{title.trim()}</p>
-          <p className="mt-1 text-sm font-semibold text-slate-400">{description}</p>
-        </div>
-        <span className="w-fit rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] px-3 py-2 text-xs font-black tracking-[0.12em] text-cyan-200/80">
-          진행 중
-        </span>
-      </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full w-2/5 animate-[keyword-progress_1.25s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
-      </div>
-    </div>
-  )
-}
-
-function BlogErrorMessage({ log, message }: { log: string; message: string }) {
-  return (
-    <div className="mx-auto min-w-0 max-w-3xl rounded-md border border-red-400/35 bg-red-500/10 text-left text-sm text-red-100">
-      <p className="px-4 py-3 font-bold">{message}</p>
-      {log ? (
-        <details className="min-w-0 border-t border-red-300/20">
-          <summary className="cursor-pointer px-4 py-3 font-black text-red-50 transition hover:bg-red-400/10">
-            실패 로그 더보기
-          </summary>
-          <pre className="max-h-72 max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all border-t border-red-300/15 bg-black/25 px-4 py-3 font-mono text-xs leading-5 text-red-50/85 [overflow-wrap:anywhere]">
-            {log}
-          </pre>
-        </details>
       ) : null}
     </div>
   )

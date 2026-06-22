@@ -28,13 +28,13 @@ export type AiPlaceDiagnosisPlaceSearchResponse = {
 }
 
 export type AiPlaceDiagnosisScoreKey =
-  | 'intentFit'
-  | 'serviceCompleteness'
+  | 'intentAndService'
+  | 'serviceInformation'
+  | 'localEntity'
   | 'reviewTrust'
   | 'contentRichness'
-  | 'conversionReadiness'
-  | 'localRelevance'
-  | 'competitiveDifferentiation'
+  | 'conversion'
+  | 'differentiation'
 
 export type AiPlaceDiagnosisScore = {
   key: AiPlaceDiagnosisScoreKey
@@ -115,6 +115,106 @@ export type AiPlaceDiagnosisBookingProduct = {
   imageUrls: string[]
 }
 
+export type AiPlaceFieldStatus = 'PRESENT' | 'ABSENT' | 'UNAVAILABLE' | 'ERROR'
+
+export type AiPlaceFieldStatusMap = Record<string, AiPlaceFieldStatus>
+
+export type AiPlaceNormalizedSnapshot = {
+  placeId: string
+  name: string
+  category: string
+  address: string
+  imageUrl?: string
+  profile: AiPlaceDiagnosisPlaceProfile
+  metrics: AiPlaceDiagnosisMetrics
+  bookingProducts: AiPlaceDiagnosisBookingProduct[]
+  reviewSnippets: string[]
+  reviewImages: string[]
+  imageUrls: string[]
+  hashtags: string[]
+  options: string[]
+  conversion: {
+    hasBooking: boolean
+    hasTalktalk: boolean
+    hasCoupon: boolean
+    couponCount: number
+    hasNPay: boolean
+    hasPhone: boolean
+    hasRoute: boolean
+    hasWebsite: boolean
+    hasInstagram: boolean
+  }
+}
+
+export type AiPlaceFeatureSet = {
+  review: {
+    visitorReviewCount: number
+    blogReviewCount: number
+    bookingReviewCount: number
+    reviewSnippetTexts: string[]
+    reviewSnippetKeywordMentions: number
+    reviewSnippetSpecificityScore: number
+    reviewImageCount: number
+  }
+  service: {
+    hasIntroduction: boolean
+    introductionLength: number
+    hasPromotion: boolean
+    promotionLength: number
+    bookingProductCount: number
+    productDescriptionCoverage: number
+    productAverageDescriptionLength: number
+    priceCoverage: number
+    durationCoverage: number
+    precautionCoverage: number
+    productImageCount: number
+  }
+  local: {
+    hasAddress: boolean
+    hasLocationGuide: boolean
+    locationGuideLength: number
+    keywordRegionMentioned: boolean
+    hasRoute: boolean
+  }
+  content: {
+    imageCount: number
+    imageUrlCount: number
+    hashtagCount: number
+    optionCount: number
+    hasWebsite: boolean
+    hasInstagram: boolean
+  }
+  conversion: AiPlaceNormalizedSnapshot['conversion'] & {
+    bookingProductCount: number
+  }
+}
+
+export type AiPlaceBenchmarkProfileSummary = {
+  id?: string
+  status: 'ACTIVE' | 'DRAFT' | 'SUPERSEDED' | 'FAILED' | 'DEFAULT'
+  profileVersion: string
+  rubricVersion: string
+  algorithmVersion: string
+  promptVersion?: string
+  modelName?: string
+  dataConfidence: number
+  windowStart?: string
+  windowEnd?: string
+  signalSummary: {
+    strongSignals: string[]
+    weakSignals: string[]
+    newSignals: string[]
+    diagnosisHints: string[]
+  }
+  statistics?: unknown
+}
+
+export type AiPlaceDiagnosisScoreBreakdown = {
+  absolute: number
+  dataConfidence: number
+  benchmarkPercentile: number | null
+}
+
 export type AiPlaceDiagnosisCompetitorSummary = {
   comparedCount: number
   averageRank: number
@@ -128,14 +228,22 @@ export type AiPlaceDiagnosisCompetitorSummary = {
 }
 
 export type AiPlaceDiagnosisResponse = {
+  status: 'COMPLETED' | 'PARTIAL' | 'FAILED'
   keyword: string
   collectedAt: string
   totalScore: number
   grade: 'A' | 'B' | 'C' | 'D'
+  score: AiPlaceDiagnosisScoreBreakdown
   scoreNotice: string
+  aiAnalysisAvailable: boolean
   target: AiPlaceDiagnosisTarget
   competitorSummary: AiPlaceDiagnosisCompetitorSummary
+  benchmark: {
+    profile: AiPlaceBenchmarkProfileSummary
+    summary: string
+  }
   scores: AiPlaceDiagnosisScore[]
+  categories: Record<AiPlaceDiagnosisScoreKey, number>
   topGaps: string[]
   strengths: string[]
   priorities: string[]
@@ -144,4 +252,12 @@ export type AiPlaceDiagnosisResponse = {
   reviewKeywords: string[]
   imageContentActions: string[]
   bookingProductActions: string[]
+  versions: {
+    rubricVersion: string
+    scorerVersion: string
+    featureExtractorVersion: string
+    promptVersion: string
+    modelName: string
+    benchmarkProfileId?: string
+  }
 }

@@ -2,6 +2,11 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  RecentSearchList,
+  ToolErrorMessage,
+  ToolLoadingPanel,
+} from '@/features/platform/components/tool-ui'
+import {
   deleteRecentKeyword,
   readKeywordCooldownRemaining,
   readRecentKeywords,
@@ -80,11 +85,10 @@ export function KeywordTool({
     keywordInputRef.current?.focus()
   }
 
-  const submitKeyword = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const analyzeKeyword = async (nextKeyword: string) => {
+    const trimmedKeyword = nextKeyword.trim()
 
-    const nextKeyword = keyword.trim()
-    if (!nextKeyword) {
+    if (!trimmedKeyword) {
       setErrorMessage('분석할 키워드를 입력해주세요.')
       setErrorLog('')
       return
@@ -107,7 +111,7 @@ export function KeywordTool({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ keyword: nextKeyword }),
+        body: JSON.stringify({ keyword: trimmedKeyword }),
       })
       const body = (await response.json()) as KeywordErrorBody | KeywordResponse
 
@@ -119,13 +123,25 @@ export function KeywordTool({
       }
 
       setResult(body as KeywordResponse)
-      setRecentKeywords(saveRecentKeyword(nextKeyword))
+      setRecentKeywords(saveRecentKeyword(trimmedKeyword))
       setCooldownRemaining(saveKeywordCooldownStart())
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '키워드 분석에 실패했습니다.')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const submitKeyword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    await analyzeKeyword(keyword)
+  }
+
+  const applyRecentKeyword = async (nextKeyword: string) => {
+    setKeyword(nextKeyword)
+    setErrorMessage('')
+    setErrorLog('')
+    await analyzeKeyword(nextKeyword)
   }
 
   return (
@@ -196,48 +212,33 @@ export function KeywordTool({
           </p>
         ) : null}
 
-        {recentKeywords.length > 0 ? (
-          <div className="mx-auto mt-5 grid max-w-3xl gap-3 text-left">
-            <KeywordChipGroup
-              label="최근 검색"
-              keywords={recentKeywords}
-              disabled={isLoading}
-              onSelect={(nextKeyword) => {
-                setKeyword(nextKeyword)
-                setErrorMessage('')
-                setErrorLog('')
-              }}
-              onRemove={removeRecentKeyword}
-            />
-          </div>
-        ) : null}
+        <RecentSearchList
+          className="mx-auto mt-4 max-w-3xl"
+          disabled={isLoading || cooldownRemaining > 0}
+          keywords={recentKeywords}
+          onRemove={removeRecentKeyword}
+          onSelect={applyRecentKeyword}
+        />
 
-        {errorMessage ? (
-          <KeywordErrorMessage message={errorMessage} log={errorLog} />
-        ) : null}
+        <ToolErrorMessage
+          className="mx-auto mt-5 max-w-3xl"
+          log={errorLog}
+          message={errorMessage}
+        />
       </section>
 
-      {isLoading ? <KeywordLoadingPanel step={loadingStep} /> : null}
+      {isLoading ? (
+        <ToolLoadingPanel
+          className="mx-auto mt-9 w-full max-w-3xl shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl"
+          eyebrow="Analyzing"
+          step={loadingStep}
+          steps={loadingSteps}
+          subtitle="검색 의도, 상위 콘텐츠 신호, 추천 키워드를 순서대로 정리합니다."
+          title="AI 검색 노출 키워드를 분석하는 중입니다"
+        />
+      ) : null}
       {!isLoading && result ? (
         <KeywordResult onStartBlogDraft={onStartBlogDraft} result={result} />
-      ) : null}
-    </div>
-  )
-}
-
-function KeywordErrorMessage({ log, message }: { log: string; message: string }) {
-  return (
-    <div className="mx-auto mt-5 min-w-0 max-w-3xl rounded-md border border-red-400/35 bg-red-500/10 text-left text-sm text-red-100">
-      <p className="px-4 py-3 font-bold">{message}</p>
-      {log ? (
-        <details className="min-w-0 border-t border-red-300/20">
-          <summary className="cursor-pointer px-4 py-3 font-black text-red-50 transition hover:bg-red-400/10">
-            실패 로그 더보기
-          </summary>
-          <pre className="max-h-72 max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all border-t border-red-300/15 bg-black/25 px-4 py-3 font-mono text-xs leading-5 text-red-50/85 [overflow-wrap:anywhere]">
-            {log}
-          </pre>
-        </details>
       ) : null}
     </div>
   )
@@ -257,94 +258,4 @@ function toReadableErrorLog(value: unknown) {
   } catch {
     return String(value)
   }
-}
-
-function KeywordChipGroup({
-  disabled,
-  keywords,
-  label,
-  onRemove,
-  onSelect,
-}: {
-  disabled: boolean
-  keywords: string[]
-  label: string
-  onRemove?: (keyword: string) => void
-  onSelect: (keyword: string) => void
-}) {
-  return (
-    <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.05] px-3 py-3">
-      <div className="grid gap-2">
-        <span className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/80">
-          {label}
-        </span>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {keywords.map((item) => (
-            <span
-              key={`${label}-${item}`}
-              className="grid min-w-0 grid-cols-[minmax(0,1fr)_36px] overflow-hidden rounded-md border border-cyan-300/25 bg-cyan-300/10 text-sm font-black text-cyan-50"
-            >
-              <button
-                type="button"
-                onClick={() => onSelect(item)}
-                disabled={disabled}
-                className="min-w-0 truncate px-3 py-2 text-center transition hover:bg-cyan-300/12 disabled:opacity-50"
-              >
-                {item}
-              </button>
-              <button
-                type="button"
-                onClick={() => onRemove?.(item)}
-                disabled={disabled}
-                aria-label={`${item} 최근 검색 삭제`}
-                className="grid w-8 place-items-center border-l border-cyan-300/20 text-cyan-100/70 transition hover:bg-cyan-300/15 hover:text-white disabled:opacity-50"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function KeywordLoadingPanel({ step }: { step: number }) {
-  return (
-    <section className="mx-auto mt-9 w-full max-w-3xl rounded-md border border-white/10 bg-white/[0.07] p-5 text-left shadow-[0_22px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
-            Analyzing
-          </p>
-          <h3 className="mt-2 text-2xl font-black">AI 검색 노출 키워드를 분석하는 중입니다</h3>
-        </div>
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-cyan-300/30 bg-cyan-300/10">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-200/30 border-t-cyan-200" />
-        </div>
-      </div>
-
-      <div className="mt-6 overflow-hidden rounded-full bg-white/10">
-        <div className="h-3 w-2/3 animate-[keyword-progress_1.7s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-500 to-fuchsia-400" />
-      </div>
-
-      <div className="mt-5 grid gap-2">
-        {loadingSteps.map((label, index) => (
-          <div
-            key={label}
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-black transition ${
-              index === step ? 'bg-cyan-300/10 text-cyan-100' : 'text-slate-400'
-            }`}
-          >
-            <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                index === step ? 'bg-cyan-200 shadow-[0_0_14px_rgba(103,232,249,0.8)]' : 'bg-white/20'
-              }`}
-            />
-            {label}
-          </div>
-        ))}
-      </div>
-    </section>
-  )
 }

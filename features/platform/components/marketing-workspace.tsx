@@ -12,8 +12,34 @@ import { HomeView } from './home-view'
 import { MenuButton } from './menu-button'
 
 type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'diagnosis' | 'tracking'
+type AiDiagnosisDataRefreshStatus = {
+  checkedAt: string
+  hasUpdatingKeyword: boolean
+  keywords: Array<{
+    keyword: string
+    normalizedKeyword: string
+    status: 'FRESH' | 'NEEDS_REFRESH' | 'UPDATING' | 'PARTIAL' | 'FAILED'
+    latestProfile: {
+      status: string | null
+      createdAt: string
+      sampleCount: number
+      dataConfidence: number
+    } | null
+    latestRun: {
+      id: string
+      status: string | null
+      createdAt: string | null
+      completedAt: string | null
+      evaluatedCount: number
+      totalCount: number
+      nextRankStart: number
+      errorMessage: string | null
+    } | null
+  }>
+}
 
 const refreshViewStorageKey = 'aiva-refresh-view'
+const seenAiDiagnosisRefreshJobsStorageKey = 'aiva:seen-ai-diagnosis-refresh-job-ids'
 const pullRefreshThreshold = 84
 const pullRefreshMaxDistance = 118
 const mobileHeaderHeight = 72
@@ -34,6 +60,11 @@ export function MarketingWorkspace() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [isSessionChecking, setIsSessionChecking] = useState(true)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [isWorkStatusOpen, setIsWorkStatusOpen] = useState(false)
+  const [aiDiagnosisDataStatus, setAiDiagnosisDataStatus] =
+    useState<AiDiagnosisDataRefreshStatus | null>(null)
+  const [isAiDiagnosisDataStatusLoading, setIsAiDiagnosisDataStatusLoading] = useState(false)
+  const [seenAiDiagnosisRefreshJobIds, setSeenAiDiagnosisRefreshJobIds] = useState<string[]>([])
   const [pullDistance, setPullDistance] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const touchStartYRef = useRef(0)
@@ -97,6 +128,74 @@ export function MarketingWorkspace() {
       isMounted = false
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(seenAiDiagnosisRefreshJobsStorageKey)
+      const parsed = saved ? JSON.parse(saved) : []
+
+      if (Array.isArray(parsed)) {
+        setSeenAiDiagnosisRefreshJobIds(
+          parsed.filter((item): item is string => typeof item === 'string'),
+        )
+      }
+    } catch {
+      setSeenAiDiagnosisRefreshJobIds([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!authUser) {
+      return
+    }
+
+    let isMounted = true
+
+    const loadStatus = async () => {
+      setIsAiDiagnosisDataStatusLoading(true)
+
+      try {
+        const response = await fetch('/api/ai-place-diagnosis/benchmark/status', {
+          cache: 'no-store',
+        })
+        const data = await response.json().catch(() => null) as
+          | AiDiagnosisDataRefreshStatus
+          | null
+
+        if (isMounted && response.ok && data) {
+          setAiDiagnosisDataStatus(data)
+        }
+      } finally {
+        if (isMounted) {
+          setIsAiDiagnosisDataStatusLoading(false)
+        }
+      }
+    }
+
+    loadStatus()
+    const intervalId = window.setInterval(loadStatus, 10000)
+
+    return () => {
+      isMounted = false
+      window.clearInterval(intervalId)
+    }
+  }, [authUser])
+
+  const markAiDiagnosisRefreshJobsSeen = () => {
+    const terminalIds = getTerminalAiDiagnosisRefreshJobIds(aiDiagnosisDataStatus)
+
+    if (terminalIds.length === 0) {
+      return
+    }
+
+    setSeenAiDiagnosisRefreshJobIds((current) => {
+      const next = Array.from(new Set([...current, ...terminalIds])).slice(-80)
+
+      window.localStorage.setItem(seenAiDiagnosisRefreshJobsStorageKey, JSON.stringify(next))
+
+      return next
+    })
+  }
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
@@ -198,6 +297,11 @@ export function MarketingWorkspace() {
   const pullIndicatorHeight = Math.min(pullDistance, pullRefreshMaxDistance)
   const activePullDistance = isRefreshing ? pullRefreshThreshold : pullIndicatorHeight
   const isHomeView = view === 'home'
+  const hasRunningAiDiagnosisRefresh = Boolean(aiDiagnosisDataStatus?.hasUpdatingKeyword)
+  const hasUnreadAiDiagnosisRefreshResult = hasUnreadTerminalAiDiagnosisRefreshJob({
+    seenIds: seenAiDiagnosisRefreshJobIds,
+    status: aiDiagnosisDataStatus,
+  })
 
   if (isSessionChecking) {
     return (
@@ -250,7 +354,7 @@ export function MarketingWorkspace() {
             className={`fixed inset-x-0 top-0 z-50 min-h-[72px] items-center border-b border-white/10 bg-[#070a12]/92 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.2)] backdrop-blur-xl md:relative md:inset-auto md:z-20 md:min-h-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
               isHomeView
                 ? 'flex justify-between'
-                : 'grid grid-cols-[44px_minmax(0,1fr)_44px] gap-3'
+                : 'grid grid-cols-[44px_minmax(0,1fr)_92px] gap-3'
             }`}
           >
             {isHomeView ? (
@@ -277,7 +381,39 @@ export function MarketingWorkspace() {
               </div>
             ) : null}
 
-            <div className="relative">
+            <div className="relative flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsWorkStatusOpen((current) => !current)
+                  markAiDiagnosisRefreshJobsSeen()
+                }}
+                aria-label="작업 알림 열기"
+                aria-expanded={isWorkStatusOpen}
+                className={`relative grid h-11 w-11 place-items-center rounded-md border transition focus:outline-none focus:ring-4 focus:ring-cyan-300/15 ${
+                  hasUnreadAiDiagnosisRefreshResult
+                    ? 'border-rose-300/45 bg-rose-400/14 text-rose-50 hover:bg-rose-400/22'
+                    : hasRunningAiDiagnosisRefresh
+                      ? 'border-cyan-300/45 bg-cyan-300/12 text-cyan-50 hover:bg-cyan-300/18'
+                      : 'border-white/10 bg-white/[0.05] text-slate-100 hover:border-cyan-300/50 hover:bg-white/[0.08]'
+                }`}
+              >
+                <span className="relative block h-5 w-5" aria-hidden="true">
+                  <span className="absolute left-1/2 top-1 h-3.5 w-3 -translate-x-1/2 rounded-t-full border-2 border-current" />
+                  <span className="absolute bottom-0 left-1/2 h-1.5 w-3.5 -translate-x-1/2 rounded-b-full border-b-2 border-l-2 border-r-2 border-current" />
+                  <span className="absolute bottom-[-2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-current" />
+                </span>
+                {hasUnreadAiDiagnosisRefreshResult ? (
+                  <span className="absolute -right-1 -top-1 rounded-full border border-[#070a12] bg-rose-400 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
+                    완료
+                  </span>
+                ) : hasRunningAiDiagnosisRefresh ? (
+                  <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-60" />
+                    <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-cyan-300" />
+                  </span>
+                ) : null}
+              </button>
               <button
                 type="button"
                 onClick={() => setIsMenuOpen((current) => !current)}
@@ -293,6 +429,16 @@ export function MarketingWorkspace() {
               </button>
             </div>
           </header>
+
+          <WorkStatusPanel
+            isLoading={isAiDiagnosisDataStatusLoading}
+            isOpen={isWorkStatusOpen}
+            status={aiDiagnosisDataStatus}
+            onClose={() => {
+              setIsWorkStatusOpen(false)
+              markAiDiagnosisRefreshJobsSeen()
+            }}
+          />
 
           <SideMenu
             activeView={view}
@@ -342,6 +488,315 @@ export function MarketingWorkspace() {
       </div>
     </main>
   )
+}
+
+function WorkStatusPanel({
+  isLoading,
+  isOpen,
+  onClose,
+  status,
+}: {
+  isLoading: boolean
+  isOpen: boolean
+  onClose: () => void
+  status: AiDiagnosisDataRefreshStatus | null
+}) {
+  const jobs = createAiDiagnosisRefreshJobCards(status)
+  const hasJobs = jobs.length > 0
+
+  return (
+    <div
+      className={`fixed inset-0 z-[75] overflow-hidden transition-opacity duration-200 ${
+        isOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+      }`}
+      aria-hidden={!isOpen}
+    >
+      <button
+        type="button"
+        aria-label="작업 알림 닫기"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/45"
+      />
+      <aside
+        className={`absolute right-0 top-0 flex h-full w-[min(92vw,420px)] transform-gpu flex-col border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              Work Status
+            </p>
+            <h2 className="mt-2 text-xl font-black text-white">작업 알림</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
+              AI 진단 데이터 최신화 진행 상태와 완료 결과를 확인합니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-xl font-black text-slate-200 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
+            aria-label="작업 알림 닫기"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          {isLoading && !hasJobs ? (
+            <div className="rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] p-4">
+              <span className="block h-2 overflow-hidden rounded-full bg-white/10">
+                <span className="block h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
+              </span>
+              <p className="mt-3 text-sm font-black text-cyan-100">작업 상태 확인 중</p>
+            </div>
+          ) : null}
+
+          {hasJobs ? (
+            <div className="grid gap-3">
+              {jobs.map((job) => (
+                <AiDiagnosisRefreshJobCard key={job.id} job={job} />
+              ))}
+            </div>
+          ) : !isLoading ? (
+            <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+              <p className="text-sm font-black text-slate-200">표시할 작업이 없습니다.</p>
+              <p className="mt-2 text-xs font-bold leading-5 text-slate-500">
+                AI 진단 데이터 최신화를 실행하면 진행 상태가 여기에 표시됩니다.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+type AiDiagnosisRefreshJobCardModel = {
+  id: string
+  keyword: string
+  status: 'FRESH' | 'NEEDS_REFRESH' | 'UPDATING' | 'PARTIAL' | 'FAILED'
+  label: string
+  tone: 'cyan' | 'emerald' | 'amber' | 'rose' | 'slate'
+  progress: number
+  progressText: string
+  startedAt: string | null
+  updatedAt: string | null
+  errorMessage: string | null
+}
+
+function AiDiagnosisRefreshJobCard({ job }: { job: AiDiagnosisRefreshJobCardModel }) {
+  const steps = createAiDiagnosisRefreshSteps(job)
+
+  return (
+    <article className="rounded-md border border-white/10 bg-white/[0.045] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-black text-white">AI 진단 데이터 최신화</h3>
+          <p className="mt-1 truncate text-xs font-bold text-cyan-100/80">{job.keyword}</p>
+        </div>
+        <span
+          className={[
+            'shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black',
+            job.tone === 'rose'
+              ? 'border-rose-300/25 bg-rose-400/12 text-rose-100'
+              : job.tone === 'amber'
+                ? 'border-amber-300/25 bg-amber-300/12 text-amber-100'
+                : job.tone === 'emerald'
+                  ? 'border-emerald-300/25 bg-emerald-300/12 text-emerald-100'
+                  : job.tone === 'cyan'
+                    ? 'border-cyan-300/25 bg-cyan-300/12 text-cyan-100'
+                    : 'border-white/10 bg-white/[0.06] text-slate-200',
+          ].join(' ')}
+        >
+          {job.label}
+        </span>
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
+          <span>{job.progressText}</span>
+          <span className="text-slate-200">{Math.round(job.progress)}%</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+          <div
+            className={`h-full rounded-full ${
+              job.tone === 'rose'
+                ? 'bg-rose-400'
+                : job.tone === 'amber'
+                  ? 'bg-amber-300'
+                  : job.tone === 'emerald'
+                    ? 'bg-emerald-300'
+                    : 'bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400'
+            }`}
+            style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }}
+          />
+        </div>
+      </div>
+
+      <ol className="mt-4 grid gap-2">
+        {steps.map((step) => (
+          <li key={step.label} className="flex items-center gap-2 text-xs font-bold">
+            <span
+              className={[
+                'grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px]',
+                step.state === 'done'
+                  ? 'border-emerald-300/35 bg-emerald-300/14 text-emerald-100'
+                  : step.state === 'active'
+                    ? 'border-cyan-300/45 bg-cyan-300/14 text-cyan-100'
+                    : step.state === 'failed'
+                      ? 'border-rose-300/35 bg-rose-400/14 text-rose-100'
+                      : 'border-white/10 bg-white/[0.04] text-slate-500',
+              ].join(' ')}
+            >
+              {step.state === 'done' ? '✓' : step.state === 'active' ? '●' : step.state === 'failed' ? '!' : ''}
+            </span>
+            <span
+              className={
+                step.state === 'pending'
+                  ? 'text-slate-500'
+                  : step.state === 'failed'
+                    ? 'text-rose-100'
+                    : 'text-slate-200'
+              }
+            >
+              {step.label}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {job.errorMessage ? (
+        <p className="mt-3 rounded-md border border-rose-300/20 bg-rose-400/[0.08] px-3 py-2 text-xs font-bold leading-5 text-rose-100">
+          {job.errorMessage}
+        </p>
+      ) : null}
+
+      <div className="mt-4 grid gap-1 text-[11px] font-bold text-slate-500">
+        <p>시작: {job.startedAt ? formatDateTime(job.startedAt) : '확인 중'}</p>
+        <p>최근 갱신: {job.updatedAt ? formatDateTime(job.updatedAt) : '확인 중'}</p>
+      </div>
+    </article>
+  )
+}
+
+function createAiDiagnosisRefreshJobCards(
+  status: AiDiagnosisDataRefreshStatus | null,
+): AiDiagnosisRefreshJobCardModel[] {
+  if (!status) {
+    return []
+  }
+
+  return status.keywords
+    .filter((keyword) => keyword.latestRun || keyword.latestProfile || keyword.status === 'NEEDS_REFRESH')
+    .map((keyword) => {
+      const run = keyword.latestRun
+      const totalCount = Math.max(run?.totalCount ?? keyword.latestProfile?.sampleCount ?? 50, 1)
+      const evaluatedCount = Math.min(run?.evaluatedCount ?? (keyword.latestProfile ? totalCount : 0), totalCount)
+      const progress =
+        keyword.status === 'FRESH' || keyword.status === 'PARTIAL' || keyword.status === 'FAILED'
+          ? 100
+          : Math.round((evaluatedCount / totalCount) * 100)
+      const tone =
+        keyword.status === 'FAILED'
+          ? 'rose'
+          : keyword.status === 'PARTIAL' || keyword.status === 'NEEDS_REFRESH'
+            ? 'amber'
+            : keyword.status === 'FRESH'
+              ? 'emerald'
+              : 'cyan'
+
+      return {
+        id: run?.id ?? `${keyword.normalizedKeyword}:${keyword.latestProfile?.createdAt ?? 'none'}`,
+        keyword: keyword.keyword,
+        status: keyword.status,
+        label: formatAiDiagnosisRefreshStatusLabel(keyword.status),
+        tone,
+        progress,
+        progressText:
+          keyword.status === 'UPDATING'
+            ? `${evaluatedCount}/${totalCount}개 분석 완료`
+            : keyword.status === 'NEEDS_REFRESH'
+              ? '최신화 필요'
+              : `${totalCount}개 플레이스 기준 데이터`,
+        startedAt: run?.createdAt ?? keyword.latestProfile?.createdAt ?? null,
+        updatedAt: run?.completedAt ?? keyword.latestProfile?.createdAt ?? run?.createdAt ?? null,
+        errorMessage: run?.errorMessage ?? null,
+      } satisfies AiDiagnosisRefreshJobCardModel
+    })
+}
+
+function createAiDiagnosisRefreshSteps(job: AiDiagnosisRefreshJobCardModel) {
+  const failed = job.status === 'FAILED'
+  const completed = job.status === 'FRESH' || job.status === 'PARTIAL'
+  const evaluating = job.status === 'UPDATING'
+
+  return [
+    { label: '플레이스 데이터 수집', state: failed ? 'done' : 'done' },
+    { label: '수집 데이터 정규화', state: failed ? 'done' : 'done' },
+    {
+      label: 'AI 평가',
+      state: failed ? 'failed' : completed ? 'done' : evaluating ? 'active' : 'pending',
+    },
+    {
+      label: '기준 프로필 생성',
+      state: failed ? 'pending' : completed ? 'done' : evaluating && job.progress >= 100 ? 'active' : 'pending',
+    },
+    {
+      label: '최신 데이터 반영',
+      state: failed ? 'pending' : completed ? 'done' : 'pending',
+    },
+  ] as Array<{ label: string; state: 'done' | 'active' | 'pending' | 'failed' }>
+}
+
+function formatAiDiagnosisRefreshStatusLabel(
+  status: AiDiagnosisDataRefreshStatus['keywords'][number]['status'],
+) {
+  switch (status) {
+    case 'FRESH':
+      return '완료'
+    case 'NEEDS_REFRESH':
+      return '갱신 필요'
+    case 'UPDATING':
+      return '진행 중'
+    case 'PARTIAL':
+      return '일부 완료'
+    case 'FAILED':
+      return '실패'
+    default:
+      return '대기'
+  }
+}
+
+function getTerminalAiDiagnosisRefreshJobIds(status: AiDiagnosisDataRefreshStatus | null) {
+  if (!status) {
+    return []
+  }
+
+  return status.keywords
+    .filter((keyword) => keyword.status === 'FRESH' || keyword.status === 'PARTIAL' || keyword.status === 'FAILED')
+    .map((keyword) => keyword.latestRun?.id)
+    .filter((id): id is string => Boolean(id))
+}
+
+function hasUnreadTerminalAiDiagnosisRefreshJob({
+  seenIds,
+  status,
+}: {
+  seenIds: string[]
+  status: AiDiagnosisDataRefreshStatus | null
+}) {
+  const seen = new Set(seenIds)
+
+  return getTerminalAiDiagnosisRefreshJobIds(status).some((id) => !seen.has(id))
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Asia/Seoul',
+  }).format(new Date(value))
 }
 
 function SideMenu({

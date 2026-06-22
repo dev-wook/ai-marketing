@@ -41,6 +41,15 @@ export type GeminiErrorMetadata = {
   canTryFallbackModel: boolean
 }
 
+export type GeminiLocalRateLimitMetadata = {
+  status: 429
+  quotaScope: 'minute'
+  quotaLimit: number
+  retryAfterMs: number
+  availableAt: string
+  message: string
+}
+
 export class GeminiApiError extends Error {
   status: number
   statusText: string
@@ -63,11 +72,25 @@ export class GeminiApiError extends Error {
   }
 }
 
+export class GeminiRateLimitError extends Error {
+  metadata: GeminiLocalRateLimitMetadata
+
+  constructor(metadata: GeminiLocalRateLimitMetadata) {
+    super(metadata.message)
+    this.name = 'GeminiRateLimitError'
+    this.metadata = metadata
+  }
+}
+
 const defaultGeminiTextModel = 'gemini-3.5-flash'
 const defaultGeminiFallbackTextModels = ['gemini-2.5-flash-lite']
 const retryableGeminiStatuses = new Set([429, 500, 503])
 const maxRetryDelayMs = 5000
 const maxGeminiAttemptsPerModel = 3
+const geminiMinuteLimit = 15
+const geminiMinuteWindowMs = 60 * 1000
+const geminiRequestTimestamps: number[] = []
+let geminiCooldownUntil = 0
 
 export async function generateGeminiText(prompt: string, useGoogleSearch = false) {
   const apiKey = process.env.GEMINI_API_KEY
@@ -182,6 +205,8 @@ async function requestGeminiTextOnce({
   prompt: string
   useGoogleSearch: boolean
 }) {
+  rememberGeminiRequestOrThrow()
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
@@ -203,6 +228,17 @@ async function requestGeminiTextOnce({
 
   if (!response.ok) {
     const errorBody = await response.text()
+    const apiError = new GeminiApiError({
+      status: response.status,
+      statusText: response.statusText,
+      body: errorBody,
+      message: `Gemini API request failed with status ${response.status}`,
+      model,
+    })
+
+    if (response.status === 429) {
+      rememberGeminiCooldown(apiError)
+    }
 
     console.error('Gemini API error', {
       status: response.status,
@@ -212,13 +248,7 @@ async function requestGeminiTextOnce({
       body: safelyParseJson(errorBody),
     })
 
-    throw new GeminiApiError({
-      status: response.status,
-      statusText: response.statusText,
-      body: errorBody,
-      message: `Gemini API request failed with status ${response.status}`,
-      model,
-    })
+    throw apiError
   }
 
   const data = (await response.json()) as GeminiGenerateContentResponse
@@ -229,6 +259,16 @@ async function requestGeminiTextOnce({
       .filter(Boolean)
       .join('\n') ?? ''
   )
+}
+
+export function getGeminiLocalRateLimitMetadata() {
+  const retryAfterMs = getGeminiLocalRetryAfterMs(Date.now())
+
+  if (retryAfterMs <= 0) {
+    return null
+  }
+
+  return createGeminiLocalRateLimitMetadata(retryAfterMs)
 }
 
 function getGeminiModelCandidates(primaryModel: string) {
@@ -305,6 +345,55 @@ function getRetryDelayMs(error: GeminiApiError, attempt: number) {
   return Math.min(Math.max(retryDelayMs, fallbackDelayMs), maxRetryDelayMs)
 }
 
+function rememberGeminiRequestOrThrow() {
+  const now = Date.now()
+  const retryAfterMs = getGeminiLocalRetryAfterMs(now)
+
+  if (retryAfterMs > 0) {
+    throw new GeminiRateLimitError(createGeminiLocalRateLimitMetadata(retryAfterMs))
+  }
+
+  geminiRequestTimestamps.push(now)
+}
+
+function rememberGeminiCooldown(error: GeminiApiError) {
+  const retryAfterMs = getRetryInfo(error).retryDelayMs
+
+  if (retryAfterMs && retryAfterMs > 0) {
+    geminiCooldownUntil = Math.max(geminiCooldownUntil, Date.now() + retryAfterMs)
+  }
+}
+
+function getGeminiLocalRetryAfterMs(now: number) {
+  while (
+    geminiRequestTimestamps.length > 0 &&
+    now - geminiRequestTimestamps[0] >= geminiMinuteWindowMs
+  ) {
+    geminiRequestTimestamps.shift()
+  }
+
+  const windowRetryAfterMs =
+    geminiRequestTimestamps.length >= geminiMinuteLimit
+      ? geminiMinuteWindowMs - (now - geminiRequestTimestamps[0])
+      : 0
+  const cooldownRetryAfterMs = Math.max(0, geminiCooldownUntil - now)
+
+  return Math.ceil(Math.max(windowRetryAfterMs, cooldownRetryAfterMs))
+}
+
+function createGeminiLocalRateLimitMetadata(retryAfterMs: number): GeminiLocalRateLimitMetadata {
+  const availableAt = new Date(Date.now() + retryAfterMs).toISOString()
+
+  return {
+    status: 429,
+    quotaScope: 'minute',
+    quotaLimit: geminiMinuteLimit,
+    retryAfterMs,
+    availableAt,
+    message: `Gemini API 호출이 일시적으로 제한되었습니다. 약 ${formatRetryAfter(retryAfterMs)} 후 다시 이용할 수 있습니다.`,
+  }
+}
+
 function getRetryInfo(error: GeminiApiError) {
   const body = parseGeminiErrorBody(error.body)
   const retryDelay = body.error?.details
@@ -356,6 +445,18 @@ function parseRetryDelayMs(value: string) {
   }
 
   return Math.ceil(seconds * 1000)
+}
+
+function formatRetryAfter(value: number) {
+  const seconds = Math.max(1, Math.ceil(value / 1000))
+
+  if (seconds < 60) {
+    return `${seconds}초`
+  }
+
+  const minutes = Math.ceil(seconds / 60)
+
+  return `${minutes}분`
 }
 
 function parseGeminiErrorBody(value: string): GeminiErrorBody {

@@ -1,0 +1,10 @@
+export const aiPlaceRubricVersion = 'ai-place-rubric-v2'
+export const aiPlaceScorerVersion = 'ai-place-scorer-v1'
+export const aiPlaceFeatureExtractorVersion = 'ai-place-feature-extractor-v1'
+export const aiPlaceCollectorVersion = 'ai-place-collector-v1'
+export const aiPlaceDiagnosisPromptVersion = 'ai-place-diagnosis-prompt-v2'
+export const aiPlaceBenchmarkPromptVersion = 'ai-place-benchmark-prompt-v1'
+export const aiPlaceBenchmarkAlgorithmVersion = 'ai-place-benchmark-algorithm-v1'
+export const aiPlaceBenchmarkProfileVersion = 'ai-place-benchmark-profile-v1'
+
+export const aiPlaceDefaultModelName = process.env.GEMINI_TEXT_MODEL ?? 'gemini-3.5-flash'

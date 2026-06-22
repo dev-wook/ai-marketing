@@ -1,7 +1,8 @@
 'use client'
 
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { RecentSearchList, ToolLoadingPanel } from '@/features/platform/components/tool-ui'
 import type {
   AiPlaceDiagnosisPlaceSearchItem,
   AiPlaceDiagnosisPlaceSearchResponse,
@@ -10,6 +11,8 @@ import type {
 
 type DiagnosisErrorBody = {
   message?: string
+  retryAfterMs?: number
+  availableAt?: string
   debug?: unknown
 }
 
@@ -19,6 +22,13 @@ const loadingSteps = [
   'AIVA 진단 기준에 맞춰 정보 구조를 평가하고 있습니다.',
   'AI 관점의 점수와 개선 피드백을 작성하고 있습니다.',
 ]
+const placeSearchLoadingSteps = [
+  '네이버 플레이스에서 상호명을 검색하고 있습니다.',
+  '대표 이미지와 주소 정보를 정리하고 있습니다.',
+  '선택 가능한 플레이스 목록을 구성하고 있습니다.',
+]
+const recentPlaceSearchStorageKey = 'aiva:recent-ai-place-diagnosis-places'
+const maxRecentPlaceSearches = 5
 
 async function requestPlaceSearch(query: string) {
   const response = await fetch('/api/ai-place-diagnosis/places', {
@@ -32,7 +42,11 @@ async function requestPlaceSearch(query: string) {
     const errorBody = body as DiagnosisErrorBody
     const error = new Error(errorBody.message ?? '플레이스 검색에 실패했습니다.')
 
-    Object.assign(error, { debug: errorBody.debug })
+    Object.assign(error, {
+      availableAt: errorBody.availableAt,
+      debug: errorBody.debug,
+      retryAfterMs: errorBody.retryAfterMs,
+    })
 
     throw error
   }
@@ -61,7 +75,11 @@ async function requestDiagnosis({
     const errorBody = body as DiagnosisErrorBody
     const error = new Error(errorBody.message ?? 'AI 플레이스 진단에 실패했습니다.')
 
-    Object.assign(error, { debug: errorBody.debug })
+    Object.assign(error, {
+      availableAt: errorBody.availableAt,
+      debug: errorBody.debug,
+      retryAfterMs: errorBody.retryAfterMs,
+    })
 
     throw error
   }
@@ -71,6 +89,7 @@ async function requestDiagnosis({
 
 export function AiPlaceDiagnosisTool() {
   const [placeSearchQuery, setPlaceSearchQuery] = useState('')
+  const [recentPlaceSearches, setRecentPlaceSearches] = useState<string[]>([])
   const [placeSearchItems, setPlaceSearchItems] = useState<AiPlaceDiagnosisPlaceSearchItem[]>([])
   const [selectedPlace, setSelectedPlace] = useState<AiPlaceDiagnosisPlaceSearchItem | null>(null)
   const [keyword, setKeyword] = useState('')
@@ -78,7 +97,9 @@ export function AiPlaceDiagnosisTool() {
   const [isSearching, setIsSearching] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [loadingStep, setLoadingStep] = useState(0)
+  const [searchLoadingStep, setSearchLoadingStep] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
+  const [errorRetryNotice, setErrorRetryNotice] = useState('')
   const [errorLog, setErrorLog] = useState('')
 
   const canSubmit = useMemo(
@@ -91,10 +112,14 @@ export function AiPlaceDiagnosisTool() {
     [isLoading, isSearching, placeSearchQuery],
   )
 
-  const handlePlaceSearch = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  useEffect(() => {
+    setRecentPlaceSearches(readRecentPlaceSearches())
+  }, [])
 
-    if (!canSearch) {
+  const searchPlaces = async (query: string) => {
+    const trimmedQuery = query.trim()
+
+    if (!trimmedQuery || isSearching || isLoading) {
       return
     }
 
@@ -103,21 +128,44 @@ export function AiPlaceDiagnosisTool() {
     setSelectedPlace(null)
     setPlaceSearchItems([])
     setErrorMessage('')
+    setErrorRetryNotice('')
     setErrorLog('')
 
+    const timer = window.setInterval(() => {
+      setSearchLoadingStep((current) => (current + 1) % placeSearchLoadingSteps.length)
+    }, 1200)
+
     try {
-      const response = await requestPlaceSearch(placeSearchQuery)
+      const response = await requestPlaceSearch(trimmedQuery)
 
       setPlaceSearchItems(response.items)
+      setRecentPlaceSearches(saveRecentPlaceSearch(trimmedQuery))
       if (!response.items.length) {
         setErrorMessage('검색 결과가 없습니다. 플레이스명을 조금 더 정확히 입력해주세요.')
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '플레이스 검색에 실패했습니다.')
+      setErrorRetryNotice(createRetryNotice(error))
       setErrorLog(JSON.stringify((error as { debug?: unknown }).debug ?? {}, null, 2))
     } finally {
+      window.clearInterval(timer)
+      setSearchLoadingStep(0)
       setIsSearching(false)
     }
+  }
+
+  const handlePlaceSearch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    await searchPlaces(placeSearchQuery)
+  }
+
+  const applyRecentPlaceSearch = async (query: string) => {
+    setPlaceSearchQuery(query)
+    await searchPlaces(query)
+  }
+
+  const removeRecentPlaceSearch = (query: string) => {
+    setRecentPlaceSearches(deleteRecentPlaceSearch(query))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -130,6 +178,7 @@ export function AiPlaceDiagnosisTool() {
     setIsLoading(true)
     setResult(null)
     setErrorMessage('')
+    setErrorRetryNotice('')
     setErrorLog('')
 
     const timer = window.setInterval(() => {
@@ -145,6 +194,7 @@ export function AiPlaceDiagnosisTool() {
       )
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'AI 플레이스 진단에 실패했습니다.')
+      setErrorRetryNotice(createRetryNotice(error))
       setErrorLog(JSON.stringify((error as { debug?: unknown }).debug ?? {}, null, 2))
     } finally {
       window.clearInterval(timer)
@@ -170,9 +220,12 @@ export function AiPlaceDiagnosisTool() {
           </p>
         </div>
 
-        <form className="grid gap-3" onSubmit={handlePlaceSearch}>
-          <label className="grid gap-2">
-            <span className="text-sm font-black text-slate-200">플레이스명 검색</span>
+        <form
+          className="rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.18)]"
+          onSubmit={handlePlaceSearch}
+        >
+          <label className="mb-2 block text-sm font-black text-slate-200">플레이스명 검색</label>
+          <div className="flex flex-col gap-3 md:flex-row">
             <input
               value={placeSearchQuery}
               onChange={(event) => {
@@ -181,18 +234,26 @@ export function AiPlaceDiagnosisTool() {
                 setResult(null)
               }}
               placeholder="예: 라솝뷰티"
-              className="min-h-12 rounded-md border border-white/10 bg-[#090d18] px-4 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+              disabled={isSearching || isLoading}
+              className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
             />
-          </label>
-
-          <button
-            type="submit"
-            disabled={!canSearch}
-            className="inline-flex h-11 w-full items-center justify-center rounded-md border border-cyan-200/25 bg-cyan-300/10 px-5 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/18 disabled:cursor-not-allowed disabled:opacity-60 md:w-fit"
-          >
-            {isSearching ? '검색 중' : '플레이스 검색'}
-          </button>
+            <button
+              type="submit"
+              disabled={!canSearch}
+              className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {isSearching ? '검색 중' : '플레이스 검색'}
+            </button>
+          </div>
         </form>
+
+        <RecentSearchList
+          disabled={isSearching || isLoading}
+          keywords={recentPlaceSearches}
+          label="최근 플레이스 검색"
+          onRemove={removeRecentPlaceSearch}
+          onSelect={applyRecentPlaceSearch}
+        />
 
         {placeSearchItems.length ? (
           <div className="grid gap-3">
@@ -213,6 +274,16 @@ export function AiPlaceDiagnosisTool() {
           </div>
         ) : null}
 
+        {isSearching ? (
+          <ToolLoadingPanel
+            eyebrow="Searching"
+            step={searchLoadingStep}
+            steps={placeSearchLoadingSteps}
+            subtitle="플레이스명과 일치하는 네이버 플레이스 후보를 찾고 있습니다."
+            title="진단할 플레이스를 검색하는 중입니다"
+          />
+        ) : null}
+
         {selectedPlace ? (
           <div className="rounded-md border border-cyan-200/25 bg-cyan-300/10 p-4">
             <p className="text-xs font-black text-cyan-100/80">선택된 플레이스</p>
@@ -225,35 +296,48 @@ export function AiPlaceDiagnosisTool() {
           </div>
         ) : null}
 
-        <form className="grid gap-4" onSubmit={handleSubmit}>
+        <form
+          className="rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.18)]"
+          onSubmit={handleSubmit}
+        >
           <label className="grid gap-2">
             <span className="text-sm font-black text-slate-200">분석 키워드</span>
             <input
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               placeholder="예: 노원 속눈썹펌"
-              className="min-h-12 rounded-md border border-white/10 bg-[#090d18] px-4 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+              disabled={isSearching || isLoading}
+              className="min-h-14 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
             />
           </label>
 
           <button
             type="submit"
             disabled={!canSubmit}
-            className="inline-flex h-12 w-full items-center justify-center rounded-md bg-cyan-100 px-5 text-sm font-black text-[#071018] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 md:w-fit"
+            className="mt-3 min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45 md:w-fit"
           >
             {isLoading ? '진단 중' : 'AI 진단 시작'}
           </button>
         </form>
 
         {isLoading ? (
-          <div className="rounded-md border border-cyan-300/18 bg-cyan-300/8 p-4 text-sm font-bold text-cyan-100">
-            {loadingSteps[loadingStep]}
-          </div>
+          <ToolLoadingPanel
+            eyebrow="Diagnosing"
+            step={loadingStep}
+            steps={loadingSteps}
+            subtitle="수집된 플레이스 신호를 바탕으로 AIVA 진단 점수와 개선 피드백을 생성합니다."
+            title="AI 플레이스 진단을 진행하는 중입니다"
+          />
         ) : null}
 
         {errorMessage ? (
           <div className="grid gap-3 rounded-md border border-rose-300/25 bg-rose-400/10 p-4">
             <p className="text-sm font-black text-rose-100">{errorMessage}</p>
+            {errorRetryNotice ? (
+              <p className="break-keep rounded-md border border-amber-200/25 bg-amber-300/10 p-3 text-xs font-black leading-5 text-amber-100">
+                {errorRetryNotice}
+              </p>
+            ) : null}
             {errorLog && errorLog !== '{}' ? (
               <pre className="max-h-48 overflow-auto rounded-md bg-black/30 p-3 text-xs text-rose-100/80">
                 {errorLog}
@@ -271,38 +355,53 @@ export function AiPlaceDiagnosisTool() {
 function DiagnosisResult({ result }: { result: AiPlaceDiagnosisResponse }) {
   return (
     <section className="grid gap-5">
-      <div className="grid gap-4 rounded-md border border-white/10 bg-[#0b1220]/88 p-5 md:grid-cols-[220px_minmax(0,1fr)] md:p-6">
-        <div className="grid content-start gap-3">
-          <div className="grid h-36 w-full place-items-center rounded-md border border-cyan-300/22 bg-cyan-300/10">
-            <div className="text-center">
-              <p className="text-5xl font-black text-white">{result.totalScore}</p>
-              <p className="mt-1 text-sm font-black text-cyan-100">Grade {result.grade}</p>
-            </div>
-          </div>
-          <p className="break-keep text-xs font-semibold leading-5 text-slate-400">
-            {result.scoreNotice}
-          </p>
-        </div>
-
-        <div className="grid gap-4">
+      <div className="grid gap-4 rounded-md border border-white/10 bg-[#0b1220]/88 p-5 md:p-6">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
           <div>
             <p className="text-sm font-black text-cyan-100">{result.keyword}</p>
             <h2 className="mt-1 break-keep text-2xl font-black text-white">
               {result.target.name}
             </h2>
             <p className="mt-2 text-sm font-semibold text-slate-300">
-              현재 {result.target.rank}위 · {result.target.category} · {result.target.address}
+              참고 순위 {result.target.rank}위 · {result.target.category} · {result.target.address}
+            </p>
+            <p className="mt-3 break-keep text-xs font-semibold leading-5 text-slate-400">
+              {result.scoreNotice}
             </p>
           </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="현재 순위" value={`${result.target.rank}위`} />
-            <Metric
-              label="리뷰 신호"
-              value={`${result.target.metrics.totalReviewCount.toLocaleString()}개`}
-            />
-            <Metric label="이미지 신호" value={`${result.target.metrics.imageCount}개`} />
+          <div className="grid gap-2 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100/80">
+              Diagnosis Status
+            </p>
+            <p className="text-sm font-black text-white">
+              {result.aiAnalysisAvailable ? 'AI 상세 분석 완료' : '기본 진단 완료 · AI 상세 분석 일시 불가'}
+            </p>
+            <p className="break-keep text-xs font-semibold leading-5 text-slate-400">
+              {result.benchmark.summary}
+            </p>
           </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <ScoreMetric label="AI 플레이스 준비도" value={`${result.score.absolute}점`} />
+          <ScoreMetric label="데이터 신뢰도" value={`${result.score.dataConfidence}%`} />
+          <ScoreMetric
+            label="키워드 경쟁 벤치마크"
+            value={
+              typeof result.score.benchmarkPercentile === 'number'
+                ? `상위 ${100 - result.score.benchmarkPercentile}%`
+                : '기본 기준'
+            }
+          />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Metric label="참고 순위" value={`${result.target.rank}위`} />
+          <Metric
+            label="방문자 리뷰"
+            value={`${result.target.metrics.totalReviewCount.toLocaleString()}개`}
+          />
+          <Metric label="블로그 리뷰" value={`${result.target.metrics.blogCafeReviewCount.toLocaleString()}개`} />
         </div>
       </div>
 
@@ -445,7 +544,25 @@ function DiagnosisResult({ result }: { result: AiPlaceDiagnosisResponse }) {
           </div>
         </Panel>
       ) : null}
+
+      <Panel title="사용된 기준 버전">
+        <div className="grid gap-2 text-xs font-semibold leading-5 text-slate-300 md:grid-cols-2">
+          <p>루브릭: {result.versions.rubricVersion}</p>
+          <p>점수 계산기: {result.versions.scorerVersion}</p>
+          <p>프롬프트: {result.versions.promptVersion}</p>
+          <p>벤치마크: {result.versions.benchmarkProfileId ?? result.benchmark.profile.status}</p>
+        </div>
+      </Panel>
     </section>
+  )
+}
+
+function ScoreMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-cyan-300/22 bg-cyan-300/10 p-4">
+      <p className="break-keep text-xs font-black text-cyan-100/80">{label}</p>
+      <p className="mt-2 break-keep text-3xl font-black text-white">{value}</p>
+    </div>
   )
 }
 
@@ -586,6 +703,96 @@ function summarizeText(value: string) {
   }
 
   return value.length > 180 ? `${value.slice(0, 180)}...` : value
+}
+
+function readRecentPlaceSearches() {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(recentPlaceSearchStorageKey) ?? '[]')
+
+    return Array.isArray(parsed)
+      ? parsed.filter((keyword): keyword is string => typeof keyword === 'string').slice(0, maxRecentPlaceSearches)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecentPlaceSearch(query: string) {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  const trimmedQuery = query.trim()
+
+  if (!trimmedQuery) {
+    return readRecentPlaceSearches()
+  }
+
+  const nextQueries = [
+    trimmedQuery,
+    ...readRecentPlaceSearches().filter((recentQuery) => recentQuery !== trimmedQuery),
+  ].slice(0, maxRecentPlaceSearches)
+
+  window.localStorage.setItem(recentPlaceSearchStorageKey, JSON.stringify(nextQueries))
+
+  return nextQueries
+}
+
+function deleteRecentPlaceSearch(query: string) {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  const nextQueries = readRecentPlaceSearches().filter((recentQuery) => recentQuery !== query)
+
+  window.localStorage.setItem(recentPlaceSearchStorageKey, JSON.stringify(nextQueries))
+
+  return nextQueries
+}
+
+function createRetryNotice(error: unknown) {
+  const retryAfterMs = (error as { retryAfterMs?: unknown }).retryAfterMs
+  const availableAt = (error as { availableAt?: unknown }).availableAt
+
+  if (typeof retryAfterMs !== 'number' || retryAfterMs <= 0) {
+    return ''
+  }
+
+  const retryText = formatRetryAfter(retryAfterMs)
+  const availableText =
+    typeof availableAt === 'string' && availableAt
+      ? ` 예상 가능 시간: ${formatAvailableAt(availableAt)}`
+      : ''
+
+  return `요청 제한이 풀릴 때까지 ${retryText} 정도 기다려주세요.${availableText}`
+}
+
+function formatRetryAfter(value: number) {
+  const seconds = Math.max(1, Math.ceil(value / 1000))
+
+  if (seconds < 60) {
+    return `${seconds}초`
+  }
+
+  return `${Math.ceil(seconds / 60)}분`
+}
+
+function formatAvailableAt(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date)
 }
 
 function formatProductPrice(product: AiPlaceDiagnosisResponse['target']['bookingProducts'][number]) {

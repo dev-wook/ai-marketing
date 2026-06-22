@@ -3,7 +3,15 @@
   "crons": [
     {
       "path": "/api/place-ranking/cron/daily",
-      "schedule": "50 14 * * *"
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/ai-place-diagnosis/benchmark/daily",
+      "schedule": "40 7 * * *"
+    },
+    {
+      "path": "/api/ai-place-diagnosis/harness/worker",
+      "schedule": "41-59 7 * * *"
     }
   ]
 }
