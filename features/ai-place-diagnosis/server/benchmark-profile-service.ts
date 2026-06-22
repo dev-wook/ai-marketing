@@ -148,7 +148,7 @@ export async function refreshAiPlaceBenchmarkProfile({
       const nextActiveJob = await findActiveAiPlaceHarnessJob(keywordRow.id)
 
       if (!nextActiveJob) {
-        throw error
+      throw error
       }
 
       return {
@@ -315,7 +315,7 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
     jobId: job.id,
     nextRankStart,
     evaluatedCount: processedCount,
-    status: isComplete ? 'COMPLETED' : 'RUNNING',
+    status: 'RUNNING',
   })
 
   let profileResult = null
@@ -361,8 +361,15 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
           error instanceof Error ? error.message : 'AI 진단 기준 프로필 생성에 실패했습니다.',
       })
 
-      throw error
+        throw error
     }
+
+    await advanceAiPlaceHarnessJob({
+      jobId: job.id,
+      nextRankStart,
+      evaluatedCount: 0,
+      status: 'COMPLETED',
+    })
   }
 
   return {

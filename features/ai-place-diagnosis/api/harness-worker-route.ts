@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getAuthUserFromRequest } from '@/features/auth/server/session'
 import { runNextAiPlaceHarnessWorkerBatch } from '../server/benchmark-profile-service'
+import { scheduleAiPlaceHarnessWorkerRun } from '../server/harness-worker-scheduler'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
-  return handleHarnessWorkerRun()
+  return handleHarnessWorkerRun(request)
 }
 
 export async function POST(request: NextRequest) {
@@ -19,12 +20,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
-  return handleHarnessWorkerRun()
+  return handleHarnessWorkerRun(request)
 }
 
-async function handleHarnessWorkerRun() {
+async function handleHarnessWorkerRun(request: NextRequest) {
   try {
-    return NextResponse.json(await runNextAiPlaceHarnessWorkerBatch())
+    const result = await runNextAiPlaceHarnessWorkerBatch()
+    const nextDelayMs = getNextWorkerDelayMs(result)
+    const backgroundWorkerScheduled =
+      typeof nextDelayMs === 'number'
+        ? scheduleAiPlaceHarnessWorkerRun({
+            delayMs: nextDelayMs,
+            origin: request.nextUrl.origin,
+          })
+        : false
+
+    return NextResponse.json({
+      ...result,
+      backgroundWorkerScheduled,
+      nextWorkerDelayMs: nextDelayMs,
+    })
   } catch (error) {
     if (error instanceof Error) {
       console.error('AI place harness worker error', {
@@ -48,6 +63,22 @@ async function handleHarnessWorkerRun() {
       { status: 500 },
     )
   }
+}
+
+function getNextWorkerDelayMs(result: Awaited<ReturnType<typeof runNextAiPlaceHarnessWorkerBatch>>) {
+  if (!('jobId' in result) || !result.jobId) {
+    return null
+  }
+
+  if ('retryWait' in result && result.retryWait) {
+    return Math.max(1000, result.retryAfterMs ?? 65_000)
+  }
+
+  if ('completed' in result && result.completed) {
+    return 1000
+  }
+
+  return 65_000
 }
 
 function isCronRequestAuthorized(request: NextRequest) {

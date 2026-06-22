@@ -7,6 +7,7 @@ import {
   createAiPlaceHarnessRun,
   listAiPlaceKeywords,
 } from '../server/repository'
+import { scheduleAiPlaceHarnessWorkerRun } from '../server/harness-worker-scheduler'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
-  return handleBenchmarkDailyRun('CRON')
+  return handleBenchmarkDailyRun(request, 'CRON')
 }
 
 export async function POST(request: NextRequest) {
@@ -24,10 +25,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
-  return handleBenchmarkDailyRun('MANUAL')
+  return handleBenchmarkDailyRun(request, 'MANUAL')
 }
 
-async function handleBenchmarkDailyRun(triggerSource: 'CRON' | 'MANUAL') {
+async function handleBenchmarkDailyRun(request: NextRequest, triggerSource: 'CRON' | 'MANUAL') {
   try {
     const activeKeywords = await listAiPlaceKeywords({ activeOnly: true })
     const runId = await createAiPlaceHarnessRun({
@@ -69,6 +70,12 @@ async function handleBenchmarkDailyRun(triggerSource: 'CRON' | 'MANUAL') {
       runId,
       skippedCount,
     })
+    const shouldStartWorker = queuedCount > 0 || skippedCount > 0
+    const backgroundWorkerScheduled = shouldStartWorker
+      ? scheduleAiPlaceHarnessWorkerRun({
+          origin: request.nextUrl.origin,
+        })
+      : false
 
     return NextResponse.json({
       runId,
@@ -78,6 +85,7 @@ async function handleBenchmarkDailyRun(triggerSource: 'CRON' | 'MANUAL') {
       queuedCount,
       skippedCount,
       failureCount,
+      backgroundWorkerScheduled,
       results,
     })
   } catch (error) {

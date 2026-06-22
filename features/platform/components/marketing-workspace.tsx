@@ -37,6 +37,7 @@ type AiDiagnosisDataRefreshStatus = {
       retryCount?: number
       nextAttemptAt?: string | null
     } | null
+    statusReason?: string | null
   }>
 }
 
@@ -307,13 +308,24 @@ export function MarketingWorkspace() {
 
     const previousOverflow = document.body.style.overflow
     const previousTouchAction = document.body.style.touchAction
+    const previousPosition = document.body.style.position
+    const previousTop = document.body.style.top
+    const previousWidth = document.body.style.width
+    const scrollY = window.scrollY
 
     document.body.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.top = `-${scrollY}px`
+    document.body.style.width = '100%'
     document.body.style.touchAction = 'none'
 
     return () => {
       document.body.style.overflow = previousOverflow
       document.body.style.touchAction = previousTouchAction
+      document.body.style.position = previousPosition
+      document.body.style.top = previousTop
+      document.body.style.width = previousWidth
+      window.scrollTo(0, scrollY)
     }
   }, [isMenuOpen, isWorkStatusOpen])
 
@@ -458,6 +470,23 @@ export function MarketingWorkspace() {
           <WorkStatusPanel
             isLoading={isAiDiagnosisDataStatusLoading}
             isOpen={isWorkStatusOpen}
+            onCancelJob={async (jobId) => {
+              await fetch('/api/ai-place-diagnosis/harness/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId }),
+              })
+              const response = await fetch('/api/ai-place-diagnosis/benchmark/status', {
+                cache: 'no-store',
+              })
+              const data = await response.json().catch(() => null) as
+                | AiDiagnosisDataRefreshStatus
+                | null
+
+              if (response.ok && data) {
+                setAiDiagnosisDataStatus(data)
+              }
+            }}
             status={aiDiagnosisDataStatus}
             onClose={() => {
               setIsWorkStatusOpen(false)
@@ -518,11 +547,13 @@ export function MarketingWorkspace() {
 function WorkStatusPanel({
   isLoading,
   isOpen,
+  onCancelJob,
   onClose,
   status,
 }: {
   isLoading: boolean
   isOpen: boolean
+  onCancelJob: (jobId: string) => Promise<void>
   onClose: () => void
   status: AiDiagnosisDataRefreshStatus | null
 }) {
@@ -580,7 +611,11 @@ function WorkStatusPanel({
           {hasJobs ? (
             <div className="grid gap-3">
               {jobs.map((job) => (
-                <AiDiagnosisRefreshJobCard key={job.id} job={job} />
+                <AiDiagnosisRefreshJobCard
+                  key={job.id}
+                  job={job}
+                  onCancelJob={onCancelJob}
+                />
               ))}
             </div>
           ) : !isLoading ? (
@@ -608,10 +643,19 @@ type AiDiagnosisRefreshJobCardModel = {
   startedAt: string | null
   updatedAt: string | null
   errorMessage: string | null
+  statusReason: string | null
+  canCancel: boolean
 }
 
-function AiDiagnosisRefreshJobCard({ job }: { job: AiDiagnosisRefreshJobCardModel }) {
+function AiDiagnosisRefreshJobCard({
+  job,
+  onCancelJob,
+}: {
+  job: AiDiagnosisRefreshJobCardModel
+  onCancelJob: (jobId: string) => Promise<void>
+}) {
   const steps = createAiDiagnosisRefreshSteps(job)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   return (
     <article className="rounded-md border border-white/10 bg-white/[0.045] p-4">
@@ -696,11 +740,34 @@ function AiDiagnosisRefreshJobCard({ job }: { job: AiDiagnosisRefreshJobCardMode
           {job.errorMessage}
         </p>
       ) : null}
+      {!job.errorMessage && job.statusReason ? (
+        <p className="mt-3 rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-xs font-bold leading-5 text-cyan-100/85">
+          {job.statusReason}
+        </p>
+      ) : null}
 
       <div className="mt-4 grid gap-1 text-[11px] font-bold text-slate-500">
         <p>시작: {job.startedAt ? formatDateTime(job.startedAt) : '확인 중'}</p>
         <p>최근 갱신: {job.updatedAt ? formatDateTime(job.updatedAt) : '확인 중'}</p>
       </div>
+
+      {job.canCancel ? (
+        <button
+          type="button"
+          disabled={isCancelling}
+          onClick={async () => {
+            setIsCancelling(true)
+            try {
+              await onCancelJob(job.id)
+            } finally {
+              setIsCancelling(false)
+            }
+          }}
+          className="mt-3 min-h-10 w-full rounded-md border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-black text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isCancelling ? '중도취소 중...' : '중도취소'}
+        </button>
+      ) : null}
     </article>
   )
 }
@@ -758,6 +825,8 @@ function createAiDiagnosisRefreshJobCards(
           keyword.status === 'QUEUED' && run?.status === 'RETRY_WAIT'
             ? run.errorMessage
             : run?.errorMessage ?? null,
+        statusReason: keyword.statusReason ?? null,
+        canCancel: Boolean(run?.id && (keyword.status === 'QUEUED' || keyword.status === 'UPDATING')),
       } satisfies AiDiagnosisRefreshJobCardModel
     })
 }
@@ -865,7 +934,7 @@ function SideMenu({
 }) {
   return (
     <div
-      className={`fixed inset-0 z-[80] overflow-hidden transition-opacity duration-200 ${
+      className={`fixed inset-0 z-[80] overflow-hidden overscroll-none transition-opacity duration-200 ${
         isOpen ? 'pointer-events-auto' : 'pointer-events-none'
       }`}
       aria-hidden={!isOpen}
@@ -879,7 +948,7 @@ function SideMenu({
         }`}
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-[min(88vw,380px)] transform-gpu flex-col border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
+        className={`absolute right-0 top-0 flex h-[100dvh] w-[min(88vw,380px)] transform-gpu flex-col overflow-hidden overscroll-contain border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -902,7 +971,7 @@ function SideMenu({
           </button>
         </div>
 
-        <nav className="grid gap-3 overflow-y-auto px-5 py-5">
+        <nav className="grid min-h-0 gap-3 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]">
           <MenuButton
             active={activeView === 'tracking'}
             label="플레이스 관리"

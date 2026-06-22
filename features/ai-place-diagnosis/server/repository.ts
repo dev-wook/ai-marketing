@@ -1002,6 +1002,7 @@ export async function advanceAiPlaceHarnessJob({
           completed_at = case when $4 in ('COMPLETED', 'PARTIAL', 'FAILED') then now() else completed_at end,
           error_message = $5
       where id = $1
+        and status = 'RUNNING'
     `,
     [jobId, nextRankStart, evaluatedCount, status, errorMessage ?? null],
   )
@@ -1027,9 +1028,29 @@ export async function scheduleAiPlaceHarnessJobRetry({
           locked_at = null,
           error_message = $3
       where id = $1
+        and status = 'RUNNING'
     `,
     [jobId, Math.max(1000, retryAfterMs), errorMessage],
   )
+}
+
+export async function cancelAiPlaceHarnessJobs({ jobId }: { jobId?: string } = {}) {
+  const pool = getPostgresPool()
+  const result = await pool.query<{ id: string }>(
+    `
+      update public.ai_place_harness_jobs
+      set status = 'FAILED',
+          locked_at = null,
+          completed_at = now(),
+          error_message = '사용자 요청으로 중도취소했습니다.'
+      where status in ('PENDING', 'RUNNING', 'RETRY_WAIT')
+        and ($1::uuid is null or id = $1::uuid)
+      returning id
+    `,
+    [jobId ?? null],
+  )
+
+  return result.rowCount ?? 0
 }
 
 export async function listAiPlaceHarnessScores(jobId: string) {

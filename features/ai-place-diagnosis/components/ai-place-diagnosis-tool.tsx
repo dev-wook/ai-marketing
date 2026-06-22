@@ -55,6 +55,7 @@ type AiDiagnosisDataRefreshStatus = {
       retryCount?: number
       nextAttemptAt?: string | null
     } | null
+    statusReason?: string | null
   }>
 }
 
@@ -209,6 +210,7 @@ async function requestAiPlaceBenchmarkDailyRun() {
         totalKeywords?: number
         successCount?: number
         failureCount?: number
+        backgroundWorkerScheduled?: boolean
         results?: Array<{ keyword?: string; ok?: boolean; result?: unknown; message?: string }>
       }
     | DiagnosisErrorBody
@@ -228,6 +230,7 @@ async function requestAiPlaceBenchmarkDailyRun() {
     totalKeywords?: number
     successCount?: number
     failureCount?: number
+    backgroundWorkerScheduled?: boolean
     results?: Array<{ keyword?: string; ok?: boolean; result?: unknown; message?: string }>
   }
 }
@@ -248,6 +251,30 @@ async function requestAiDiagnosisDataRefreshStatus() {
   }
 
   return body as AiDiagnosisDataRefreshStatus
+}
+
+async function requestCancelAiDiagnosisHarnessJob(jobId?: string) {
+  const response = await fetch('/api/ai-place-diagnosis/harness/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobId }),
+  })
+  const body = (await response.json()) as
+    | { ok: boolean; cancelledCount: number; message?: string }
+    | DiagnosisErrorBody
+
+  if (!response.ok) {
+    const errorBody = body as DiagnosisErrorBody
+    const error = new Error(errorBody.message ?? 'AI 진단 데이터 최신화 취소에 실패했습니다.')
+
+    Object.assign(error, {
+      debug: errorBody.debug,
+    })
+
+    throw error
+  }
+
+  return body as { ok: boolean; cancelledCount: number; message?: string }
 }
 
 export function AiPlaceDiagnosisTool() {
@@ -308,11 +335,25 @@ export function AiPlaceDiagnosisTool() {
     }
 
     const previousOverflow = document.body.style.overflow
+    const previousPosition = document.body.style.position
+    const previousTop = document.body.style.top
+    const previousWidth = document.body.style.width
+    const previousTouchAction = document.body.style.touchAction
+    const scrollY = window.scrollY
 
     document.body.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.top = `-${scrollY}px`
+    document.body.style.width = '100%'
+    document.body.style.touchAction = 'none'
 
     return () => {
       document.body.style.overflow = previousOverflow
+      document.body.style.position = previousPosition
+      document.body.style.top = previousTop
+      document.body.style.width = previousWidth
+      document.body.style.touchAction = previousTouchAction
+      window.scrollTo(0, scrollY)
     }
   }, [isAiDiagnosisDataModalOpen, isAiDiagnosisRefreshConfirmOpen])
 
@@ -434,10 +475,12 @@ export function AiPlaceDiagnosisTool() {
       const message =
         failureCount > 0
           ? `AI 진단 데이터 최신화가 일부 시작되었습니다. ${successCount}/${totalKeywords}개 성공, ${failureCount}개 실패`
-          : `AI 진단 데이터 최신화가 시작되었습니다. 등록 키워드 ${successCount}개를 수집하고 분석합니다.`
+          : refreshResult.backgroundWorkerScheduled === false
+            ? 'AI 진단 데이터 수집은 시작됐지만 백그라운드 워커 예약에 실패했습니다. CRON_SECRET 설정을 확인해 주세요.'
+            : `AI 진단 데이터 최신화가 시작되었습니다. 등록 키워드 ${successCount}개를 백그라운드에서 수집하고 분석합니다.`
 
       setAiDiagnosisDataMessage({
-        type: failureCount > 0 ? 'warning' : 'success',
+        type: failureCount > 0 || refreshResult.backgroundWorkerScheduled === false ? 'warning' : 'success',
         message,
       })
       await loadAiDiagnosisDataStatus()
@@ -448,6 +491,26 @@ export function AiPlaceDiagnosisTool() {
       })
     } finally {
       setIsAiDiagnosisDataRefreshLoading(false)
+    }
+  }
+
+  const cancelAiDiagnosisDataRefresh = async (jobId?: string) => {
+    try {
+      const result = await requestCancelAiDiagnosisHarnessJob(jobId)
+
+      setAiDiagnosisDataMessage({
+        type: result.cancelledCount > 0 ? 'warning' : 'info',
+        message: result.message ?? 'AI 진단 데이터 최신화 작업을 중도취소했습니다.',
+      })
+      await loadAiDiagnosisDataStatus()
+    } catch (error) {
+      setAiDiagnosisDataMessage({
+        type: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'AI 진단 데이터 최신화 취소에 실패했습니다.',
+      })
     }
   }
 
@@ -715,6 +778,7 @@ export function AiPlaceDiagnosisTool() {
           onKeywordInputChange={setBenchmarkKeywordInput}
           onSubmitKeyword={submitBenchmarkKeyword}
           onRemoveKeyword={removeBenchmarkKeyword}
+          onCancelDataRefresh={cancelAiDiagnosisDataRefresh}
           onRequestDataRefresh={() => setIsAiDiagnosisRefreshConfirmOpen(true)}
           onClose={() => setIsAiDiagnosisDataModalOpen(false)}
         />
@@ -745,6 +809,7 @@ type AiDiagnosisDataManagementModalProps = {
   onKeywordInputChange: (value: string) => void
   onSubmitKeyword: (event: FormEvent<HTMLFormElement>) => void
   onRemoveKeyword: (id: string) => void
+  onCancelDataRefresh: (jobId?: string) => void
   onRequestDataRefresh: () => void
   onClose: () => void
 }
@@ -760,6 +825,7 @@ function AiDiagnosisDataManagementModal({
   onKeywordInputChange,
   onSubmitKeyword,
   onRemoveKeyword,
+  onCancelDataRefresh,
   onRequestDataRefresh,
   onClose,
 }: AiDiagnosisDataManagementModalProps) {
@@ -783,16 +849,16 @@ function AiDiagnosisDataManagementModal({
         className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.52)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5 sm:py-5">
           <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+            <p className="hidden text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75 sm:block">
               AI Diagnosis Data
             </p>
-            <h2 className="mt-1 break-keep text-2xl font-black text-white">
+            <h2 className="break-keep text-xl font-black text-white sm:mt-1 sm:text-2xl">
               AI 진단 데이터 관리
             </h2>
-            <p className="mt-2 break-keep text-sm font-bold leading-6 text-slate-400">
-              AI 플레이스 진단 기준으로 사용할 키워드와 최신화 상태를 관리합니다.
+            <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-400 sm:text-sm sm:leading-6">
+              등록 키워드의 플레이스 1~50위를 수집해 AI 진단 기준 데이터를 갱신합니다.
             </p>
           </div>
           <button
@@ -804,28 +870,28 @@ function AiDiagnosisDataManagementModal({
           </button>
         </div>
 
-        <div className="min-h-0 overflow-y-auto p-5">
-          <div className="grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-3 text-xs font-bold text-slate-300 sm:grid-cols-2">
-            <p>
+        <div className="min-h-0 overflow-y-auto p-3 sm:p-5">
+          <div className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="flex min-w-0 items-center gap-2 text-xs font-black text-slate-100">
+                <StatusDot status={latestStatus?.status ?? (keywords.length > 0 ? 'NEEDS_REFRESH' : 'FRESH')} />
+                <span>{statusLabel}</span>
+              </p>
+              <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-black text-slate-300">
+                {keywords.length}개 등록
+              </span>
+            </div>
+            <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
               최근 최신화:{' '}
-              <span className="text-slate-100">
+              <span className="text-slate-200">
                 {latestStatus?.latestProfile?.createdAt
                   ? formatDateTime(latestStatus.latestProfile.createdAt)
                   : '아직 없음'}
               </span>
             </p>
-            <p>
-              등록 키워드: <span className="text-slate-100">{keywords.length}개</span>
-            </p>
-            <p>
-              분석 범위: <span className="text-slate-100">플레이스 1~50위</span>
-            </p>
-            <p>
-              상태: <span className="text-slate-100">{statusLabel}</span>
-            </p>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_13rem]">
+          <div className="mt-3 grid gap-2 sm:mt-4 sm:grid-cols-[minmax(0,1fr)_13rem]">
             <button
               type="button"
               onClick={onRequestDataRefresh}
@@ -835,13 +901,13 @@ function AiDiagnosisDataManagementModal({
               {isDataUpdating ? 'AI 진단 데이터 최신화 중...' : 'AI 진단 데이터 최신화'}
             </button>
             <p className="break-keep text-xs font-bold leading-5 text-slate-400 sm:order-1">
-              {isStatusLoading ? '현재 상태 확인 중...' : '실행 상태는 자동으로 반영됩니다.'}
+              {isStatusLoading ? '현재 상태 확인 중...' : '백그라운드 실행 상태는 작업 알림에 반영됩니다.'}
             </p>
           </div>
 
           <form
             onSubmit={onSubmitKeyword}
-            className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px]"
+            className="mt-3 grid gap-2 sm:mt-4 sm:grid-cols-[minmax(0,1fr)_96px]"
           >
             <input
               value={keywordInput}
@@ -859,34 +925,24 @@ function AiDiagnosisDataManagementModal({
             </button>
           </form>
 
-          <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-3">
+          <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-2 sm:p-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/65">
-                AI 진단 기준 키워드 {keywords.length}개
+                등록 키워드
               </p>
             </div>
 
-            <div className="grid max-h-52 gap-2 overflow-y-auto pr-1">
+            <div className="grid max-h-[44vh] gap-2 overflow-y-auto pr-1 sm:max-h-52">
               {keywords.length ? (
                 keywords.map((keyword) => (
-                  <div
+                  <AiDiagnosisBenchmarkKeywordRow
                     key={keyword.id}
-                    className="grid gap-2 rounded-md border border-white/10 bg-[#090d18]/75 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-cyan-50">
-                        {keyword.keyword}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveKeyword(keyword.id)}
-                      disabled={isKeywordLoading}
-                      className="min-h-9 rounded-md border border-white/10 bg-white/[0.05] px-3 text-xs font-black text-slate-200 transition hover:bg-rose-400/15 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      삭제
-                    </button>
-                  </div>
+                    keyword={keyword}
+                    status={status?.keywords.find((item) => item.normalizedKeyword === keyword.normalized_keyword) ?? null}
+                    isKeywordLoading={isKeywordLoading}
+                    onCancelDataRefresh={onCancelDataRefresh}
+                    onRemoveKeyword={onRemoveKeyword}
+                  />
                 ))
               ) : (
                 <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-400">
@@ -921,6 +977,82 @@ function AiDiagnosisDataManagementModal({
         </div>
       </section>
     </div>
+  )
+}
+
+function AiDiagnosisBenchmarkKeywordRow({
+  isKeywordLoading,
+  keyword,
+  onCancelDataRefresh,
+  onRemoveKeyword,
+  status,
+}: {
+  keyword: AiDiagnosisBenchmarkKeyword
+  status: AiDiagnosisDataRefreshStatus['keywords'][number] | null
+  isKeywordLoading: boolean
+  onCancelDataRefresh: (jobId?: string) => void
+  onRemoveKeyword: (id: string) => void
+}) {
+  const canCancel = Boolean(
+    status?.latestRun?.id && (status.status === 'QUEUED' || status.status === 'UPDATING'),
+  )
+
+  return (
+    <div className="rounded-md border border-white/10 bg-[#090d18]/75 p-2.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <StatusDot status={status?.status ?? 'NEEDS_REFRESH'} />
+        <p className="min-w-0 flex-1 truncate text-sm font-black text-cyan-50">
+          {keyword.keyword}
+        </p>
+        <span className="shrink-0 text-[11px] font-black text-slate-400">
+          {formatAiDiagnosisDataStatusLabel(status?.status ?? 'NEEDS_REFRESH')}
+        </span>
+      </div>
+
+      <div className={`mt-2 grid gap-2 ${canCancel ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {canCancel ? (
+          <button
+            type="button"
+            onClick={() => onCancelDataRefresh(status?.latestRun?.id)}
+            className="min-h-9 rounded-md border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-black text-rose-100 transition hover:bg-rose-400/18"
+          >
+            중도취소
+          </button>
+        ) : (
+          null
+        )}
+        <button
+          type="button"
+          onClick={() => onRemoveKeyword(keyword.id)}
+          disabled={isKeywordLoading || canCancel}
+          className="min-h-9 rounded-md border border-white/10 bg-white/[0.05] px-3 text-xs font-black text-slate-200 transition hover:bg-rose-400/15 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          삭제
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function StatusDot({
+  status,
+}: {
+  status: AiDiagnosisDataRefreshStatus['keywords'][number]['status']
+}) {
+  const className =
+    status === 'FRESH'
+      ? 'bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.35)]'
+      : status === 'FAILED'
+        ? 'bg-rose-400 shadow-[0_0_16px_rgba(251,113,133,0.35)]'
+        : status === 'QUEUED' || status === 'UPDATING' || status === 'PARTIAL'
+          ? 'bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,0.32)]'
+          : 'bg-slate-500'
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`h-2.5 w-2.5 shrink-0 rounded-full ${className}`}
+    />
   )
 }
 
