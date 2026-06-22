@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/ai-place-diagnosis/harness/worker",
-      "schedule": "41-59 7 * * *"
+      "schedule": "45 7 * * *"
     }
   ]
 }
