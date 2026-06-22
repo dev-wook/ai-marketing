@@ -167,6 +167,32 @@ export async function listAiPlaceKeywords({ activeOnly = false }: { activeOnly?:
   return result.rows
 }
 
+export async function getAiPlaceKeywordById(id: string) {
+  const pool = getPostgresPool()
+  const result = await pool.query<AiPlaceKeywordRow>(
+    `
+      select
+        id,
+        keyword,
+        normalized_keyword,
+        active_profile_id,
+        region_term,
+        service_term,
+        need_term,
+        intent_cluster_key,
+        is_active,
+        created_at,
+        updated_at
+      from public.ai_place_keywords
+      where id = $1
+      limit 1
+    `,
+    [id],
+  )
+
+  return result.rows[0] ?? null
+}
+
 export async function deactivateAiPlaceKeyword(id: string) {
   const pool = getPostgresPool()
 
