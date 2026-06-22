@@ -1,4 +1,9 @@
-import { generateGeminiText } from '@/lib/gemini'
+import {
+  GeminiApiError,
+  GeminiRateLimitError,
+  generateGeminiText,
+  getGeminiErrorMetadata,
+} from '@/lib/gemini'
 import { collectNaverPlaceRankings } from '@/features/place-ranking/server/naver-place-rankings'
 import type { PlaceRankingItem } from '@/features/place-ranking/types'
 import type {
@@ -195,7 +200,8 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
   }
 
   const rankStart = job.next_rank_start
-  const rankEnd = Math.min(rankStart + job.batch_size - 1, job.total_count)
+  const effectiveBatchSize = Math.min(job.batch_size, 6)
+  const rankEnd = Math.min(rankStart + effectiveBatchSize - 1, job.total_count)
   const snapshots = await listAiPlaceHarnessSnapshotsForBatch({
     collectionRunId: job.collection_run_id,
     rankStart,
@@ -263,6 +269,26 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
       })
       processedCount += 1
     } catch (error) {
+      if (isFatalGeminiQuotaError(error)) {
+        await advanceAiPlaceHarnessJob({
+          jobId: job.id,
+          nextRankStart: rankStart,
+          evaluatedCount: processedCount,
+          status: 'FAILED',
+          errorMessage: createFatalGeminiQuotaMessage(error),
+        })
+
+        return {
+          ok: true,
+          jobId: job.id,
+          processedCount,
+          rankStart,
+          rankEnd,
+          completed: false,
+          fatalQuota: true,
+        }
+      }
+
       if (isRetryableGeminiError(error)) {
         const retryAfterMs = getRetryAfterMs(error)
 
@@ -328,6 +354,26 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
         keywordId: job.keyword_id,
       })
     } catch (error) {
+      if (isFatalGeminiQuotaError(error)) {
+        await advanceAiPlaceHarnessJob({
+          jobId: job.id,
+          nextRankStart,
+          evaluatedCount: 0,
+          status: 'FAILED',
+          errorMessage: createFatalGeminiQuotaMessage(error),
+        })
+
+        return {
+          ok: true,
+          jobId: job.id,
+          processedCount,
+          rankStart,
+          rankEnd,
+          completed: false,
+          fatalQuota: true,
+        }
+      }
+
       if (isRetryableGeminiError(error)) {
         const retryAfterMs = getRetryAfterMs(error)
 
@@ -486,6 +532,20 @@ export function createDefaultBenchmarkProfile(): AiPlaceBenchmarkProfileSummary 
 }
 
 function isRetryableGeminiError(error: unknown) {
+  if (error instanceof GeminiRateLimitError) {
+    return true
+  }
+
+  if (error instanceof GeminiApiError) {
+    const metadata = getGeminiErrorMetadata(error)
+
+    if (metadata.quotaScope === 'daily') {
+      return false
+    }
+
+    return metadata.status === 429 || metadata.status === 500 || metadata.status === 503
+  }
+
   const status = (error as { status?: unknown }).status
   const metadataStatus = (error as { metadata?: { status?: unknown } }).metadata?.status
   const message = error instanceof Error ? error.message : ''
@@ -499,7 +559,31 @@ function isRetryableGeminiError(error: unknown) {
   )
 }
 
+function isFatalGeminiQuotaError(error: unknown) {
+  return error instanceof GeminiApiError && getGeminiErrorMetadata(error).quotaScope === 'daily'
+}
+
+function createFatalGeminiQuotaMessage(error: unknown) {
+  if (error instanceof GeminiApiError) {
+    const metadata = getGeminiErrorMetadata(error)
+
+    return metadata.quotaValue
+      ? `Gemini ${metadata.model} 일일 무료 한도(${metadata.quotaValue}회)를 초과했습니다. fallback 모델도 사용할 수 없으면 다음 일일 한도 초기화 후 다시 실행하거나 유료 할당량을 확인해 주세요.`
+      : `Gemini ${metadata.model} 일일 호출 한도를 초과했습니다. 다음 일일 한도 초기화 후 다시 실행하거나 유료 할당량을 확인해 주세요.`
+  }
+
+  return 'Gemini 일일 호출 한도를 초과했습니다. 다음 일일 한도 초기화 후 다시 실행하거나 유료 할당량을 확인해 주세요.'
+}
+
 function getRetryAfterMs(error: unknown) {
+  if (error instanceof GeminiRateLimitError) {
+    return error.metadata.retryAfterMs
+  }
+
+  if (error instanceof GeminiApiError) {
+    return getGeminiErrorMetadata(error).retryDelayMs ?? 60 * 1000
+  }
+
   const metadata = (error as { metadata?: { retryAfterMs?: unknown } }).metadata
   const retryAfterMs = metadata?.retryAfterMs
 

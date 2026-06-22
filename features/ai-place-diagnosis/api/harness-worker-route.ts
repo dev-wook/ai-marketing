@@ -7,6 +7,8 @@ import { scheduleAiPlaceHarnessWorkerRun } from '../server/harness-worker-schedu
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
+const stableGeminiBatchDelayMs = 75_000
+
 export async function GET(request: NextRequest) {
   if (!isCronRequestAuthorized(request)) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
@@ -71,14 +73,18 @@ function getNextWorkerDelayMs(result: Awaited<ReturnType<typeof runNextAiPlaceHa
   }
 
   if ('retryWait' in result && result.retryWait) {
-    return Math.max(1000, result.retryAfterMs ?? 65_000)
+    return Math.max(stableGeminiBatchDelayMs, result.retryAfterMs ?? stableGeminiBatchDelayMs)
+  }
+
+  if ('fatalQuota' in result && result.fatalQuota) {
+    return null
   }
 
   if ('completed' in result && result.completed) {
-    return 1000
+    return stableGeminiBatchDelayMs
   }
 
-  return 65_000
+  return stableGeminiBatchDelayMs
 }
 
 function isCronRequestAuthorized(request: NextRequest) {

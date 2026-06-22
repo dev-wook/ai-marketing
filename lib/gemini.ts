@@ -87,7 +87,7 @@ const defaultGeminiFallbackTextModels = ['gemini-2.5-flash-lite']
 const retryableGeminiStatuses = new Set([429, 500, 503])
 const maxRetryDelayMs = 5000
 const maxGeminiAttemptsPerModel = 3
-const geminiMinuteLimit = 15
+const geminiMinuteLimit = parsePositiveInteger(process.env.GEMINI_REQUESTS_PER_MINUTE, 8)
 const geminiMinuteWindowMs = 60 * 1000
 const geminiRequestTimestamps: number[] = []
 let geminiCooldownUntil = 0
@@ -293,7 +293,7 @@ function shouldRetryGeminiError(error: GeminiApiError) {
 }
 
 function shouldTryNextModel(error: GeminiApiError) {
-  return error.status === 429 && isModelQuotaError(error)
+  return error.status === 429 && (isModelQuotaError(error) || isDailyQuotaError(error))
 }
 
 function isDailyQuotaError(error: GeminiApiError) {
@@ -477,4 +477,10 @@ function safelyParseJson(value: string) {
   } catch {
     return value
   }
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value)
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
