@@ -17,6 +17,8 @@ type PlaceTrackingDashboardProps = {
   onOpenManagerPage?: () => void
 }
 
+const dashboardAutoRefreshIntervalMs = 180_000
+
 export function PlaceTrackingDashboard({
   mode = 'dashboard',
   onOpenManagerPage,
@@ -62,14 +64,19 @@ export function PlaceTrackingDashboard({
     }
   }
 
-  const refreshDashboard = async (force = false) => {
+  const refreshDashboard = async (
+    force = false,
+    { silent = false }: { silent?: boolean } = {},
+  ) => {
     if (!force && !hasTrackedKeywords) {
       setDashboard(null)
       return
     }
 
-    setIsLoadingDashboard(true)
-    setErrorMessage('')
+    if (!silent) {
+      setIsLoadingDashboard(true)
+      setErrorMessage('')
+    }
 
     try {
       const response = await fetch('/api/place-tracking/dashboard', {
@@ -83,13 +90,17 @@ export function PlaceTrackingDashboard({
 
       setDashboard(data)
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : '플레이스 추적 현황 조회 중 문제가 발생했습니다.',
-      )
+      if (!silent) {
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : '플레이스 추적 현황 조회 중 문제가 발생했습니다.',
+        )
+      }
     } finally {
-      setIsLoadingDashboard(false)
+      if (!silent) {
+        setIsLoadingDashboard(false)
+      }
     }
   }
 
@@ -146,6 +157,20 @@ export function PlaceTrackingDashboard({
     refreshDashboard().catch(() => {
       setErrorMessage('플레이스 추적 현황 조회 중 문제가 발생했습니다.')
     })
+  }, [hasTrackedKeywords, mode])
+
+  useEffect(() => {
+    if (mode === 'manager' || !hasTrackedKeywords) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      refreshDashboard(false, { silent: true }).catch(() => undefined)
+    }, dashboardAutoRefreshIntervalMs)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
   }, [hasTrackedKeywords, mode])
 
   if (mode === 'manager') {

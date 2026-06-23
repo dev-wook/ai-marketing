@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getAuthUserFromRequest } from '@/features/auth/server/session'
 import { listAiPlaceBenchmarkRefreshStatuses } from '../server/repository'
+import { scheduleAiPlaceHarnessWorkerRun } from '../server/harness-worker-scheduler'
 
 export const runtime = 'nodejs'
 
@@ -68,12 +69,27 @@ export async function GET(request: NextRequest) {
           : null,
       }
     })
+    const shouldWakeWorker = keywords.some((keyword) => {
+      const run = keyword.latestRun
+
+      if (!run || (keyword.status !== 'QUEUED' && keyword.status !== 'UPDATING')) {
+        return false
+      }
+
+      return !run.nextAttemptAt || new Date(run.nextAttemptAt).getTime() <= now
+    })
+    const backgroundWorkerScheduled = shouldWakeWorker
+      ? scheduleAiPlaceHarnessWorkerRun({
+          origin: request.nextUrl.origin,
+        })
+      : false
 
     return NextResponse.json({
       checkedAt: new Date(now).toISOString(),
       hasUpdatingKeyword: keywords.some(
         (keyword) => keyword.status === 'QUEUED' || keyword.status === 'UPDATING',
       ),
+      backgroundWorkerScheduled,
       keywords,
     })
   } catch (error) {
@@ -132,7 +148,7 @@ function createStatusReason({
   }
 
   if (status === 'UPDATING') {
-    return '10개 단위로 AI 평가를 진행하고 있습니다. 다음 배치는 약 75초 간격으로 실행됩니다.'
+    return '플레이스 데이터를 수집하고 AI 진단 기준에 반영하고 있습니다.'
   }
 
   if (status === 'FAILED') {

@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       cancelledCount,
       message:
         cancelledCount > 0
-          ? 'AI 진단 데이터 최신화 작업을 중도취소했습니다.'
+          ? 'AI 진단 데이터 수집 작업을 중도취소했습니다.'
           : '취소할 수 있는 진행 중 작업이 없습니다.',
     })
   } catch (error) {
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        message: 'AI 진단 데이터 최신화 취소 중 문제가 발생했습니다.',
+        message: 'AI 진단 데이터 수집 취소 중 문제가 발생했습니다.',
         debug:
           error instanceof Error
             ? {

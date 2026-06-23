@@ -12,6 +12,10 @@ import { scheduleAiPlaceHarnessWorkerRun } from '../server/harness-worker-schedu
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
+type BenchmarkDailyRequestBody = {
+  keywordIds?: string[]
+}
+
 export async function GET(request: NextRequest) {
   if (!isCronRequestAuthorized(request)) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
@@ -25,12 +29,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
-  return handleBenchmarkDailyRun(request, 'MANUAL')
+  const body = (await request.json().catch(() => ({}))) as BenchmarkDailyRequestBody
+  const keywordIds = Array.isArray(body.keywordIds)
+    ? body.keywordIds.filter((id): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id))
+    : undefined
+
+  return handleBenchmarkDailyRun(request, 'MANUAL', keywordIds)
 }
 
-async function handleBenchmarkDailyRun(request: NextRequest, triggerSource: 'CRON' | 'MANUAL') {
+async function handleBenchmarkDailyRun(
+  request: NextRequest,
+  triggerSource: 'CRON' | 'MANUAL',
+  keywordIds?: string[],
+) {
   try {
-    const activeKeywords = await listAiPlaceKeywords({ activeOnly: true })
+    const activeKeywords = await listAiPlaceKeywords({ activeOnly: true, ids: keywordIds })
+
+    if (keywordIds?.length && activeKeywords.length === 0) {
+      return NextResponse.json({ message: '실행할 AI 진단 기준 키워드를 찾지 못했습니다.' }, { status: 404 })
+    }
+
     const runId = await createAiPlaceHarnessRun({
       totalKeywords: activeKeywords.length,
       triggerSource,

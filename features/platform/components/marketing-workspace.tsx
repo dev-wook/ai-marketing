@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { AiDiagnosisDataManager } from '@/features/ai-place-diagnosis/components/ai-diagnosis-data-manager'
 import { AiPlaceDiagnosisTool } from '@/features/ai-place-diagnosis/components/ai-place-diagnosis-tool'
 import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
 import type { AuthUser } from '@/features/auth/types'
@@ -64,6 +65,7 @@ export function MarketingWorkspace() {
   const [isSessionChecking, setIsSessionChecking] = useState(true)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isWorkStatusOpen, setIsWorkStatusOpen] = useState(false)
+  const [isAiDiagnosisDataManagerOpen, setIsAiDiagnosisDataManagerOpen] = useState(false)
   const [aiDiagnosisDataStatus, setAiDiagnosisDataStatus] =
     useState<AiDiagnosisDataRefreshStatus | null>(null)
   const [isAiDiagnosisDataStatusLoading, setIsAiDiagnosisDataStatusLoading] = useState(false)
@@ -235,6 +237,7 @@ export function MarketingWorkspace() {
         !isMobileViewport() ||
         isRefreshing ||
         isWorkStatusOpen ||
+        isAiDiagnosisDataManagerOpen ||
         isMenuOpen ||
         window.scrollY > 0
       ) {
@@ -247,7 +250,14 @@ export function MarketingWorkspace() {
     }
 
     const handleTouchMove = (event: TouchEvent) => {
-      if (!isPullingRef.current || !isMobileViewport() || isRefreshing || isWorkStatusOpen || isMenuOpen) {
+      if (
+        !isPullingRef.current ||
+        !isMobileViewport() ||
+        isRefreshing ||
+        isWorkStatusOpen ||
+        isAiDiagnosisDataManagerOpen ||
+        isMenuOpen
+      ) {
         return
       }
 
@@ -299,10 +309,10 @@ export function MarketingWorkspace() {
       window.removeEventListener('touchend', handleTouchEnd)
       window.removeEventListener('touchcancel', handleTouchEnd)
     }
-  }, [isMenuOpen, isRefreshing, isWorkStatusOpen, view])
+  }, [isAiDiagnosisDataManagerOpen, isMenuOpen, isRefreshing, isWorkStatusOpen, view])
 
   useEffect(() => {
-    if (!isWorkStatusOpen && !isMenuOpen) {
+    if (!isWorkStatusOpen && !isMenuOpen && !isAiDiagnosisDataManagerOpen) {
       return
     }
 
@@ -327,7 +337,7 @@ export function MarketingWorkspace() {
       document.body.style.width = previousWidth
       window.scrollTo(0, scrollY)
     }
-  }, [isMenuOpen, isWorkStatusOpen])
+  }, [isAiDiagnosisDataManagerOpen, isMenuOpen, isWorkStatusOpen])
 
   const pullProgress = Math.min(pullDistance / pullRefreshThreshold, 1)
   const shouldShowPullRefresh = pullDistance > 0 || isRefreshing
@@ -391,7 +401,7 @@ export function MarketingWorkspace() {
             className={`fixed inset-x-0 top-0 z-50 min-h-[72px] items-center border-b border-white/10 bg-[#070a12]/92 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.2)] backdrop-blur-xl md:relative md:inset-auto md:z-20 md:min-h-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
               isHomeView
                 ? 'flex justify-between'
-                : 'grid grid-cols-[44px_minmax(0,1fr)_92px] gap-3'
+                : 'grid grid-cols-[44px_minmax(0,1fr)_140px] gap-3'
             }`}
           >
             {isHomeView ? (
@@ -419,6 +429,29 @@ export function MarketingWorkspace() {
             ) : null}
 
             <div className="relative flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAiDiagnosisDataManagerOpen(true)}
+                aria-label="스케줄링 관리 열기"
+                className="relative grid h-11 w-11 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-slate-100 transition hover:border-cyan-300/50 hover:bg-cyan-300/10 hover:text-cyan-50 focus:outline-none focus:ring-4 focus:ring-cyan-300/15"
+              >
+                <span className="relative block h-6 w-6" aria-hidden="true">
+                  <span className="absolute left-1/2 top-0 h-1.5 w-0.5 -translate-x-1/2 rounded-full bg-current" />
+                  <span className="absolute left-1/2 top-0.5 h-1.5 w-1.5 -translate-x-1/2 rounded-full border border-current bg-[#070a12]" />
+                  <span className="absolute inset-x-0 bottom-0 h-[18px] rounded-md border-2 border-current" />
+                  <span className="absolute left-[4px] top-[12px] h-1.5 w-1.5 rounded-full bg-current" />
+                  <span className="absolute right-[4px] top-[12px] h-1.5 w-1.5 rounded-full bg-current" />
+                  <span className="absolute left-1/2 bottom-[5px] h-0.5 w-3 -translate-x-1/2 rounded-full bg-current" />
+                  <span className="absolute -left-1 top-3.5 h-2.5 w-1 rounded-l-full border border-r-0 border-current" />
+                  <span className="absolute -right-1 top-3.5 h-2.5 w-1 rounded-r-full border border-l-0 border-current" />
+                </span>
+                {hasRunningAiDiagnosisRefresh ? (
+                  <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-60" />
+                    <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-amber-300" />
+                  </span>
+                ) : null}
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -492,6 +525,11 @@ export function MarketingWorkspace() {
               setIsWorkStatusOpen(false)
               markAiDiagnosisRefreshJobsSeen()
             }}
+          />
+
+          <AiDiagnosisDataManager
+            isOpen={isAiDiagnosisDataManagerOpen}
+            onClose={() => setIsAiDiagnosisDataManagerOpen(false)}
           />
 
           <SideMenu
@@ -585,7 +623,7 @@ function WorkStatusPanel({
             </p>
             <h2 className="mt-2 text-xl font-black text-white">작업 알림</h2>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
-              AI 진단 데이터 최신화 진행 상태와 완료 결과를 확인합니다.
+              AI 진단 데이터 수집 진행 상태와 완료 결과를 확인합니다.
             </p>
           </div>
           <button
@@ -622,7 +660,7 @@ function WorkStatusPanel({
             <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
               <p className="text-sm font-black text-slate-200">표시할 작업이 없습니다.</p>
               <p className="mt-2 text-xs font-bold leading-5 text-slate-500">
-                AI 진단 데이터 최신화를 실행하면 진행 상태가 여기에 표시됩니다.
+                AI 진단 데이터 수집을 실행하면 진행 상태가 여기에 표시됩니다.
               </p>
             </div>
           ) : null}
@@ -661,7 +699,7 @@ function AiDiagnosisRefreshJobCard({
     <article className="rounded-md border border-white/10 bg-white/[0.045] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-black text-white">AI 진단 데이터 최신화</h3>
+          <h3 className="truncate text-sm font-black text-white">AI 진단 데이터 수집</h3>
           <p className="mt-1 truncate text-xs font-bold text-cyan-100/80">{job.keyword}</p>
         </div>
         <span
@@ -817,7 +855,7 @@ function createAiDiagnosisRefreshJobCards(
                 ? `재시도 대기${run.retryCount ? ` ${run.retryCount}회` : ''}`
                 : '큐 대기 중'
             : keyword.status === 'NEEDS_REFRESH'
-              ? '최신화 필요'
+              ? '수집 필요'
               : `${totalCount}개 플레이스 기준 데이터`,
         startedAt: run?.createdAt ?? keyword.latestProfile?.createdAt ?? null,
         updatedAt: run?.completedAt ?? keyword.latestProfile?.createdAt ?? run?.createdAt ?? null,
@@ -866,7 +904,7 @@ function formatAiDiagnosisRefreshStatusLabel(
     case 'QUEUED':
       return '대기중'
     case 'UPDATING':
-      return '진행 중'
+      return '데이터 수집 중'
     case 'PARTIAL':
       return '일부 완료'
     case 'FAILED':

@@ -4,6 +4,8 @@ import type {
   AiPlaceDiagnosisResponse,
 } from '../types'
 
+const aiPlaceHarnessBatchDelayMs = 75_000
+
 type KeywordRow = {
   id: string
   keyword: string
@@ -141,7 +143,13 @@ export async function upsertAiPlaceKeyword(keyword: string) {
   return result.rows[0]
 }
 
-export async function listAiPlaceKeywords({ activeOnly = false }: { activeOnly?: boolean } = {}) {
+export async function listAiPlaceKeywords({
+  activeOnly = false,
+  ids,
+}: {
+  activeOnly?: boolean
+  ids?: string[]
+} = {}) {
   const pool = getPostgresPool()
   const result = await pool.query<AiPlaceKeywordRow>(
     `
@@ -159,9 +167,10 @@ export async function listAiPlaceKeywords({ activeOnly = false }: { activeOnly?:
         updated_at
       from public.ai_place_keywords
       where ($1::boolean = false or is_active = true)
+        and (coalesce(array_length($2::uuid[], 1), 0) = 0 or id = any($2::uuid[]))
       order by updated_at desc, created_at desc
     `,
-    [activeOnly],
+    [activeOnly, ids ?? []],
   )
 
   return result.rows
@@ -1028,12 +1037,13 @@ export async function advanceAiPlaceHarnessJob({
           evaluated_count = evaluated_count + $3,
           status = $4,
           locked_at = null,
+          next_attempt_at = case when $4 = 'RUNNING' then now() + ($6::text || ' milliseconds')::interval else next_attempt_at end,
           completed_at = case when $4 in ('COMPLETED', 'PARTIAL', 'FAILED') then now() else completed_at end,
           error_message = $5
       where id = $1
         and status = 'RUNNING'
     `,
-    [jobId, nextRankStart, evaluatedCount, status, errorMessage ?? null],
+    [jobId, nextRankStart, evaluatedCount, status, errorMessage ?? null, aiPlaceHarnessBatchDelayMs],
   )
 }
 

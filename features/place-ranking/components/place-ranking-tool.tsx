@@ -496,7 +496,6 @@ export function PlaceRankingTool() {
   useEffect(() => {
     setIsMounted(true)
     setRecentKeywords(readRecentPlaceRankingKeywords())
-    loadBatchKeywords()
   }, [])
 
   useEffect(() => {
@@ -1114,27 +1113,9 @@ export function PlaceRankingTool() {
           키워드 기준으로 네이버 플레이스 실시간 노출 순위를 확인합니다.
         </p>
 
-        <div className="mx-auto mt-6 flex max-w-3xl justify-center md:justify-end">
-          <button
-            type="button"
-            onClick={() => {
-              setIsBatchModalOpen(true)
-              loadBatchKeywords()
-            }}
-            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.045] px-4 text-xs font-black text-slate-200 transition hover:border-cyan-300/30 hover:bg-cyan-300/[0.08] hover:text-cyan-50"
-          >
-            <span className="text-cyan-200/75">운영 설정</span>
-            <span className="h-3 w-px bg-white/15" aria-hidden="true" />
-            자동 기록 관리
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-2 py-0.5 text-[11px] text-cyan-100/80">
-              {batchKeywords.length}
-            </span>
-          </button>
-        </div>
-
         <form
           onSubmit={submitKeyword}
-          className="mx-auto mt-4 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
+          className="mx-auto mt-6 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
         >
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">
@@ -1616,21 +1597,6 @@ export function PlaceRankingTool() {
             <ImagePreviewModal
               image={expandedImage}
               onClose={() => setExpandedImage(null)}
-            />,
-            document.body,
-          )
-        : null}
-
-      {isMounted && isBatchModalOpen
-        ? createPortal(
-            <BatchKeywordModal
-              keywords={batchKeywords}
-              keywordInput={batchKeywordInput}
-              isLoading={isBatchLoading}
-              onKeywordInputChange={setBatchKeywordInput}
-              onSubmit={submitBatchKeyword}
-              onRemove={removeBatchKeyword}
-              onClose={() => setIsBatchModalOpen(false)}
             />,
             document.body,
           )

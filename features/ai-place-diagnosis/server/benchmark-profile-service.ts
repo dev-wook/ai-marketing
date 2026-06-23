@@ -85,7 +85,7 @@ export async function refreshAiPlaceBenchmarkProfile({
       jobId: activeJob.id,
       status: activeJob.status,
       sampleCount: activeJob.total_count,
-      message: '현재 AI 진단 데이터 최신화가 진행 중입니다.',
+      message: '현재 AI 진단 데이터 수집이 진행 중입니다.',
     }
   }
 
@@ -164,7 +164,7 @@ export async function refreshAiPlaceBenchmarkProfile({
         jobId: nextActiveJob.id,
         status: nextActiveJob.status,
         sampleCount: nextActiveJob.total_count,
-        message: '현재 AI 진단 데이터 최신화가 진행 중입니다.',
+        message: '현재 AI 진단 데이터 수집이 진행 중입니다.',
       }
     }
 
