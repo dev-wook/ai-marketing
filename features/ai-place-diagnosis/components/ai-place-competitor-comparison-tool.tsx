@@ -411,7 +411,7 @@ function ComparisonResult({
 }) {
   const scoreDiff = leftResult.score.absolute - rightResult.score.absolute
   const overallWinner = scoreDiff > 0 ? 'left' : scoreDiff < 0 ? 'right' : 'tie'
-  const categoryRows = createCategoryComparisonRows(leftResult.scores, rightResult.scores)
+  const categoryRows = createCategoryComparisonRows(leftResult, rightResult)
   const metricRows = createMetricComparisonRows(leftResult, rightResult)
   const leftWins = [...categoryRows, ...metricRows].filter((row) => row.winner === 'left').length
   const rightWins = [...categoryRows, ...metricRows].filter((row) => row.winner === 'right').length
@@ -778,9 +778,12 @@ function BulletList({ items }: { items: string[] }) {
 }
 
 function createCategoryComparisonRows(
-  leftScores: AiPlaceDiagnosisScore[],
-  rightScores: AiPlaceDiagnosisScore[],
+  leftResult: AiPlaceDiagnosisResponse,
+  rightResult: AiPlaceDiagnosisResponse,
 ) {
+  const leftScores = leftResult.scores
+  const rightScores = rightResult.scores
+
   return leftScores.map((leftScore) => {
     const rightScore = rightScores.find((score) => score.key === leftScore.key)
     const rightValue = rightScore?.score ?? 0
@@ -791,8 +794,8 @@ function createCategoryComparisonRows(
       rightScore: rightValue,
       leftValue: `${leftScore.score}/${leftScore.maxScore}`,
       rightValue: `${rightValue}/${rightScore?.maxScore ?? leftScore.maxScore}`,
-      leftDetail: leftScore.reason,
-      rightDetail: rightScore?.reason ?? leftScore.reason,
+      leftDetail: createCategoryScoreRationale(leftResult, leftScore),
+      rightDetail: createCategoryScoreRationale(rightResult, rightScore ?? leftScore),
       winner: toWinner(leftScore.score, rightValue),
     } satisfies ComparisonRowModel
   })
@@ -812,8 +815,8 @@ function createMetricComparisonRows(
       rightScore: reverseRankScore(right.rank),
       leftValue: formatRankLabel(left.rank),
       rightValue: formatRankLabel(right.rank),
-      leftDetail: '현재 키워드 검색 결과에서 확인된 참고 순위입니다. 순위는 점수에 직접 반영하지 않고 비교 참고값으로만 봅니다.',
-      rightDetail: '현재 키워드 검색 결과에서 확인된 참고 순위입니다. 순위는 점수에 직접 반영하지 않고 비교 참고값으로만 봅니다.',
+      leftDetail: createRankRationale(left.name, left.rank, right.name, right.rank),
+      rightDetail: createRankRationale(right.name, right.rank, left.name, left.rank),
       winner: toWinner(reverseRankScore(left.rank), reverseRankScore(right.rank)),
     },
     {
@@ -822,8 +825,24 @@ function createMetricComparisonRows(
       rightScore: right.metrics.totalReviewCount,
       leftValue: `${left.metrics.totalReviewCount.toLocaleString()}개`,
       rightValue: `${right.metrics.totalReviewCount.toLocaleString()}개`,
-      leftDetail: '방문자 리뷰 수는 신뢰도 보조 신호입니다. 절대 개수보다 리뷰 문구의 구체성과 서비스 적합도가 더 중요합니다.',
-      rightDetail: '방문자 리뷰 수는 신뢰도 보조 신호입니다. 절대 개수보다 리뷰 문구의 구체성과 서비스 적합도가 더 중요합니다.',
+      leftDetail: createMetricRationale({
+        label: '방문자 리뷰',
+        name: left.name,
+        peerName: right.name,
+        value: left.metrics.totalReviewCount,
+        peerValue: right.metrics.totalReviewCount,
+        unit: '개',
+        note: '리뷰 문구가 서비스 경험을 구체적으로 설명할수록 신뢰 근거로 더 강하게 해석됩니다.',
+      }),
+      rightDetail: createMetricRationale({
+        label: '방문자 리뷰',
+        name: right.name,
+        peerName: left.name,
+        value: right.metrics.totalReviewCount,
+        peerValue: left.metrics.totalReviewCount,
+        unit: '개',
+        note: '리뷰 문구가 서비스 경험을 구체적으로 설명할수록 신뢰 근거로 더 강하게 해석됩니다.',
+      }),
       winner: toWinner(left.metrics.totalReviewCount, right.metrics.totalReviewCount),
     },
     {
@@ -832,8 +851,24 @@ function createMetricComparisonRows(
       rightScore: right.metrics.blogCafeReviewCount,
       leftValue: `${left.metrics.blogCafeReviewCount.toLocaleString()}개`,
       rightValue: `${right.metrics.blogCafeReviewCount.toLocaleString()}개`,
-      leftDetail: '블로그 리뷰는 외부 콘텐츠와 검색 신뢰의 보조 신호로 봅니다. 본문 품질 분석은 현재 비교에 포함하지 않습니다.',
-      rightDetail: '블로그 리뷰는 외부 콘텐츠와 검색 신뢰의 보조 신호로 봅니다. 본문 품질 분석은 현재 비교에 포함하지 않습니다.',
+      leftDetail: createMetricRationale({
+        label: '블로그 리뷰',
+        name: left.name,
+        peerName: right.name,
+        value: left.metrics.blogCafeReviewCount,
+        peerValue: right.metrics.blogCafeReviewCount,
+        unit: '개',
+        note: '외부 콘텐츠 노출을 보는 보조 신호이며, 본문 품질 분석은 현재 비교 범위에 포함하지 않습니다.',
+      }),
+      rightDetail: createMetricRationale({
+        label: '블로그 리뷰',
+        name: right.name,
+        peerName: left.name,
+        value: right.metrics.blogCafeReviewCount,
+        peerValue: left.metrics.blogCafeReviewCount,
+        unit: '개',
+        note: '외부 콘텐츠 노출을 보는 보조 신호이며, 본문 품질 분석은 현재 비교 범위에 포함하지 않습니다.',
+      }),
       winner: toWinner(left.metrics.blogCafeReviewCount, right.metrics.blogCafeReviewCount),
     },
     {
@@ -842,8 +877,24 @@ function createMetricComparisonRows(
       rightScore: right.metrics.imageCount,
       leftValue: `${left.metrics.imageCount.toLocaleString()}개`,
       rightValue: `${right.metrics.imageCount.toLocaleString()}개`,
-      leftDetail: '이미지는 정보량과 전환 보조 신호입니다. 단순 개수보다 시술 결과, 공간, 상담 장면의 균형이 중요합니다.',
-      rightDetail: '이미지는 정보량과 전환 보조 신호입니다. 단순 개수보다 시술 결과, 공간, 상담 장면의 균형이 중요합니다.',
+      leftDetail: createMetricRationale({
+        label: '이미지',
+        name: left.name,
+        peerName: right.name,
+        value: left.metrics.imageCount,
+        peerValue: right.metrics.imageCount,
+        unit: '개',
+        note: '단순 개수보다 시술 결과, 공간, 상담 장면이 균형 있게 드러나는지가 중요합니다.',
+      }),
+      rightDetail: createMetricRationale({
+        label: '이미지',
+        name: right.name,
+        peerName: left.name,
+        value: right.metrics.imageCount,
+        peerValue: left.metrics.imageCount,
+        unit: '개',
+        note: '단순 개수보다 시술 결과, 공간, 상담 장면이 균형 있게 드러나는지가 중요합니다.',
+      }),
       winner: toWinner(left.metrics.imageCount, right.metrics.imageCount),
     },
     {
@@ -852,11 +903,122 @@ function createMetricComparisonRows(
       rightScore: right.bookingProducts.length,
       leftValue: `${left.bookingProducts.length}개`,
       rightValue: `${right.bookingProducts.length}개`,
-      leftDetail: '예약상품은 AI가 서비스 구조를 이해하는 핵심 데이터입니다. 상품명, 설명, 가격, 소요시간, 주의사항을 함께 봅니다.',
-      rightDetail: '예약상품은 AI가 서비스 구조를 이해하는 핵심 데이터입니다. 상품명, 설명, 가격, 소요시간, 주의사항을 함께 봅니다.',
+      leftDetail: createBookingProductRationale(leftResult, rightResult),
+      rightDetail: createBookingProductRationale(rightResult, leftResult),
       winner: toWinner(left.bookingProducts.length, right.bookingProducts.length),
     },
   ] satisfies ComparisonRowModel[]
+}
+
+function createCategoryScoreRationale(
+  result: AiPlaceDiagnosisResponse,
+  score: AiPlaceDiagnosisScore,
+) {
+  const ratio = score.maxScore > 0 ? score.score / score.maxScore : 0
+  const evidence = pickCategoryEvidence(result, score.label)
+  const signal = createCategorySignalSummary(result, score.key)
+  const level =
+    ratio >= 0.8
+      ? '강하게 충족'
+      : ratio >= 0.55
+        ? '일부 충족'
+        : '보완 필요'
+
+  return `${result.target.name}은 ${score.label} 항목에서 ${score.maxScore}점 만점 중 ${score.score}점으로 ${level}입니다. ${score.reason} ${signal}${evidence ? ` 근거: ${evidence}` : ''}`
+}
+
+function pickCategoryEvidence(result: AiPlaceDiagnosisResponse, label: string) {
+  const source = [...result.topGaps, ...result.priorities, ...result.strengths]
+  const matched = source.find((item) => item.includes(label.split(' ')[0]))
+
+  return matched ?? source[0] ?? ''
+}
+
+function createCategorySignalSummary(
+  result: AiPlaceDiagnosisResponse,
+  key: AiPlaceDiagnosisScore['key'],
+) {
+  const { metrics, profile } = result.target
+
+  switch (key) {
+    case 'intentAndService':
+      return `카테고리는 ${result.target.category || '미확인'}이며 예약상품은 ${result.target.bookingProducts.length}개입니다.`
+    case 'serviceInformation':
+      return `소개글은 ${profile.introduction ? '확인됨' : '부족'}이고 예약상품 설명은 ${countDescribedProducts(result)}개 상품에서 확인됩니다.`
+    case 'localEntity':
+      return `주소는 ${result.target.address || '미확인'}이며 오시는 길 정보는 ${profile.locationGuide ? '확인됨' : '부족'}입니다.`
+    case 'reviewTrust':
+      return `방문자 리뷰 ${metrics.totalReviewCount.toLocaleString()}개, 블로그 리뷰 ${metrics.blogCafeReviewCount.toLocaleString()}개가 확인됩니다.`
+    case 'contentRichness':
+      return `이미지 ${metrics.imageCount.toLocaleString()}개와 해시태그 ${metrics.hashtagCount.toLocaleString()}개를 기준으로 정보량을 봅니다.`
+    case 'conversion':
+      return `예약 ${metrics.hasBooking ? '가능' : '미확인'}, 톡톡 ${metrics.hasTalktalk ? '확인' : '미확인'}, 쿠폰 ${metrics.hasCoupon ? '확인' : '미확인'} 상태입니다.`
+    case 'differentiation':
+      return `강점 문구와 차별화 근거는 ${result.strengths.length}개, 보완 포인트는 ${result.topGaps.length}개로 정리됐습니다.`
+    default:
+      return ''
+  }
+}
+
+function countDescribedProducts(result: AiPlaceDiagnosisResponse) {
+  return result.target.bookingProducts.filter((product) => product.description.trim().length > 0).length
+}
+
+function createRankRationale(name: string, rank: number, peerName: string, peerRank: number) {
+  const rankLabel = formatRankLabel(rank)
+  const peerRankLabel = formatRankLabel(peerRank)
+
+  if (rank === peerRank) {
+    return `${name}은 현재 키워드에서 ${rankLabel}로 확인됐고 ${peerName}과 같은 참고 순위입니다. 순위는 점수에 직접 더하지 않고 사후 검증 기준으로만 봅니다.`
+  }
+
+  return `${name}은 현재 키워드에서 ${rankLabel}, ${peerName}은 ${peerRankLabel}입니다. 이 값은 점수 산정에 직접 반영하지 않고 AI 진단 기준이 실제 노출 흐름과 맞는지 보는 참고 신호입니다.`
+}
+
+function createMetricRationale({
+  label,
+  name,
+  note,
+  peerName,
+  peerValue,
+  unit,
+  value,
+}: {
+  label: string
+  name: string
+  note: string
+  peerName: string
+  peerValue: number
+  unit: string
+  value: number
+}) {
+  const diff = value - peerValue
+  const comparison =
+    diff === 0
+      ? `${peerName}과 동일합니다`
+      : diff > 0
+        ? `${peerName}보다 ${Math.abs(diff).toLocaleString()}${unit} 많습니다`
+        : `${peerName}보다 ${Math.abs(diff).toLocaleString()}${unit} 적습니다`
+
+  return `${name}의 ${label}는 ${value.toLocaleString()}${unit}로 ${comparison}. ${note}`
+}
+
+function createBookingProductRationale(
+  result: AiPlaceDiagnosisResponse,
+  peerResult: AiPlaceDiagnosisResponse,
+) {
+  const productCount = result.target.bookingProducts.length
+  const describedCount = countDescribedProducts(result)
+  const peerProductCount = peerResult.target.bookingProducts.length
+  const diff = productCount - peerProductCount
+  const comparison =
+    diff === 0
+      ? `${peerResult.target.name}과 같은 수준`
+      : diff > 0
+        ? `${peerResult.target.name}보다 ${diff}개 많음`
+        : `${peerResult.target.name}보다 ${Math.abs(diff)}개 적음`
+
+  return `${result.target.name}은 예약상품 ${productCount}개가 확인되어 ${comparison}입니다. 이 중 설명이 있는 상품은 ${describedCount}개라서 상품명뿐 아니라 대상, 결과 특징, 소요시간 설명까지 보강됐는지가 점수 근거가 됩니다.`
 }
 
 function createDiagnosisDataNotice(

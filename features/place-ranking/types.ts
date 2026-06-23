@@ -263,6 +263,41 @@ export type PlaceBookingCalendarResponse = {
   days: Record<string, PlaceBookingCalendarDaySummary>
 }
 
+export type PlaceBookingPatternRequest = {
+  bookingUrl?: string
+  bookingBusinessId?: string
+  targetDate?: string
+}
+
+export type PlaceBookingPatternIntensity = 'busy' | 'normal' | 'quiet'
+
+export type PlaceBookingPatternTimeBucket = {
+  time: string
+  bookedCount: number
+  availableCount: number
+  closedCount: number
+  observedCount: number
+  intensity: PlaceBookingPatternIntensity
+}
+
+export type PlaceBookingPatternProduct = {
+  productId: string
+  productName: string
+  buckets: PlaceBookingPatternTimeBucket[]
+  busiestTimes: string[]
+  quietTimes: string[]
+}
+
+export type PlaceBookingPatternResponse = {
+  targetDate: string
+  weekdayLabel: string
+  periodStart: string
+  periodEnd: string
+  sampledDateCount: number
+  failedDateCount: number
+  products: PlaceBookingPatternProduct[]
+}
+
 export type PlaceBookingSummaryRequestItem = {
   placeId: string
   rank: number
