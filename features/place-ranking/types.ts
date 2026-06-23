@@ -298,6 +298,44 @@ export type PlaceBookingPatternResponse = {
   products: PlaceBookingPatternProduct[]
 }
 
+export type PlaceBookingPredictionRequest = {
+  bookingUrl?: string
+  bookingBusinessId?: string
+  targetDate?: string
+  productId?: string
+  productName?: string
+}
+
+export type PlaceBookingPredictionDemandLevel = 'HIGH' | 'MEDIUM' | 'LOW'
+
+export type PlaceBookingPredictionWindow = {
+  timeRange: string
+  reason: string
+  confidence: number
+}
+
+export type PlaceBookingPredictionResponse = {
+  targetDate: string
+  weekdayLabel: string
+  productId: string | null
+  productName: string
+  aiAvailable: boolean
+  demandLevel: PlaceBookingPredictionDemandLevel
+  expectedAdditionalBookings: number
+  summary: string
+  busyWindows: PlaceBookingPredictionWindow[]
+  quietWindows: PlaceBookingPredictionWindow[]
+  recommendedActions: string[]
+  basis: string[]
+  data: {
+    currentBookedSlots: number
+    currentAvailableSlots: number
+    patternSampledDateCount: number
+    cycleSampledDateCount: number
+    failedDateCount: number
+  }
+}
+
 export type PlaceBookingSummaryRequestItem = {
   placeId: string
   rank: number

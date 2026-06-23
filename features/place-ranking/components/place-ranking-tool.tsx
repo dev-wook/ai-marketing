@@ -6,7 +6,7 @@ import { RecentSearchList, ToolLoadingPanel } from '@/features/platform/componen
 import { useBodyScrollLock } from '@/features/platform/components/use-body-scroll-lock'
 import type {
   PlaceBookingCalendarResponse,
-  PlaceBookingPatternResponse,
+  PlaceBookingPredictionResponse,
   PlaceBookingProduct,
   PlaceBookingSlot,
   PlaceBookingSummaryItem,
@@ -181,29 +181,33 @@ async function requestBookingCalendar({
   return body as PlaceBookingCalendarResponse
 }
 
-async function requestBookingPattern({
+async function requestBookingPrediction({
   place,
+  product,
   targetDate,
 }: {
   place: PlaceRankingItem
+  product: PlaceBookingProduct
   targetDate: string
 }) {
-  const response = await fetch('/api/place-ranking/booking-pattern', {
+  const response = await fetch('/api/place-ranking/booking-prediction', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       bookingUrl: place.actions.bookingUrl,
       bookingBusinessId: place.actions.bookingBusinessId,
       targetDate,
+      productId: product.id,
+      productName: product.name,
     }),
   })
   const body = (await response.json()) as
-    | PlaceBookingPatternResponse
+    | PlaceBookingPredictionResponse
     | PlaceRankingErrorBody
 
   if (!response.ok) {
     const errorBody = body as PlaceRankingErrorBody
-    const error = new Error(errorBody.message ?? '예약 시간대 패턴 조회에 실패했습니다.')
+    const error = new Error(errorBody.message ?? 'AI 예약 예측에 실패했습니다.')
 
     Object.assign(error, {
       debug: errorBody.debug,
@@ -212,7 +216,7 @@ async function requestBookingPattern({
     throw error
   }
 
-  return body as PlaceBookingPatternResponse
+  return body as PlaceBookingPredictionResponse
 }
 
 async function requestBookingSummaries({
@@ -466,9 +470,6 @@ export function PlaceRankingTool() {
   const [isBookingLoading, setIsBookingLoading] = useState(false)
   const [bookingErrorMessage, setBookingErrorMessage] = useState('')
   const [bookingErrorLog, setBookingErrorLog] = useState('')
-  const [bookingPattern, setBookingPattern] = useState<PlaceBookingPatternResponse | null>(null)
-  const [isBookingPatternLoading, setIsBookingPatternLoading] = useState(false)
-  const [bookingPatternError, setBookingPatternError] = useState('')
   const [bookingSummaries, setBookingSummaries] = useState<Record<string, PlaceBookingSummaryItem>>({})
   const [bookingSummaryDate, setBookingSummaryDate] = useState(getTodayKstDate())
   const [isBookingSummaryLoading, setIsBookingSummaryLoading] = useState(false)
@@ -613,8 +614,6 @@ export function PlaceRankingTool() {
     setBookingStatus(null)
     setBookingErrorMessage('')
     setBookingErrorLog('')
-    setBookingPattern(null)
-    setBookingPatternError('')
     setBookingSummaries({})
     setBookingSummaryDate(getTodayKstDate())
     setBookingSummaryError('')
@@ -797,10 +796,7 @@ export function PlaceRankingTool() {
     setSelectedBookingProductId(null)
     setBookingErrorMessage('')
     setBookingErrorLog('')
-    setBookingPattern(null)
-    setBookingPatternError('')
     setIsBookingLoading(true)
-    void loadBookingPattern(place, nextDate)
 
     try {
       const response = await requestBookingStatus({ place, date: nextDate })
@@ -814,24 +810,6 @@ export function PlaceRankingTool() {
       )
     } finally {
       setIsBookingLoading(false)
-    }
-  }
-
-  const loadBookingPattern = async (place: PlaceRankingItem, targetDate: string) => {
-    setIsBookingPatternLoading(true)
-    setBookingPatternError('')
-
-    try {
-      const response = await requestBookingPattern({ place, targetDate })
-
-      setBookingPattern(response)
-    } catch (error) {
-      setBookingPattern(null)
-      setBookingPatternError(
-        error instanceof Error ? error.message : '예약 시간대 패턴 조회에 실패했습니다.',
-      )
-    } finally {
-      setIsBookingPatternLoading(false)
     }
   }
 
@@ -1607,19 +1585,12 @@ export function PlaceRankingTool() {
               status={bookingStatus}
               selectedProductId={selectedBookingProductId}
               isLoading={isBookingLoading}
-              pattern={bookingPattern}
-              isPatternLoading={isBookingPatternLoading}
-              patternError={bookingPatternError}
               errorMessage={bookingErrorMessage}
               errorLog={bookingErrorLog}
               onDateChange={changeBookingDate}
               onProductChange={setSelectedBookingProductId}
               onRetry={() => openBookingStatus(bookingPlace, bookingDate)}
-              onClose={() => {
-                setBookingPlace(null)
-                setBookingPattern(null)
-                setBookingPatternError('')
-              }}
+              onClose={() => setBookingPlace(null)}
             />,
             document.body,
           )
@@ -2606,9 +2577,6 @@ type BookingStatusModalProps = {
   status: PlaceBookingStatusResponse | null
   selectedProductId: string | null
   isLoading: boolean
-  pattern: PlaceBookingPatternResponse | null
-  isPatternLoading: boolean
-  patternError: string
   errorMessage: string
   errorLog: string
   onDateChange: (date: string) => void
@@ -2623,9 +2591,6 @@ function BookingStatusModal({
   status,
   selectedProductId,
   isLoading,
-  pattern,
-  isPatternLoading,
-  patternError,
   errorMessage,
   errorLog,
   onDateChange,
@@ -2644,6 +2609,7 @@ function BookingStatusModal({
   >({})
   const [isCalendarCountsLoading, setIsCalendarCountsLoading] = useState(false)
   const [calendarCountsError, setCalendarCountsError] = useState('')
+  const [isPredictionOpen, setIsPredictionOpen] = useState(false)
 
   useEffect(() => {
     setCalendarMonthKey(formatYearMonthValue(date))
@@ -2688,14 +2654,14 @@ function BookingStatusModal({
 
   return (
     <div
-      className="fixed inset-0 z-[9998] grid place-items-center bg-black/72 p-3 backdrop-blur-sm sm:p-5"
+      className="fixed inset-0 z-[9998] grid overscroll-none place-items-center bg-black/72 p-3 backdrop-blur-sm sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label={`${place.name} 예약현황`}
       onClick={onClose}
     >
       <section
-        className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.56)]"
+        className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.56)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5 sm:py-5">
@@ -2719,7 +2685,7 @@ function BookingStatusModal({
           </button>
         </div>
 
-        <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_19rem] md:items-end">
             <div>
               <p className="text-lg font-black text-white">실시간 예약현황</p>
@@ -2858,13 +2824,22 @@ function BookingStatusModal({
 
                 {selectedProduct ? (
                   <div className="grid gap-4">
+                    <div className="flex flex-col gap-2 rounded-md border border-cyan-300/18 bg-cyan-300/[0.055] p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-black text-white">AI 예약 예측</p>
+                        <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-400">
+                          최근 요일 패턴과 4~5주 재방문 주기로 수요 시간대를 예측합니다.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsPredictionOpen(true)}
+                        className="inline-flex min-h-10 items-center justify-center rounded-md border border-cyan-300/30 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:border-cyan-200/60 hover:bg-cyan-300/18"
+                      >
+                        AI 예약 예측
+                      </button>
+                    </div>
                     <BookingProductGrid product={selectedProduct} />
-                    <BookingPatternPanel
-                      pattern={pattern}
-                      productId={selectedProduct.id}
-                      isLoading={isPatternLoading}
-                      errorMessage={patternError}
-                    />
                   </div>
                 ) : null}
               </div>
@@ -2875,6 +2850,15 @@ function BookingStatusModal({
             )
           ) : null}
         </div>
+
+        {isPredictionOpen && selectedProduct ? (
+          <BookingPredictionModal
+            date={date}
+            place={place}
+            product={selectedProduct}
+            onClose={() => setIsPredictionOpen(false)}
+          />
+        ) : null}
       </section>
     </div>
   )
@@ -2950,146 +2934,246 @@ function BookingProductGrid({
   )
 }
 
-function BookingPatternPanel({
-  errorMessage,
-  isLoading,
-  pattern,
-  productId,
+function BookingPredictionModal({
+  date,
+  onClose,
+  place,
+  product,
 }: {
-  errorMessage: string
-  isLoading: boolean
-  pattern: PlaceBookingPatternResponse | null
-  productId: string
+  date: string
+  onClose: () => void
+  place: PlaceRankingItem
+  product: PlaceBookingProduct
 }) {
-  const productPattern = pattern?.products.find((product) => product.productId === productId) ?? null
-  const visibleBuckets = productPattern?.buckets.filter(
-    (bucket) => bucket.bookedCount > 0 || bucket.availableCount > 0,
-  ) ?? []
+  const [prediction, setPrediction] = useState<PlaceBookingPredictionResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const loadPrediction = async () => {
+    setIsLoading(true)
+    setErrorMessage('')
+
+    try {
+      const response = await requestBookingPrediction({
+        place,
+        product,
+        targetDate: date,
+      })
+
+      setPrediction(response)
+    } catch (error) {
+      setPrediction(null)
+      setErrorMessage(error instanceof Error ? error.message : 'AI 예약 예측에 실패했습니다.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadPrediction()
+  }, [date, place.id, product.id])
 
   return (
-    <section className="rounded-md border border-white/10 bg-[#080c17]/75 p-4">
-      <div className="flex flex-col gap-3 border-b border-white/10 pb-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/70">
-            Weekday Pattern
-          </p>
-          <h4 className="mt-1 break-keep text-xl font-black text-white">
-            요일별 예약 패턴
-          </h4>
-          <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
-            선택한 날짜와 같은 요일의 최근 3개월 예약 시간대를 기준으로 봅니다.
-          </p>
-        </div>
-        {pattern ? (
-          <div className="flex flex-wrap gap-2 text-xs font-black">
-            <span className="rounded-full bg-cyan-300/12 px-3 py-1 text-cyan-100">
-              {pattern.weekdayLabel}요일
-            </span>
-            <span className="rounded-full bg-white/[0.06] px-3 py-1 text-slate-300">
-              표본 {pattern.sampledDateCount}일
-            </span>
-            {pattern.failedDateCount > 0 ? (
-              <span className="rounded-full bg-amber-300/10 px-3 py-1 text-amber-100">
-                누락 {pattern.failedDateCount}일
-              </span>
-            ) : null}
+    <div
+      className="fixed inset-0 z-[10000] grid overscroll-none bg-black/76 p-3 backdrop-blur-sm sm:place-items-center sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${place.name} AI 예약 예측`}
+      onClick={onClose}
+    >
+      <section
+        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.58)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+              AI Booking Forecast
+            </p>
+            <h3 className="mt-1 break-keep text-xl font-black text-white sm:text-2xl">
+              AI 예약 예측
+            </h3>
+            <p className="mt-1 break-keep text-xs font-bold leading-5 text-cyan-100/75 sm:text-sm">
+              {formatCalendarDateLabel(date)} · {product.name}
+            </p>
           </div>
-        ) : null}
-      </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+          >
+            닫기
+          </button>
+        </div>
 
-      {isLoading ? (
-        <div className="mt-4 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
-          <p className="font-black text-cyan-100">예약 패턴을 분석하고 있습니다.</p>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
-          </div>
-        </div>
-      ) : errorMessage ? (
-        <div className="mt-4 rounded-md border border-amber-200/20 bg-amber-300/[0.08] p-4 text-sm font-bold leading-6 text-amber-100">
-          {errorMessage}
-        </div>
-      ) : productPattern && visibleBuckets.length > 0 ? (
-        <div className="mt-4 grid gap-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <PatternSummaryCard
-              label="고객이 몰리는 시간"
-              value={
-                productPattern.busiestTimes.length
-                  ? productPattern.busiestTimes.join(', ')
-                  : '뚜렷한 집중 시간 없음'
-              }
-              tone="busy"
-            />
-            <PatternSummaryCard
-              label="비교적 여유로운 시간"
-              value={
-                productPattern.quietTimes.length
-                  ? productPattern.quietTimes.join(', ')
-                  : '뚜렷한 여유 시간 없음'
-              }
-              tone="quiet"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-            {visibleBuckets.map((bucket) => (
-              <div
-                key={`${productId}-${bucket.time}`}
-                className={`min-h-16 rounded-md border px-2 py-2 text-center ${
-                  bucket.intensity === 'busy'
-                    ? 'border-orange-300/40 bg-orange-300/[0.12] text-orange-50'
-                    : bucket.intensity === 'quiet'
-                      ? 'border-emerald-300/30 bg-emerald-300/[0.1] text-emerald-50'
-                      : 'border-white/10 bg-white/[0.035] text-slate-300'
-                }`}
-              >
-                <p className="text-sm font-black">{bucket.time}</p>
-                <p className="mt-1 text-[10px] font-black">
-                  예약 {bucket.bookedCount}회
-                </p>
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+          {isLoading ? (
+            <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
+              <p className="font-black text-cyan-100">AI가 예약 패턴을 예측하고 있습니다.</p>
+              <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
+                실시간 예약현황, 최근 3개월 같은 요일, 4~5주 전 예약 흐름을 함께 분석합니다.
+              </p>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
               </div>
-            ))}
-          </div>
-          <p className="break-keep text-xs font-semibold leading-5 text-slate-500">
-            이 패턴은 예약 완료 슬롯이 확인된 시간대를 카운팅한 참고 데이터입니다. 실제 예약 가능 여부는
-            위 실시간 예약현황을 기준으로 확인해주세요.
-          </p>
+            </div>
+          ) : errorMessage ? (
+            <div className="rounded-md border border-rose-300/20 bg-rose-400/[0.08] p-4">
+              <p className="font-black text-rose-100">{errorMessage}</p>
+              <button
+                type="button"
+                onClick={loadPrediction}
+                className="mt-3 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+              >
+                다시 예측
+              </button>
+            </div>
+          ) : prediction ? (
+            <div className="grid gap-4">
+              <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black text-cyan-100/80">예측 수요</p>
+                    <p className="mt-2 text-3xl font-black text-white">
+                      {formatDemandLevel(prediction.demandLevel)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-right">
+                    <p className="text-[11px] font-black text-slate-400">추가 예약 가능성</p>
+                    <p className="mt-1 text-xl font-black text-white">
+                      {prediction.expectedAdditionalBookings}건
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">
+                  {prediction.summary}
+                </p>
+                {!prediction.aiAvailable ? (
+                  <p className="mt-3 break-keep rounded-md border border-amber-200/20 bg-amber-300/[0.08] p-3 text-xs font-black leading-5 text-amber-100">
+                    Gemini 상세 예측은 일시적으로 제한되어 기본 패턴 예측을 표시합니다.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <PredictionWindowList
+                  title="예약이 몰릴 가능성이 높은 시간"
+                  tone="busy"
+                  windows={prediction.busyWindows}
+                />
+                <PredictionWindowList
+                  title="비교적 여유로울 가능성이 높은 시간"
+                  tone="quiet"
+                  windows={prediction.quietWindows}
+                />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <PredictionMetric label="현재 예약됨" value={`${prediction.data.currentBookedSlots}개`} />
+                <PredictionMetric label="현재 가능" value={`${prediction.data.currentAvailableSlots}개`} />
+                <PredictionMetric
+                  label="분석 표본"
+                  value={`${prediction.data.patternSampledDateCount + prediction.data.cycleSampledDateCount}일`}
+                />
+              </div>
+
+              <PredictionBulletSection title="운영 추천" items={prediction.recommendedActions} />
+              <PredictionBulletSection title="예측 근거" items={prediction.basis} />
+            </div>
+          ) : null}
         </div>
-      ) : (
-        <div className="mt-4 rounded-md border border-white/10 bg-white/[0.035] p-4 text-sm font-bold leading-6 text-slate-400">
-          아직 요일별 패턴을 판단할 만큼 충분한 표본이 없습니다.
-        </div>
-      )}
-    </section>
+      </section>
+    </div>
   )
 }
 
-function PatternSummaryCard({
-  label,
+function PredictionWindowList({
+  title,
   tone,
-  value,
+  windows,
 }: {
-  label: string
+  title: string
   tone: 'busy' | 'quiet'
-  value: string
+  windows: PlaceBookingPredictionResponse['busyWindows']
 }) {
   return (
-    <div
-      className={`rounded-md border p-3 ${
+    <section
+      className={`rounded-md border p-4 ${
         tone === 'busy'
           ? 'border-orange-300/25 bg-orange-300/[0.08]'
           : 'border-emerald-300/25 bg-emerald-300/[0.08]'
       }`}
     >
       <p
-        className={`text-xs font-black ${
-          tone === 'busy' ? 'text-orange-100/85' : 'text-emerald-100/85'
+        className={`text-sm font-black ${
+          tone === 'busy' ? 'text-orange-100' : 'text-emerald-100'
         }`}
       >
-        {label}
+        {title}
       </p>
-      <p className="mt-2 break-keep text-lg font-black text-white">{value}</p>
+      {windows.length ? (
+        <div className="mt-3 grid gap-2">
+          {windows.map((window) => (
+            <div
+              key={`${title}-${window.timeRange}-${window.reason}`}
+              className="rounded-md border border-white/10 bg-white/[0.045] p-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-base font-black text-white">{window.timeRange}</p>
+                <span className="rounded-full bg-white/[0.08] px-2 py-1 text-[11px] font-black text-slate-300">
+                  신뢰 {window.confidence}%
+                </span>
+              </div>
+              <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-400">
+                {window.reason}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm font-bold text-slate-400">뚜렷한 시간대 신호가 없습니다.</p>
+      )}
+    </section>
+  )
+}
+
+function PredictionMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+      <p className="text-[11px] font-black text-slate-400">{label}</p>
+      <p className="mt-1 text-lg font-black text-white">{value}</p>
     </div>
   )
+}
+
+function PredictionBulletSection({ items, title }: { items: string[]; title: string }) {
+  return (
+    <section className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+      <p className="text-sm font-black text-white">{title}</p>
+      <ul className="mt-3 grid gap-2">
+        {items.map((item) => (
+          <li
+            key={`${title}-${item}`}
+            className="break-keep rounded-md bg-white/[0.04] p-3 text-xs font-semibold leading-5 text-slate-300"
+          >
+            {item}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function formatDemandLevel(level: PlaceBookingPredictionResponse['demandLevel']) {
+  if (level === 'HIGH') {
+    return '높음'
+  }
+
+  if (level === 'MEDIUM') {
+    return '보통'
+  }
+
+  return '낮음'
 }
 
 type PlaceHistoryModalProps = {
