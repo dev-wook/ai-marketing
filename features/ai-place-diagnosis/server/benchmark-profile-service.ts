@@ -154,7 +154,7 @@ export async function refreshAiPlaceBenchmarkProfile({
       const nextActiveJob = await findActiveAiPlaceHarnessJob(keywordRow.id)
 
       if (!nextActiveJob) {
-      throw error
+        throw error
       }
 
       return {

@@ -839,6 +839,15 @@ export async function claimNextAiPlaceHarnessJob() {
   try {
     await client.query('begin')
 
+    const lockResult = await client.query<{ locked: boolean }>(
+      `select pg_try_advisory_xact_lock(hashtext('ai_place_harness_worker_queue')) as locked`,
+    )
+
+    if (!lockResult.rows[0]?.locked) {
+      await client.query('commit')
+      return null
+    }
+
     const result = await client.query<AiPlaceHarnessJobRow>(
       `
         select
@@ -857,7 +866,17 @@ export async function claimNextAiPlaceHarnessJob() {
           and collection_run_id is not null
           and next_attempt_at <= now()
           and (locked_at is null or locked_at < now() - interval '2 minutes')
-        order by created_at asc
+          and (
+            status = 'RUNNING'
+            or not exists (
+              select 1
+              from public.ai_place_harness_jobs running_job
+              where running_job.status = 'RUNNING'
+            )
+          )
+        order by
+          case when status = 'RUNNING' then 0 else 1 end,
+          created_at asc
         limit 1
         for update skip locked
       `,

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RecentSearchList, ToolLoadingPanel } from '@/features/platform/components/tool-ui'
+import { useBodyScrollLock } from '@/features/platform/components/use-body-scroll-lock'
 import type {
   PlaceBookingCalendarResponse,
   PlaceBookingProduct,
@@ -498,33 +499,9 @@ export function PlaceRankingTool() {
     setRecentKeywords(readRecentPlaceRankingKeywords())
   }, [])
 
-  useEffect(() => {
-    if (
-      !expandedImage &&
-      !reviewPlace &&
-      !bookingPlace &&
-      !historyPlace &&
-      !isBatchModalOpen &&
-      !isBlacklistModalOpen
-    ) {
-      return
-    }
-
-    const previousOverflow = document.body.style.overflow
-
-    document.body.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [
-    bookingPlace,
-    expandedImage,
-    reviewPlace,
-    historyPlace,
-    isBatchModalOpen,
-    isBlacklistModalOpen,
-  ])
+  useBodyScrollLock(
+    Boolean(expandedImage || reviewPlace || bookingPlace || historyPlace || isBatchModalOpen || isBlacklistModalOpen),
+  )
 
   useEffect(() => {
     if (!isLoading) {
@@ -2233,16 +2210,6 @@ function BookingTopAllModal({
       pendingExcludeKeys.has(createPlaceBlacklistKey(item.placeId, item.name)),
     )
   }, [displayedItems, pendingExcludeKeys])
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow
-
-    document.body.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [])
 
   if (typeof document === 'undefined') {
     return null

@@ -7,10 +7,12 @@ import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting
 import type { AuthUser } from '@/features/auth/types'
 import { KeywordTool } from '@/features/keyword-analysis/components/keyword-tool'
 import { PlaceRankingTool } from '@/features/place-ranking/components/place-ranking-tool'
+import type { PlaceRankingBatchKeyword } from '@/features/place-ranking/types'
 import { PlaceTrackingDashboard } from '@/features/place-tracking/components/place-tracking-dashboard'
 import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
 import { MenuButton } from './menu-button'
+import { useBodyScrollLock } from './use-body-scroll-lock'
 
 type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'diagnosis' | 'tracking'
 type AiDiagnosisDataRefreshStatus = {
@@ -44,6 +46,8 @@ type AiDiagnosisDataRefreshStatus = {
 
 const refreshViewStorageKey = 'aiva-refresh-view'
 const seenAiDiagnosisRefreshJobsStorageKey = 'aiva:seen-ai-diagnosis-refresh-job-ids'
+const seenBackgroundWorkJobsStorageKey = 'aiva:seen-background-work-job-ids'
+const terminalWorkNotificationRetentionMs = 24 * 60 * 60 * 1000
 const pullRefreshThreshold = 84
 const pullRefreshMaxDistance = 118
 const mobileHeaderHeight = 72
@@ -68,10 +72,15 @@ export function MarketingWorkspace() {
   const [isAiDiagnosisDataManagerOpen, setIsAiDiagnosisDataManagerOpen] = useState(false)
   const [aiDiagnosisDataStatus, setAiDiagnosisDataStatus] =
     useState<AiDiagnosisDataRefreshStatus | null>(null)
+  const [placeRankingBatchKeywords, setPlaceRankingBatchKeywords] = useState<PlaceRankingBatchKeyword[]>([])
   const [isAiDiagnosisDataStatusLoading, setIsAiDiagnosisDataStatusLoading] = useState(false)
-  const [seenAiDiagnosisRefreshJobIds, setSeenAiDiagnosisRefreshJobIds] = useState<string[]>([])
+  const [seenBackgroundWorkJobIds, setSeenBackgroundWorkJobIds] = useState<string[]>([])
   const [pullDistance, setPullDistance] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const hasLoadedWorkStatusRef = useRef(false)
+  const isWorkStatusPollingRef = useRef(false)
+  const aiDiagnosisStatusSnapshotRef = useRef('')
+  const placeRankingBatchSnapshotRef = useRef('')
   const touchStartYRef = useRef(0)
   const isPullingRef = useRef(false)
 
@@ -136,16 +145,18 @@ export function MarketingWorkspace() {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(seenAiDiagnosisRefreshJobsStorageKey)
+      const saved =
+        window.localStorage.getItem(seenBackgroundWorkJobsStorageKey)
+        ?? window.localStorage.getItem(seenAiDiagnosisRefreshJobsStorageKey)
       const parsed = saved ? JSON.parse(saved) : []
 
       if (Array.isArray(parsed)) {
-        setSeenAiDiagnosisRefreshJobIds(
+        setSeenBackgroundWorkJobIds(
           parsed.filter((item): item is string => typeof item === 'string'),
         )
       }
     } catch {
-      setSeenAiDiagnosisRefreshJobIds([])
+      setSeenBackgroundWorkJobIds([])
     }
   }, [])
 
@@ -156,29 +167,65 @@ export function MarketingWorkspace() {
 
     let isMounted = true
 
-    const loadStatus = async () => {
-      setIsAiDiagnosisDataStatusLoading(true)
+    const loadStatus = async ({ showLoading = false }: { showLoading?: boolean } = {}) => {
+      if (isWorkStatusPollingRef.current) {
+        return
+      }
+
+      isWorkStatusPollingRef.current = true
+      const shouldShowLoading = showLoading && !hasLoadedWorkStatusRef.current
+
+      if (shouldShowLoading) {
+        setIsAiDiagnosisDataStatusLoading(true)
+      }
 
       try {
-        const response = await fetch('/api/ai-place-diagnosis/benchmark/status', {
-          cache: 'no-store',
-        })
-        const data = await response.json().catch(() => null) as
+        const [aiDiagnosisResponse, placeRankingResponse] = await Promise.all([
+          fetch('/api/ai-place-diagnosis/benchmark/status', {
+            cache: 'no-store',
+          }),
+          fetch('/api/place-ranking/batch-keywords', {
+            cache: 'no-store',
+          }),
+        ])
+        const aiDiagnosisData = await aiDiagnosisResponse.json().catch(() => null) as
           | AiDiagnosisDataRefreshStatus
           | null
+        const placeRankingData = await placeRankingResponse.json().catch(() => null) as
+          | { keywords?: PlaceRankingBatchKeyword[] }
+          | null
 
-        if (isMounted && response.ok && data) {
-          setAiDiagnosisDataStatus(data)
+        if (isMounted && aiDiagnosisResponse.ok && aiDiagnosisData) {
+          const nextSnapshot = JSON.stringify(aiDiagnosisData)
+
+          if (aiDiagnosisStatusSnapshotRef.current !== nextSnapshot) {
+            aiDiagnosisStatusSnapshotRef.current = nextSnapshot
+            setAiDiagnosisDataStatus(aiDiagnosisData)
+          }
+        }
+
+        if (isMounted && placeRankingResponse.ok && Array.isArray(placeRankingData?.keywords)) {
+          const nextSnapshot = JSON.stringify(placeRankingData.keywords)
+
+          if (placeRankingBatchSnapshotRef.current !== nextSnapshot) {
+            placeRankingBatchSnapshotRef.current = nextSnapshot
+            setPlaceRankingBatchKeywords(placeRankingData.keywords)
+          }
         }
       } finally {
+        hasLoadedWorkStatusRef.current = true
+        isWorkStatusPollingRef.current = false
+
         if (isMounted) {
           setIsAiDiagnosisDataStatusLoading(false)
         }
       }
     }
 
-    loadStatus()
-    const intervalId = window.setInterval(loadStatus, isWorkStatusOpen ? 2000 : 10000)
+    loadStatus({ showLoading: true })
+    const intervalId = window.setInterval(() => {
+      loadStatus()
+    }, isWorkStatusOpen ? 2000 : 10000)
 
     return () => {
       isMounted = false
@@ -186,16 +233,20 @@ export function MarketingWorkspace() {
     }
   }, [authUser, isWorkStatusOpen])
 
-  const markAiDiagnosisRefreshJobsSeen = () => {
-    const terminalIds = getTerminalAiDiagnosisRefreshJobIds(aiDiagnosisDataStatus)
+  const markBackgroundWorkJobsSeen = () => {
+    const terminalIds = getTerminalBackgroundWorkJobIds({
+      aiDiagnosisStatus: aiDiagnosisDataStatus,
+      placeRankingKeywords: placeRankingBatchKeywords,
+    })
 
     if (terminalIds.length === 0) {
       return
     }
 
-    setSeenAiDiagnosisRefreshJobIds((current) => {
+    setSeenBackgroundWorkJobIds((current) => {
       const next = Array.from(new Set([...current, ...terminalIds])).slice(-80)
 
+      window.localStorage.setItem(seenBackgroundWorkJobsStorageKey, JSON.stringify(next))
       window.localStorage.setItem(seenAiDiagnosisRefreshJobsStorageKey, JSON.stringify(next))
 
       return next
@@ -311,43 +362,21 @@ export function MarketingWorkspace() {
     }
   }, [isAiDiagnosisDataManagerOpen, isMenuOpen, isRefreshing, isWorkStatusOpen, view])
 
-  useEffect(() => {
-    if (!isWorkStatusOpen && !isMenuOpen && !isAiDiagnosisDataManagerOpen) {
-      return
-    }
-
-    const previousOverflow = document.body.style.overflow
-    const previousTouchAction = document.body.style.touchAction
-    const previousPosition = document.body.style.position
-    const previousTop = document.body.style.top
-    const previousWidth = document.body.style.width
-    const scrollY = window.scrollY
-
-    document.body.style.overflow = 'hidden'
-    document.body.style.position = 'fixed'
-    document.body.style.top = `-${scrollY}px`
-    document.body.style.width = '100%'
-    document.body.style.touchAction = 'none'
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-      document.body.style.touchAction = previousTouchAction
-      document.body.style.position = previousPosition
-      document.body.style.top = previousTop
-      document.body.style.width = previousWidth
-      window.scrollTo(0, scrollY)
-    }
-  }, [isAiDiagnosisDataManagerOpen, isMenuOpen, isWorkStatusOpen])
+  useBodyScrollLock(isWorkStatusOpen || isMenuOpen || isAiDiagnosisDataManagerOpen)
 
   const pullProgress = Math.min(pullDistance / pullRefreshThreshold, 1)
   const shouldShowPullRefresh = pullDistance > 0 || isRefreshing
   const pullIndicatorHeight = Math.min(pullDistance, pullRefreshMaxDistance)
   const activePullDistance = isRefreshing ? pullRefreshThreshold : pullIndicatorHeight
   const isHomeView = view === 'home'
-  const hasRunningAiDiagnosisRefresh = Boolean(aiDiagnosisDataStatus?.hasUpdatingKeyword)
-  const hasUnreadAiDiagnosisRefreshResult = hasUnreadTerminalAiDiagnosisRefreshJob({
-    seenIds: seenAiDiagnosisRefreshJobIds,
-    status: aiDiagnosisDataStatus,
+  const hasRunningBackgroundWork = hasRunningBackgroundWorkJob({
+    aiDiagnosisStatus: aiDiagnosisDataStatus,
+    placeRankingKeywords: placeRankingBatchKeywords,
+  })
+  const hasUnreadBackgroundWorkResult = hasUnreadTerminalBackgroundWorkJob({
+    aiDiagnosisStatus: aiDiagnosisDataStatus,
+    placeRankingKeywords: placeRankingBatchKeywords,
+    seenIds: seenBackgroundWorkJobIds,
   })
 
   if (isSessionChecking) {
@@ -445,7 +474,7 @@ export function MarketingWorkspace() {
                   <span className="absolute -left-1 top-3.5 h-2.5 w-1 rounded-l-full border border-r-0 border-current" />
                   <span className="absolute -right-1 top-3.5 h-2.5 w-1 rounded-r-full border border-l-0 border-current" />
                 </span>
-                {hasRunningAiDiagnosisRefresh ? (
+                {hasRunningBackgroundWork ? (
                   <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-60" />
                     <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-amber-300" />
@@ -456,14 +485,13 @@ export function MarketingWorkspace() {
                 type="button"
                 onClick={() => {
                   setIsWorkStatusOpen((current) => !current)
-                  markAiDiagnosisRefreshJobsSeen()
                 }}
                 aria-label="작업 알림 열기"
                 aria-expanded={isWorkStatusOpen}
                 className={`relative grid h-11 w-11 place-items-center rounded-md border transition focus:outline-none focus:ring-4 focus:ring-cyan-300/15 ${
-                  hasUnreadAiDiagnosisRefreshResult
+                  hasUnreadBackgroundWorkResult
                     ? 'border-rose-300/45 bg-rose-400/14 text-rose-50 hover:bg-rose-400/22'
-                    : hasRunningAiDiagnosisRefresh
+                    : hasRunningBackgroundWork
                       ? 'border-cyan-300/45 bg-cyan-300/12 text-cyan-50 hover:bg-cyan-300/18'
                       : 'border-white/10 bg-white/[0.05] text-slate-100 hover:border-cyan-300/50 hover:bg-white/[0.08]'
                 }`}
@@ -473,11 +501,11 @@ export function MarketingWorkspace() {
                   <span className="absolute bottom-0 left-1/2 h-1.5 w-3.5 -translate-x-1/2 rounded-b-full border-b-2 border-l-2 border-r-2 border-current" />
                   <span className="absolute bottom-[-2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-current" />
                 </span>
-                {hasUnreadAiDiagnosisRefreshResult ? (
+                {hasUnreadBackgroundWorkResult ? (
                   <span className="absolute -right-1 -top-1 rounded-full border border-[#070a12] bg-rose-400 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
                     완료
                   </span>
-                ) : hasRunningAiDiagnosisRefresh ? (
+                ) : hasRunningBackgroundWork ? (
                   <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-60" />
                     <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-cyan-300" />
@@ -503,6 +531,7 @@ export function MarketingWorkspace() {
           <WorkStatusPanel
             isLoading={isAiDiagnosisDataStatusLoading}
             isOpen={isWorkStatusOpen}
+            onDismissCompleted={markBackgroundWorkJobsSeen}
             onCancelJob={async (jobId) => {
               await fetch('/api/ai-place-diagnosis/harness/cancel', {
                 method: 'POST',
@@ -520,10 +549,12 @@ export function MarketingWorkspace() {
                 setAiDiagnosisDataStatus(data)
               }
             }}
+            placeRankingKeywords={placeRankingBatchKeywords}
+            seenIds={seenBackgroundWorkJobIds}
             status={aiDiagnosisDataStatus}
             onClose={() => {
               setIsWorkStatusOpen(false)
-              markAiDiagnosisRefreshJobsSeen()
+              markBackgroundWorkJobsSeen()
             }}
           />
 
@@ -587,16 +618,27 @@ function WorkStatusPanel({
   isOpen,
   onCancelJob,
   onClose,
+  onDismissCompleted,
+  placeRankingKeywords,
+  seenIds,
   status,
 }: {
   isLoading: boolean
   isOpen: boolean
   onCancelJob: (jobId: string) => Promise<void>
   onClose: () => void
+  onDismissCompleted: () => void
+  placeRankingKeywords: PlaceRankingBatchKeyword[]
+  seenIds: string[]
   status: AiDiagnosisDataRefreshStatus | null
 }) {
-  const jobs = createAiDiagnosisRefreshJobCards(status)
+  const jobs = createBackgroundWorkJobCards({
+    aiDiagnosisStatus: status,
+    placeRankingKeywords,
+    seenIds,
+  })
   const hasJobs = jobs.length > 0
+  const hasTerminalJobs = jobs.some((job) => job.isTerminal)
 
   return (
     <div
@@ -623,7 +665,7 @@ function WorkStatusPanel({
             </p>
             <h2 className="mt-2 text-xl font-black text-white">작업 알림</h2>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
-              AI 진단 데이터 수집 진행 상태와 완료 결과를 확인합니다.
+              백그라운드로 실행되는 수집, 기록, 진단 작업의 진행 상태를 확인합니다.
             </p>
           </div>
           <button
@@ -637,6 +679,16 @@ function WorkStatusPanel({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]">
+          {hasTerminalJobs ? (
+            <button
+              type="button"
+              onClick={onDismissCompleted}
+              className="mb-3 min-h-10 w-full rounded-md border border-white/10 bg-white/[0.045] px-3 text-xs font-black text-slate-200 transition hover:border-cyan-300/35 hover:bg-cyan-300/10 hover:text-cyan-50"
+            >
+              완료 알림 지우기
+            </button>
+          ) : null}
+
           {isLoading && !hasJobs ? (
             <div className="rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] p-4">
               <span className="block h-2 overflow-hidden rounded-full bg-white/10">
@@ -649,7 +701,7 @@ function WorkStatusPanel({
           {hasJobs ? (
             <div className="grid gap-3">
               {jobs.map((job) => (
-                <AiDiagnosisRefreshJobCard
+                <BackgroundWorkJobCard
                   key={job.id}
                   job={job}
                   onCancelJob={onCancelJob}
@@ -660,7 +712,7 @@ function WorkStatusPanel({
             <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
               <p className="text-sm font-black text-slate-200">표시할 작업이 없습니다.</p>
               <p className="mt-2 text-xs font-bold leading-5 text-slate-500">
-                AI 진단 데이터 수집을 실행하면 진행 상태가 여기에 표시됩니다.
+                백그라운드 작업이 시작되면 진행 상태와 완료 결과가 여기에 표시됩니다.
               </p>
             </div>
           ) : null}
@@ -670,37 +722,45 @@ function WorkStatusPanel({
   )
 }
 
-type AiDiagnosisRefreshJobCardModel = {
+type BackgroundWorkStep = {
+  label: string
+  state: 'done' | 'active' | 'pending' | 'failed'
+}
+
+type BackgroundWorkJobCardModel = {
   id: string
+  title: string
+  subtitle: string
   keyword: string
   status: 'FRESH' | 'NEEDS_REFRESH' | 'QUEUED' | 'UPDATING' | 'PARTIAL' | 'FAILED'
   label: string
   tone: 'cyan' | 'emerald' | 'amber' | 'rose' | 'slate'
   progress: number
   progressText: string
+  steps: BackgroundWorkStep[]
   startedAt: string | null
   updatedAt: string | null
   errorMessage: string | null
   statusReason: string | null
   canCancel: boolean
+  isTerminal: boolean
 }
 
-function AiDiagnosisRefreshJobCard({
+function BackgroundWorkJobCard({
   job,
   onCancelJob,
 }: {
-  job: AiDiagnosisRefreshJobCardModel
+  job: BackgroundWorkJobCardModel
   onCancelJob: (jobId: string) => Promise<void>
 }) {
-  const steps = createAiDiagnosisRefreshSteps(job)
   const [isCancelling, setIsCancelling] = useState(false)
 
   return (
     <article className="rounded-md border border-white/10 bg-white/[0.045] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-black text-white">AI 진단 데이터 수집</h3>
-          <p className="mt-1 truncate text-xs font-bold text-cyan-100/80">{job.keyword}</p>
+          <h3 className="truncate text-sm font-black text-white">{job.title}</h3>
+          <p className="mt-1 truncate text-xs font-bold text-cyan-100/80">{job.subtitle}</p>
         </div>
         <span
           className={[
@@ -742,7 +802,7 @@ function AiDiagnosisRefreshJobCard({
       </div>
 
       <ol className="mt-4 grid gap-2">
-        {steps.map((step) => (
+        {job.steps.map((step) => (
           <li key={step.label} className="flex items-center gap-2 text-xs font-bold">
             <span
               className={[
@@ -810,17 +870,38 @@ function AiDiagnosisRefreshJobCard({
   )
 }
 
+function createBackgroundWorkJobCards({
+  aiDiagnosisStatus,
+  placeRankingKeywords,
+  seenIds = [],
+}: {
+  aiDiagnosisStatus: AiDiagnosisDataRefreshStatus | null
+  placeRankingKeywords: PlaceRankingBatchKeyword[]
+  seenIds?: string[]
+}): BackgroundWorkJobCardModel[] {
+  const seen = new Set(seenIds)
+  const now = Date.now()
+
+  return [
+    ...createAiDiagnosisRefreshJobCards(aiDiagnosisStatus, seen, now),
+    ...createPlaceRankingBatchJobCards(placeRankingKeywords, seen, now),
+  ].sort((a, b) => getWorkJobSortTime(b) - getWorkJobSortTime(a))
+}
+
 function createAiDiagnosisRefreshJobCards(
   status: AiDiagnosisDataRefreshStatus | null,
-): AiDiagnosisRefreshJobCardModel[] {
+  seenIds: Set<string>,
+  now: number,
+): BackgroundWorkJobCardModel[] {
   if (!status) {
     return []
   }
 
   return status.keywords
-    .filter((keyword) => keyword.latestRun || keyword.latestProfile || keyword.status === 'NEEDS_REFRESH')
+    .filter((keyword) => shouldShowAiDiagnosisRefreshJob(keyword, seenIds, now))
     .map((keyword) => {
       const run = keyword.latestRun
+      const isTerminal = isTerminalAiDiagnosisRefreshStatus(keyword.status)
       const totalCount = Math.max(run?.totalCount ?? keyword.latestProfile?.sampleCount ?? 50, 1)
       const evaluatedCount = Math.min(run?.evaluatedCount ?? (keyword.latestProfile ? totalCount : 0), totalCount)
       const progress =
@@ -841,7 +922,9 @@ function createAiDiagnosisRefreshJobCards(
                 : 'cyan'
 
       return {
-        id: run?.id ?? `${keyword.normalizedKeyword}:${keyword.latestProfile?.createdAt ?? 'none'}`,
+        id: run?.id ?? `ai-diagnosis:${keyword.normalizedKeyword}:${keyword.latestProfile?.createdAt ?? 'none'}`,
+        title: 'AI 진단 데이터 수집',
+        subtitle: keyword.keyword,
         keyword: keyword.keyword,
         status: keyword.status,
         label: formatAiDiagnosisRefreshStatusLabel(keyword.status),
@@ -857,6 +940,10 @@ function createAiDiagnosisRefreshJobCards(
             : keyword.status === 'NEEDS_REFRESH'
               ? '수집 필요'
               : `${totalCount}개 플레이스 기준 데이터`,
+        steps: createAiDiagnosisRefreshSteps({
+          progress,
+          status: keyword.status,
+        }),
         startedAt: run?.createdAt ?? keyword.latestProfile?.createdAt ?? null,
         updatedAt: run?.completedAt ?? keyword.latestProfile?.createdAt ?? run?.createdAt ?? null,
         errorMessage:
@@ -865,15 +952,191 @@ function createAiDiagnosisRefreshJobCards(
             : run?.errorMessage ?? null,
         statusReason: keyword.statusReason ?? null,
         canCancel: Boolean(run?.id && (keyword.status === 'QUEUED' || keyword.status === 'UPDATING')),
-      } satisfies AiDiagnosisRefreshJobCardModel
+        isTerminal,
+      } satisfies BackgroundWorkJobCardModel
     })
 }
 
-function createAiDiagnosisRefreshSteps(job: AiDiagnosisRefreshJobCardModel) {
-  const failed = job.status === 'FAILED'
-  const completed = job.status === 'FRESH' || job.status === 'PARTIAL'
-  const evaluating = job.status === 'UPDATING'
-  const queued = job.status === 'QUEUED'
+function createPlaceRankingBatchJobCards(
+  keywords: PlaceRankingBatchKeyword[],
+  seenIds: Set<string>,
+  now: number,
+): BackgroundWorkJobCardModel[] {
+  return keywords
+    .filter((keyword) => shouldShowPlaceRankingBatchJob(keyword, seenIds, now))
+    .map((keyword) => {
+      const status = normalizePlaceRankingBatchStatus(keyword.lastRunStatus)
+      const isRunning = status === 'UPDATING'
+      const isFailed = status === 'FAILED'
+      const isTerminal = status === 'FRESH' || status === 'FAILED'
+      const tone = isFailed ? 'rose' : isRunning ? 'cyan' : 'emerald'
+
+      return {
+        id: createPlaceRankingBatchJobId(keyword),
+        title: '플레이스 순위 자동 기록',
+        subtitle: keyword.keyword,
+        keyword: keyword.keyword,
+        status,
+        label: formatPlaceRankingBatchWorkStatusLabel(status),
+        tone,
+        progress: isRunning ? 50 : 100,
+        progressText: isRunning ? '순위 데이터 기록 중' : '순위 기록 처리 완료',
+        steps: createPlaceRankingBatchSteps(status),
+        startedAt: keyword.lastRunAt,
+        updatedAt: keyword.lastRunAt,
+        errorMessage: isFailed ? keyword.lastRunMessage : null,
+        statusReason: !isFailed && keyword.lastRunMessage ? keyword.lastRunMessage : null,
+        canCancel: false,
+        isTerminal,
+      } satisfies BackgroundWorkJobCardModel
+    })
+}
+
+function shouldShowAiDiagnosisRefreshJob(
+  keyword: AiDiagnosisDataRefreshStatus['keywords'][number],
+  seenIds: Set<string>,
+  now: number,
+) {
+  if (keyword.status === 'QUEUED' || keyword.status === 'UPDATING') {
+    return Boolean(keyword.latestRun)
+  }
+
+  if (!isTerminalAiDiagnosisRefreshStatus(keyword.status)) {
+    return false
+  }
+
+  const runId = keyword.latestRun?.id
+
+  if (!runId || seenIds.has(runId)) {
+    return false
+  }
+
+  const updatedAt =
+    keyword.latestRun?.completedAt ?? keyword.latestRun?.createdAt ?? keyword.latestProfile?.createdAt ?? null
+
+  if (!updatedAt) {
+    return false
+  }
+
+  const updatedTime = new Date(updatedAt).getTime()
+
+  if (Number.isNaN(updatedTime)) {
+    return false
+  }
+
+  return now - updatedTime <= terminalWorkNotificationRetentionMs
+}
+
+function shouldShowPlaceRankingBatchJob(
+  keyword: PlaceRankingBatchKeyword,
+  seenIds: Set<string>,
+  now: number,
+) {
+  const status = normalizePlaceRankingBatchStatus(keyword.lastRunStatus)
+
+  if (status === 'UPDATING') {
+    return true
+  }
+
+  if (status !== 'FRESH' && status !== 'FAILED') {
+    return false
+  }
+
+  const jobId = createPlaceRankingBatchJobId(keyword)
+
+  if (seenIds.has(jobId) || !keyword.lastRunAt) {
+    return false
+  }
+
+  const updatedTime = new Date(keyword.lastRunAt).getTime()
+
+  return !Number.isNaN(updatedTime) && now - updatedTime <= terminalWorkNotificationRetentionMs
+}
+
+function createPlaceRankingBatchJobId(keyword: PlaceRankingBatchKeyword) {
+  return `place-ranking:${keyword.id}:${keyword.lastRunAt ?? 'none'}:${keyword.lastRunStatus ?? 'none'}`
+}
+
+function normalizePlaceRankingBatchStatus(
+  status: string | null,
+): BackgroundWorkJobCardModel['status'] {
+  if (status === 'running') {
+    return 'UPDATING'
+  }
+
+  if (status === 'failed') {
+    return 'FAILED'
+  }
+
+  if (status === 'success') {
+    return 'FRESH'
+  }
+
+  return 'NEEDS_REFRESH'
+}
+
+function formatPlaceRankingBatchWorkStatusLabel(status: BackgroundWorkJobCardModel['status']) {
+  if (status === 'UPDATING') {
+    return '기록 중'
+  }
+
+  if (status === 'FAILED') {
+    return '실패'
+  }
+
+  if (status === 'FRESH') {
+    return '완료'
+  }
+
+  return '대기'
+}
+
+function createPlaceRankingBatchSteps(status: BackgroundWorkJobCardModel['status']) {
+  const failed = status === 'FAILED'
+  const completed = status === 'FRESH'
+  const running = status === 'UPDATING'
+
+  return [
+    {
+      label: '키워드 순위 조회',
+      state: failed || completed ? 'done' : running ? 'active' : 'pending',
+    },
+    {
+      label: '순위 이력 저장',
+      state: failed ? 'failed' : completed ? 'done' : running ? 'pending' : 'pending',
+    },
+  ] satisfies BackgroundWorkStep[]
+}
+
+function getWorkJobSortTime(job: BackgroundWorkJobCardModel) {
+  const value = job.updatedAt ?? job.startedAt
+
+  if (!value) {
+    return 0
+  }
+
+  const time = new Date(value).getTime()
+
+  return Number.isNaN(time) ? 0 : time
+}
+
+function isTerminalAiDiagnosisRefreshStatus(
+  status: AiDiagnosisDataRefreshStatus['keywords'][number]['status'],
+) {
+  return status === 'FRESH' || status === 'PARTIAL' || status === 'FAILED'
+}
+
+function createAiDiagnosisRefreshSteps({
+  progress,
+  status,
+}: {
+  progress: number
+  status: AiDiagnosisDataRefreshStatus['keywords'][number]['status']
+}) {
+  const failed = status === 'FAILED'
+  const completed = status === 'FRESH' || status === 'PARTIAL'
+  const evaluating = status === 'UPDATING'
+  const queued = status === 'QUEUED'
 
   return [
     { label: '플레이스 데이터 수집', state: failed ? 'done' : 'done' },
@@ -884,13 +1147,13 @@ function createAiDiagnosisRefreshSteps(job: AiDiagnosisRefreshJobCardModel) {
     },
     {
       label: '기준 프로필 생성',
-      state: failed ? 'pending' : completed ? 'done' : evaluating && job.progress >= 100 ? 'active' : 'pending',
+      state: failed ? 'pending' : completed ? 'done' : evaluating && progress >= 100 ? 'active' : 'pending',
     },
     {
       label: '최신 데이터 반영',
       state: failed ? 'pending' : completed ? 'done' : 'pending',
     },
-  ] as Array<{ label: string; state: 'done' | 'active' | 'pending' | 'failed' }>
+  ] satisfies BackgroundWorkStep[]
 }
 
 function formatAiDiagnosisRefreshStatusLabel(
@@ -914,27 +1177,74 @@ function formatAiDiagnosisRefreshStatusLabel(
   }
 }
 
-function getTerminalAiDiagnosisRefreshJobIds(status: AiDiagnosisDataRefreshStatus | null) {
-  if (!status) {
-    return []
-  }
+function getTerminalBackgroundWorkJobIds({
+  aiDiagnosisStatus,
+  placeRankingKeywords,
+}: {
+  aiDiagnosisStatus: AiDiagnosisDataRefreshStatus | null
+  placeRankingKeywords: PlaceRankingBatchKeyword[]
+}) {
+  const now = Date.now()
+  const aiDiagnosisIds = aiDiagnosisStatus
+    ? aiDiagnosisStatus.keywords
+        .filter((keyword) => isTerminalAiDiagnosisRefreshStatus(keyword.status))
+        .filter((keyword) => {
+          const updatedAt =
+            keyword.latestRun?.completedAt ?? keyword.latestRun?.createdAt ?? keyword.latestProfile?.createdAt ?? null
 
-  return status.keywords
-    .filter((keyword) => keyword.status === 'FRESH' || keyword.status === 'PARTIAL' || keyword.status === 'FAILED')
-    .map((keyword) => keyword.latestRun?.id)
-    .filter((id): id is string => Boolean(id))
+          if (!updatedAt) {
+            return false
+          }
+
+          const updatedTime = new Date(updatedAt).getTime()
+
+          return !Number.isNaN(updatedTime) && now - updatedTime <= terminalWorkNotificationRetentionMs
+        })
+        .map((keyword) => keyword.latestRun?.id)
+        .filter((id): id is string => Boolean(id))
+    : []
+  const placeRankingIds = placeRankingKeywords
+    .filter((keyword) => {
+      const status = normalizePlaceRankingBatchStatus(keyword.lastRunStatus)
+
+      return (status === 'FRESH' || status === 'FAILED') && Boolean(keyword.lastRunAt)
+    })
+    .filter((keyword) => {
+      const updatedTime = new Date(keyword.lastRunAt ?? '').getTime()
+
+      return !Number.isNaN(updatedTime) && now - updatedTime <= terminalWorkNotificationRetentionMs
+    })
+    .map(createPlaceRankingBatchJobId)
+
+  return [...aiDiagnosisIds, ...placeRankingIds]
 }
 
-function hasUnreadTerminalAiDiagnosisRefreshJob({
+function hasUnreadTerminalBackgroundWorkJob({
+  aiDiagnosisStatus,
+  placeRankingKeywords,
   seenIds,
-  status,
 }: {
+  aiDiagnosisStatus: AiDiagnosisDataRefreshStatus | null
+  placeRankingKeywords: PlaceRankingBatchKeyword[]
   seenIds: string[]
-  status: AiDiagnosisDataRefreshStatus | null
 }) {
   const seen = new Set(seenIds)
 
-  return getTerminalAiDiagnosisRefreshJobIds(status).some((id) => !seen.has(id))
+  return getTerminalBackgroundWorkJobIds({
+    aiDiagnosisStatus,
+    placeRankingKeywords,
+  }).some((id) => !seen.has(id))
+}
+
+function hasRunningBackgroundWorkJob({
+  aiDiagnosisStatus,
+  placeRankingKeywords,
+}: {
+  aiDiagnosisStatus: AiDiagnosisDataRefreshStatus | null
+  placeRankingKeywords: PlaceRankingBatchKeyword[]
+}) {
+  return Boolean(aiDiagnosisStatus?.hasUpdatingKeyword)
+    || placeRankingKeywords.some((keyword) => normalizePlaceRankingBatchStatus(keyword.lastRunStatus) === 'UPDATING')
 }
 
 function formatDateTime(value: string) {
