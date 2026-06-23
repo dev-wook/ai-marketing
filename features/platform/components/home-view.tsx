@@ -10,12 +10,14 @@ type HomeFeature = {
 export function HomeView({
   onOpenBlogPosting,
   onOpenKeyword,
+  onOpenPlaceCompetitor,
   onOpenPlaceDiagnosis,
   onOpenPlaceRanking,
   onOpenPlaceTracking,
 }: {
   onOpenBlogPosting: () => void
   onOpenKeyword: () => void
+  onOpenPlaceCompetitor: () => void
   onOpenPlaceDiagnosis: () => void
   onOpenPlaceRanking: () => void
   onOpenPlaceTracking: () => void
@@ -32,6 +34,12 @@ export function HomeView({
       description: '플레이스명을 검색해 선택하고 AI 노출 진단 점수와 개선 피드백을 생성합니다.',
       status: 'open',
       action: onOpenPlaceDiagnosis,
+    },
+    {
+      title: 'AI 플레이스 경쟁사 비교',
+      description: '두 플레이스를 같은 키워드 기준으로 비교해 점수, 리뷰, 콘텐츠, 전환 신호의 우위를 확인합니다.',
+      status: 'open',
+      action: onOpenPlaceCompetitor,
     },
     {
       title: 'AI 키워드 분석',

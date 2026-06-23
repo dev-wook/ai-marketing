@@ -205,6 +205,7 @@ export type AiPlaceBenchmarkProfileSummary = {
     weakSignals: string[]
     newSignals: string[]
     diagnosisHints: string[]
+    calibrationHints?: string[]
   }
   statistics?: unknown
 }

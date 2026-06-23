@@ -37,6 +37,7 @@ type BenchmarkProfileRow = {
     weakSignals?: string[]
     newSignals?: string[]
     diagnosisHints?: string[]
+    calibrationHints?: string[]
   } | null
   llm_summary_json: unknown
   data_confidence: string | number
@@ -46,6 +47,16 @@ type BenchmarkProfileRow = {
 
 type DiagnosisRunRow = {
   diagnosis_result_json: AiPlaceDiagnosisResponse
+}
+
+export type AiPlaceDiagnosisCalibrationSampleRow = {
+  place_id: string
+  rank_at_diagnosis: number
+  absolute_score: string | number
+  category_scores_json: unknown
+  semantic_scores_json: unknown
+  diagnosis_result_json: unknown
+  created_at: string
 }
 
 export type AiPlaceHarnessJobRow = {
@@ -714,6 +725,39 @@ export async function saveAiPlaceDiagnosisRun({
   )
 }
 
+export async function listAiPlaceDiagnosisCalibrationSamples({
+  keywordId,
+  limit = 80,
+}: {
+  keywordId: string
+  limit?: number
+}) {
+  const pool = getPostgresPool()
+  const result = await pool.query<AiPlaceDiagnosisCalibrationSampleRow>(
+    `
+      select
+        place_id,
+        rank_at_diagnosis,
+        absolute_score,
+        category_scores_json,
+        semantic_scores_json,
+        diagnosis_result_json,
+        created_at::text
+      from public.ai_place_diagnosis_runs
+      where keyword_id = $1
+        and status in ('COMPLETED', 'PARTIAL')
+        and rank_at_diagnosis is not null
+        and absolute_score is not null
+        and created_at >= now() - interval '30 days'
+      order by created_at desc
+      limit $2
+    `,
+    [keywordId, limit],
+  )
+
+  return result.rows
+}
+
 export async function createAiPlaceHarnessJob({
   batchSize = 10,
   collectionRunId,
@@ -1215,6 +1259,7 @@ function mapBenchmarkProfile(row: BenchmarkProfileRow): AiPlaceBenchmarkProfileS
       weakSignals: toStringArray(signal.weakSignals),
       newSignals: toStringArray(signal.newSignals),
       diagnosisHints: toStringArray(signal.diagnosisHints),
+      calibrationHints: toStringArray(signal.calibrationHints),
     },
     statistics: row.statistics_json,
   }

@@ -76,9 +76,10 @@ async function runSingleKeyword(
       snapshotDate,
       items: ranking.items,
     })
+    const changeSummary = summarizeRankChanges(snapshot.changesByPlaceId)
     const message = snapshot.snapshotDate
-      ? `${snapshot.snapshotDate} 기준 ${snapshot.totalSaved}개 순위를 기록했습니다.`
-      : `${snapshot.totalSaved}개 순위를 기록했습니다.`
+      ? `${snapshot.snapshotDate} 기준 ${snapshot.totalSaved}개 순위를 기록했습니다.${changeSummary}`
+      : `${snapshot.totalSaved}개 순위를 기록했습니다.${changeSummary}`
 
     await updatePlaceRankingBatchKeywordRunStatus({
       id: item.id,
@@ -112,4 +113,18 @@ async function runSingleKeyword(
 
 function normalizeKeyword(keyword: string) {
   return keyword.trim().replace(/\s+/g, ' ')
+}
+
+function summarizeRankChanges(
+  changesByPlaceId: Awaited<ReturnType<typeof recordPlaceRankingSnapshots>>['changesByPlaceId'],
+) {
+  const changes = Object.values(changesByPlaceId)
+  const upCount = changes.filter((change) => change?.direction === 'up').length
+  const downCount = changes.filter((change) => change?.direction === 'down').length
+
+  if (upCount === 0 && downCount === 0) {
+    return ''
+  }
+
+  return ` 변동: 상승 ${upCount}개, 하락 ${downCount}개.`
 }

@@ -33,6 +33,7 @@ import {
   findActiveAiPlaceHarnessJob,
   getActiveAiPlaceBenchmarkProfile,
   getAiPlaceKeywordById,
+  listAiPlaceDiagnosisCalibrationSamples,
   listAiPlaceHarnessScores,
   listAiPlaceHarnessSnapshotsForBatch,
   saveAiPlaceSnapshot,
@@ -53,7 +54,15 @@ type BenchmarkLlmSummary = {
   weakSignals?: Array<{ feature?: string; reason?: string }>
   newSignals?: Array<{ feature?: string; reason?: string }>
   diagnosisHints?: string[]
+  calibrationHints?: string[]
   confidenceReason?: string
+}
+
+type HarnessScoreSummary = {
+  aiScore: number | null
+  categoryScores: Record<string, number>
+  semanticScores: Record<string, number>
+  evaluationResult: unknown
 }
 
 const benchmarkLimit = 50
@@ -445,21 +454,40 @@ async function finalizeAiPlaceHarnessJobProfile({
     rankEnd: benchmarkLimit,
   })
   const scoreRows = await listAiPlaceHarnessScores(jobId)
+  const diagnosisCalibrationRows = await listAiPlaceDiagnosisCalibrationSamples({ keywordId })
   const keywordRow = await getAiPlaceKeywordById(keywordId)
   const keyword = keywordRow?.keyword ?? 'unknown-keyword'
-  const scoreByRank = new Map(scoreRows.map((row) => [row.rank, Number(row.ai_score) || null]))
+  const scoreByRank = new Map(
+    scoreRows.map((row) => [
+      row.rank,
+      {
+        aiScore: row.ai_score === null ? null : Number(row.ai_score),
+        categoryScores: toNumberRecord(row.category_scores_json),
+        semanticScores: toNumberRecord(row.semantic_scores_json),
+        evaluationResult: row.evaluation_result_json,
+      } satisfies HarnessScoreSummary,
+    ]),
+  )
   const snapshots = snapshotRows.map((row) => ({
     place: {
+      id: row.place_id,
+      name: row.place_name ?? '',
       rank: row.rank,
     } as PlaceRankingItem,
     features: row.normalized_payload_json.features as AiPlaceFeatureSet,
     dataCompleteness: Number(row.data_completeness) || 0,
-    aiScore: scoreByRank.get(row.rank),
+    score: scoreByRank.get(row.rank) ?? {
+      aiScore: null,
+      categoryScores: {},
+      semanticScores: {},
+      evaluationResult: null,
+    },
   }))
   const statistics = {
     ...createBenchmarkStatistics(snapshots),
     aiScoreBands: createAiScoreBandStatistics(snapshots),
     rankingAlignment: createRankingAlignmentStatistics(snapshots),
+    diagnosisCalibration: createDiagnosisCalibrationStatistics(diagnosisCalibrationRows),
   }
   const baseSignals = createSignalSummaryFromStatistics(statistics)
   const llmSummary = await createBenchmarkLlmSummary({
@@ -527,6 +555,10 @@ export function createDefaultBenchmarkProfile(): AiPlaceBenchmarkProfileSummary 
       diagnosisHints: [
         '소개글 첫 문장에서 지역, 업종, 대표 서비스를 확인합니다.',
         '예약상품 설명에 추천 대상, 결과 특징, 소요시간, 주의사항이 있는지 확인합니다.',
+      ],
+      calibrationHints: [
+        '순위는 실시간 점수 입력값이 아니라 기준 보강용 관찰 라벨로만 사용합니다.',
+        '상위 노출 플레이스가 낮게 평가되면 점수를 올리는 것이 아니라 누락된 정보 구조를 찾아 기준 힌트를 보강합니다.',
       ],
     },
   }
@@ -724,6 +756,7 @@ async function createBenchmarkLlmSummary({
       weakSignals: baseSignals.weakSignals.map((signal) => ({ feature: signal, reason: signal })),
       newSignals: [],
       diagnosisHints: baseSignals.diagnosisHints,
+      calibrationHints: baseSignals.calibrationHints,
       confidenceReason: 'Gemini 요약이 실패해 코드 기반 신호 요약을 사용했습니다.',
     }
   }
@@ -758,7 +791,48 @@ function createSignalSummaryFromStatistics(statistics: ReturnType<typeof createB
       '하위권을 감점 정답지로 보지 말고 상위권 신호의 구분력 검증용으로만 사용합니다.',
       '리뷰 스니펫 개수보다 문구의 서비스 적합도와 구체성을 확인합니다.',
     ],
+    calibrationHints: createCalibrationHintsFromStatistics(statistics),
   }
+}
+
+function createCalibrationHintsFromStatistics(statistics: unknown) {
+  const rankingAlignment = getRecord(statistics).rankingAlignment
+  const alignment = getRecord(rankingAlignment)
+  const status = typeof alignment.status === 'string' ? alignment.status : 'UNKNOWN'
+  const exposureAlignmentScore =
+    typeof alignment.exposureAlignmentScore === 'number' ? alignment.exposureAlignmentScore : null
+  const topLowerGap = typeof alignment.topLowerGap === 'number' ? alignment.topLowerGap : null
+  const categoryAlignment = Array.isArray(alignment.categoryAlignment) ? alignment.categoryAlignment : []
+  const diagnosisCalibration = getRecord(getRecord(statistics).diagnosisCalibration)
+  const highRankLowScore = Array.isArray(diagnosisCalibration.highRankLowScore)
+    ? diagnosisCalibration.highRankLowScore.length
+    : 0
+  const lowRankHighScore = Array.isArray(diagnosisCalibration.lowRankHighScore)
+    ? diagnosisCalibration.lowRankHighScore.length
+    : 0
+  const weakCategories = categoryAlignment
+    .map((item) => getRecord(item))
+    .filter((item) => typeof item.category === 'string' && typeof item.topLowerGap === 'number')
+    .filter((item) => Number(item.topLowerGap) <= 0)
+    .slice(0, 3)
+    .map((item) => `${item.category} 항목은 상위권과 하위권을 충분히 구분하지 못해 해석 기준 보강이 필요합니다.`)
+
+  return [
+    `현재 점수-노출 정렬 상태는 ${status}입니다.`,
+    exposureAlignmentScore === null
+      ? '점수-노출 정렬도를 계산할 표본이 부족합니다.'
+      : `점수-노출 정렬도는 ${exposureAlignmentScore}입니다. 낮을수록 상위권 공통 정보 구조를 더 보강해야 합니다.`,
+    topLowerGap === null
+      ? ''
+      : `상위권 평균 점수와 하위권 평균 점수 차이는 ${topLowerGap}점입니다. 차이가 작거나 음수면 기준 보강이 필요합니다.`,
+    highRankLowScore > 0
+      ? `최근 단건 진단에서 상위권인데 낮게 평가된 케이스가 ${highRankLowScore}개 있습니다. 해당 케이스의 낮은 항목이 실제로 누락 신호인지 Gemini가 재해석해야 합니다.`
+      : '',
+    lowRankHighScore > 0
+      ? `최근 단건 진단에서 낮은 노출 순위인데 높게 평가된 케이스가 ${lowRankHighScore}개 있습니다. 과대평가된 항목이나 보조 신호의 비중을 점검해야 합니다.`
+      : '',
+    ...weakCategories,
+  ].filter(Boolean)
 }
 
 function mergeSignalSummary(
@@ -778,6 +852,10 @@ function mergeSignalSummary(
     diagnosisHints: [
       ...toStringArray(llmSummary.diagnosisHints),
       ...baseSignals.diagnosisHints,
+    ].slice(0, 8),
+    calibrationHints: [
+      ...toStringArray(llmSummary.calibrationHints),
+      ...baseSignals.calibrationHints,
     ].slice(0, 8),
   }
 }
@@ -799,6 +877,9 @@ function createBenchmarkPrompt({
 하위권은 나쁜 예시나 감점 기준이 아니라, 상위권 신호의 구분력을 확인하는 대조군이다.
 리뷰 스니펫 개수는 강한 지표가 아니다. 스니펫 문구의 구체성, 서비스 장점, 지역/접근성 표현을 중요하게 해석한다.
 rankingAlignment는 현재 AIVA 점수와 실제 노출 순서의 정렬도다. WEAK_ALIGNMENT 또는 NEEDS_CALIBRATION이면 상위권이 높은 점수를 받도록 어떤 정보 신호를 더 봐야 하는지 제안한다.
+misalignmentCases는 상위권인데 AIVA 점수가 낮게 나온 케이스와 하위권인데 점수가 높게 나온 케이스다. 이 정보는 점수 조작용이 아니라 누락/과대평가 기준을 찾는 용도로만 사용한다.
+categoryAlignment는 항목별 점수가 상위권과 하위권을 얼마나 구분하는지 보여준다. topLowerGap이 낮거나 음수인 항목은 해석 기준 보강 후보로 본다.
+diagnosisCalibration은 사용자가 직접 실행한 단건 AI 진단에서 누적된 정렬 오차 후보다. 상위권 저평가와 낮은 순위 과대평가 케이스를 기준 보강 힌트로만 사용하고, 특정 플레이스의 점수를 직접 맞추지 않는다.
 
 키워드: ${keyword}
 코드 기반 통계:
@@ -814,6 +895,7 @@ ${JSON.stringify(baseSignals)}
   "weakSignals": [{"feature":"", "reason":""}],
   "newSignals": [{"feature":"", "reason":""}],
   "diagnosisHints": [""],
+  "calibrationHints": [""],
   "confidenceReason": ""
 }
 `.trim()
@@ -868,7 +950,7 @@ ${JSON.stringify(profile)}
 function createAiScoreBandStatistics(
   snapshots: Array<{
     place: PlaceRankingItem
-    aiScore?: number | null
+    score?: HarnessScoreSummary
   }>,
 ) {
   const top = snapshots.filter((snapshot) => snapshot.place.rank >= 1 && snapshot.place.rank <= 10)
@@ -876,24 +958,27 @@ function createAiScoreBandStatistics(
   const lower = snapshots.filter((snapshot) => snapshot.place.rank >= 31 && snapshot.place.rank <= 50)
 
   return {
-    topAverageAiScore: average(top.map((snapshot) => snapshot.aiScore ?? 0).filter(Boolean)),
-    middleAverageAiScore: average(middle.map((snapshot) => snapshot.aiScore ?? 0).filter(Boolean)),
-    lowerAverageAiScore: average(lower.map((snapshot) => snapshot.aiScore ?? 0).filter(Boolean)),
-    scoredCount: snapshots.filter((snapshot) => typeof snapshot.aiScore === 'number').length,
+    topAverageAiScore: average(top.map((snapshot) => snapshot.score?.aiScore ?? 0).filter(Boolean)),
+    middleAverageAiScore: average(middle.map((snapshot) => snapshot.score?.aiScore ?? 0).filter(Boolean)),
+    lowerAverageAiScore: average(lower.map((snapshot) => snapshot.score?.aiScore ?? 0).filter(Boolean)),
+    scoredCount: snapshots.filter((snapshot) => typeof snapshot.score?.aiScore === 'number').length,
   }
 }
 
 function createRankingAlignmentStatistics(
   snapshots: Array<{
     place: PlaceRankingItem
-    aiScore?: number | null
+    score?: HarnessScoreSummary
   }>,
 ) {
   const scoredSnapshots = snapshots
-    .filter((snapshot) => typeof snapshot.aiScore === 'number')
+    .filter((snapshot) => typeof snapshot.score?.aiScore === 'number')
     .map((snapshot) => ({
       rank: snapshot.place.rank,
-      aiScore: Number(snapshot.aiScore),
+      placeId: snapshot.place.id,
+      placeName: snapshot.place.name,
+      aiScore: Number(snapshot.score?.aiScore),
+      categoryScores: snapshot.score?.categoryScores ?? {},
     }))
   const top = scoredSnapshots.filter((snapshot) => snapshot.rank >= 1 && snapshot.rank <= 10)
   const middle = scoredSnapshots.filter((snapshot) => snapshot.rank >= 11 && snapshot.rank <= 30)
@@ -909,6 +994,8 @@ function createRankingAlignmentStatistics(
   const lowerAverageAiScore = average(lower.map((snapshot) => snapshot.aiScore))
   const topLowerGap = round(topAverageAiScore - lowerAverageAiScore)
   const topMiddleGap = round(topAverageAiScore - middleAverageAiScore)
+  const misalignmentCases = createMisalignmentCases(scoredSnapshots)
+  const categoryAlignment = createCategoryAlignmentSignals(scoredSnapshots)
 
   return {
     goal:
@@ -921,11 +1008,155 @@ function createRankingAlignmentStatistics(
     lowerAverageAiScore,
     topMiddleGap,
     topLowerGap,
+    misalignmentCases,
+    categoryAlignment,
     status: classifyRankingAlignment({
       exposureAlignmentScore,
       scoredCount: scoredSnapshots.length,
       topLowerGap,
     }),
+  }
+}
+
+function createMisalignmentCases(
+  scoredSnapshots: Array<{
+    rank: number
+    placeId?: string
+    placeName?: string
+    aiScore: number
+    categoryScores: Record<string, number>
+  }>,
+) {
+  const topUnderScored = scoredSnapshots
+    .filter((snapshot) => snapshot.rank >= 1 && snapshot.rank <= 10)
+    .sort((left, right) => left.aiScore - right.aiScore)
+    .slice(0, 3)
+    .map(createMisalignmentCase)
+  const lowerOverScored = scoredSnapshots
+    .filter((snapshot) => snapshot.rank >= 31 && snapshot.rank <= 50)
+    .sort((left, right) => right.aiScore - left.aiScore)
+    .slice(0, 3)
+    .map(createMisalignmentCase)
+
+  return {
+    topUnderScored,
+    lowerOverScored,
+    note:
+      '이 케이스는 점수 조작용이 아니라 기준 보강용이다. 상위권 저평가는 빠진 신호를 찾고, 하위권 고평가는 과대평가 신호를 찾는 데만 사용한다.',
+  }
+}
+
+function createMisalignmentCase(snapshot: {
+  rank: number
+  placeId?: string
+  placeName?: string
+  aiScore: number
+  categoryScores: Record<string, number>
+}) {
+  return {
+    rank: snapshot.rank,
+    placeId: snapshot.placeId,
+    placeName: snapshot.placeName,
+    aiScore: snapshot.aiScore,
+    lowCategories: Object.entries(snapshot.categoryScores)
+      .sort((left, right) => left[1] - right[1])
+      .slice(0, 3)
+      .map(([category, score]) => ({ category, score })),
+  }
+}
+
+function createCategoryAlignmentSignals(
+  scoredSnapshots: Array<{
+    rank: number
+    categoryScores: Record<string, number>
+  }>,
+) {
+  const top = scoredSnapshots.filter((snapshot) => snapshot.rank >= 1 && snapshot.rank <= 10)
+  const lower = scoredSnapshots.filter((snapshot) => snapshot.rank >= 31 && snapshot.rank <= 50)
+  const categories = Array.from(
+    new Set(scoredSnapshots.flatMap((snapshot) => Object.keys(snapshot.categoryScores))),
+  )
+
+  return categories
+    .map((category) => {
+      const topAverage = average(top.map((snapshot) => snapshot.categoryScores[category] ?? 0))
+      const lowerAverage = average(lower.map((snapshot) => snapshot.categoryScores[category] ?? 0))
+
+      return {
+        category,
+        topAverage,
+        lowerAverage,
+        topLowerGap: round(topAverage - lowerAverage),
+        interpretation:
+          topAverage > lowerAverage
+            ? '상위권에서 더 강하게 나타나는 점수 항목입니다.'
+            : '상위권과 하위권을 잘 구분하지 못하므로 가중 또는 해석 기준 검토가 필요합니다.',
+      }
+    })
+    .sort((left, right) => left.topLowerGap - right.topLowerGap)
+}
+
+function createDiagnosisCalibrationStatistics(
+  rows: Array<{
+    place_id: string
+    rank_at_diagnosis: number
+    absolute_score: string | number
+    category_scores_json: unknown
+    semantic_scores_json: unknown
+    diagnosis_result_json: unknown
+    created_at: string
+  }>,
+) {
+  const samples = rows
+    .map((row) => ({
+      placeId: row.place_id,
+      rank: Number(row.rank_at_diagnosis),
+      aiScore: Number(row.absolute_score),
+      categoryScores: toNumberRecord(row.category_scores_json),
+      semanticScores: toNumberRecord(row.semantic_scores_json),
+      createdAt: row.created_at,
+    }))
+    .filter((sample) => Number.isFinite(sample.rank) && Number.isFinite(sample.aiScore))
+  const highRankLowScore = samples
+    .filter((sample) => sample.rank >= 1 && sample.rank <= 10 && sample.aiScore < 70)
+    .sort((left, right) => left.aiScore - right.aiScore)
+    .slice(0, 5)
+    .map(createDiagnosisCalibrationCase)
+  const lowRankHighScore = samples
+    .filter((sample) => sample.rank >= 31 && sample.aiScore >= 80)
+    .sort((left, right) => right.aiScore - left.aiScore)
+    .slice(0, 5)
+    .map(createDiagnosisCalibrationCase)
+
+  return {
+    source: 'realtime-diagnosis-runs',
+    window: 'last-30-days',
+    sampleCount: samples.length,
+    highRankLowScore,
+    lowRankHighScore,
+    note:
+      '사용자 단건 진단 결과에서 발견된 정렬 오차 후보입니다. 단건 결과 하나로 점수를 보정하지 않고, 다음 기준 프로필 생성 시 누락/과대평가 신호를 찾는 보조 근거로만 사용합니다.',
+  }
+}
+
+function createDiagnosisCalibrationCase(sample: {
+  placeId: string
+  rank: number
+  aiScore: number
+  categoryScores: Record<string, number>
+  semanticScores: Record<string, number>
+  createdAt: string
+}) {
+  return {
+    placeId: sample.placeId,
+    rank: sample.rank,
+    aiScore: sample.aiScore,
+    createdAt: sample.createdAt,
+    lowCategories: Object.entries(sample.categoryScores)
+      .sort((left, right) => left[1] - right[1])
+      .slice(0, 3)
+      .map(([category, score]) => ({ category, score })),
+    semanticScores: sample.semanticScores,
   }
 }
 
@@ -1040,4 +1271,18 @@ function pearsonCorrelation(leftValues: number[], rightValues: number[]) {
 
 function round(value: number) {
   return Math.round(value * 100) / 100
+}
+
+function toNumberRecord(value: unknown): Record<string, number> {
+  const record = getRecord(value)
+
+  return Object.fromEntries(
+    Object.entries(record)
+      .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]))
+      .map(([key, numberValue]) => [key, numberValue]),
+  )
+}
+
+function getRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }

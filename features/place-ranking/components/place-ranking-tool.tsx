@@ -1648,7 +1648,7 @@ function BatchKeywordModal({
             </p>
             <h3 className="mt-1 text-2xl font-black text-white">자동 기록 키워드 관리</h3>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
-              등록된 키워드는 매일 23:30에 플레이스 순위 기록에 사용됩니다.
+              등록된 키워드는 매일 22:00 이후 플레이스 순위 기록에 사용됩니다.
             </p>
           </div>
           <button

@@ -440,7 +440,10 @@ export function AiDiagnosisDataManager({
                   </span>
                 </span>
                 <span className="mt-1 block break-keep text-xs font-bold leading-5 text-slate-400">
-                  매일 23:30 순위 기록 배치에 사용됩니다.
+                  등록 키워드의 플레이스 순위를 자동으로 기록합니다.
+                </span>
+                <span className="mt-2 inline-flex rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-2.5 py-1 text-[11px] font-black text-cyan-100">
+                  매일 22:00 이후 실행
                 </span>
               </button>
 
@@ -464,7 +467,10 @@ export function AiDiagnosisDataManager({
                   </span>
                 </span>
                 <span className="mt-1 block break-keep text-xs font-bold leading-5 text-slate-400">
-                  진단 기준 데이터 수집과 상태를 관리합니다.
+                  등록 키워드의 AI 진단 기준 데이터를 자동으로 수집합니다.
+                </span>
+                <span className="mt-2 inline-flex rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-2.5 py-1 text-[11px] font-black text-cyan-100">
+                  매일 23:00 이후 실행
                 </span>
               </button>
             </div>
@@ -475,7 +481,7 @@ export function AiDiagnosisDataManager({
                   <div className="min-w-0">
                     <h3 className="text-base font-black text-white">플레이스 순위 자동 기록</h3>
                     <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-400">
-                      키워드를 등록하면 크론 배치가 매일 순위 이력을 저장합니다.
+                      등록 키워드의 플레이스 순위를 매일 기록합니다.
                     </p>
                   </div>
                 </div>
@@ -535,7 +541,7 @@ export function AiDiagnosisDataManager({
                   <div className="min-w-0">
                     <h3 className="text-base font-black text-white">AI 진단 데이터 수집</h3>
                     <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-400">
-                      키워드별 플레이스 데이터를 수집해 AI 진단 기준에 반영합니다.
+                      등록 키워드의 플레이스 데이터를 매일 수집해 AI 진단 기준에 반영합니다.
                     </p>
                   </div>
                   <button
@@ -663,11 +669,10 @@ function KeywordRow({
             <p className="min-w-0 flex-1 truncate text-sm font-black text-cyan-50">
               {keyword.keyword}
             </p>
-            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-black ${getStatusBadgeClassName(displayStatus)}`}>
-              {formatAiDiagnosisDataStatusLabel(displayStatus)}
-            </span>
           </div>
           <p className="mt-1 truncate text-[11px] font-bold text-slate-500">
+            상태: <span className={getStatusTextClassName(displayStatus)}>{formatAiDiagnosisDataStatusLabel(displayStatus)}</span>
+            <span className="mx-1 text-slate-700">·</span>
             최근 수집: <span className="text-slate-300">{lastCollectedAt ? formatDateTime(lastCollectedAt) : '아직 없음'}</span>
             {status?.latestRun && isUpdating ? (
               <span className="text-slate-400"> · {Math.min(status.latestRun.evaluatedCount, status.latestRun.totalCount)}/{status.latestRun.totalCount}개</span>
@@ -801,18 +806,18 @@ function StatusDot({
   return <span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${className}`} />
 }
 
-function getStatusBadgeClassName(status: AiDiagnosisDataRefreshStatus['keywords'][number]['status']) {
+function getStatusTextClassName(status: AiDiagnosisDataRefreshStatus['keywords'][number]['status']) {
   const displayStatus = getDisplaySchedulingStatus(status)
 
   if (displayStatus === 'UPDATING') {
-    return 'border-orange-300/25 bg-orange-400/12 text-orange-100'
+    return 'text-orange-100'
   }
 
   if (displayStatus === 'QUEUED') {
-    return 'border-amber-300/25 bg-amber-300/12 text-amber-100'
+    return 'text-amber-100'
   }
 
-  return 'border-slate-300/20 bg-slate-300/8 text-slate-200'
+  return 'text-slate-300'
 }
 
 async function requestAiDiagnosisBenchmarkKeywords() {
@@ -1012,10 +1017,14 @@ function formatDateTime(value: string) {
     return value
   }
 
-  return new Intl.DateTimeFormat('ko-KR', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
+  try {
+    return new Intl.DateTimeFormat('ko-KR', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)
+  } catch {
+    return date.toLocaleString('ko-KR')
+  }
 }

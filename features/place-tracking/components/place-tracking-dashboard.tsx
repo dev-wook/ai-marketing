@@ -350,14 +350,14 @@ function TrackedPlaceCard({
         {place.keywords.map((keyword) => (
           <div
             key={keyword.keywordId}
-            className="grid min-w-0 gap-3 rounded-md border border-cyan-300/12 bg-[#0d1828]/82 px-3 py-3 md:min-h-28 md:content-between"
+            className="grid min-w-0 gap-3 rounded-md border border-cyan-300/12 bg-[#0d1828]/82 px-3.5 py-3.5 md:min-h-28 md:content-between"
           >
             <div className="flex min-w-0 items-start justify-between gap-3">
               <RankBadge rank={keyword.rank} status={keyword.status} />
               <RankChange change={keyword.rankChange} />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-black text-slate-100 md:text-[15px]">
+              <p className="truncate text-base font-black leading-tight text-slate-50 md:text-lg">
                 {keyword.keyword}
               </p>
             </div>
@@ -406,8 +406,8 @@ function RankChange({
 }) {
   if (!change || change.direction === 'same') {
     return (
-      <p className="shrink-0 whitespace-nowrap pt-1 text-xs font-bold text-slate-500">
-        전일 대비 -
+      <p className="shrink-0 whitespace-nowrap pt-1 text-sm font-black text-slate-500 md:text-base">
+        변동 없음
       </p>
     )
   }
@@ -415,8 +415,8 @@ function RankChange({
   const isUp = change.direction === 'up'
 
   return (
-    <p className={`shrink-0 whitespace-nowrap pt-1 text-xs font-black ${isUp ? 'text-rose-300' : 'text-blue-300'}`}>
-      전일 대비 {isUp ? '▲' : '▼'} {change.delta}
+    <p className={`shrink-0 whitespace-nowrap pt-1 text-sm font-black md:text-base ${isUp ? 'text-rose-300' : 'text-blue-300'}`}>
+      {isUp ? '▲' : '▼'} {change.delta}
     </p>
   )
 }

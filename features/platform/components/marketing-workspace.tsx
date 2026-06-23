@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { AiPlaceCompetitorComparisonTool } from '@/features/ai-place-diagnosis/components/ai-place-competitor-comparison-tool'
 import { AiDiagnosisDataManager } from '@/features/ai-place-diagnosis/components/ai-diagnosis-data-manager'
 import { AiPlaceDiagnosisTool } from '@/features/ai-place-diagnosis/components/ai-place-diagnosis-tool'
 import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
@@ -14,7 +15,7 @@ import { HomeView } from './home-view'
 import { MenuButton } from './menu-button'
 import { useBodyScrollLock } from './use-body-scroll-lock'
 
-type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'diagnosis' | 'tracking'
+type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'diagnosis' | 'competitor' | 'tracking'
 type AiDiagnosisDataRefreshStatus = {
   checkedAt: string
   hasUpdatingKeyword: boolean
@@ -45,8 +46,7 @@ type AiDiagnosisDataRefreshStatus = {
 }
 
 const refreshViewStorageKey = 'aiva-refresh-view'
-const seenAiDiagnosisRefreshJobsStorageKey = 'aiva:seen-ai-diagnosis-refresh-job-ids'
-const seenBackgroundWorkJobsStorageKey = 'aiva:seen-background-work-job-ids'
+const backgroundWorkNotificationReadStorageKey = 'aiva-background-work-notification-read-ids'
 const terminalWorkNotificationRetentionMs = 24 * 60 * 60 * 1000
 const pullRefreshThreshold = 84
 const pullRefreshMaxDistance = 118
@@ -56,6 +56,7 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   blog: '블로그 원고 작성',
   place: '플레이스 순위 조회',
   diagnosis: 'AI 플레이스 진단',
+  competitor: 'AI 플레이스 경쟁사 비교',
   tracking: '플레이스 관리',
 }
 
@@ -73,8 +74,8 @@ export function MarketingWorkspace() {
   const [aiDiagnosisDataStatus, setAiDiagnosisDataStatus] =
     useState<AiDiagnosisDataRefreshStatus | null>(null)
   const [placeRankingBatchKeywords, setPlaceRankingBatchKeywords] = useState<PlaceRankingBatchKeyword[]>([])
+  const [readBackgroundWorkNotificationIds, setReadBackgroundWorkNotificationIds] = useState<string[]>([])
   const [isAiDiagnosisDataStatusLoading, setIsAiDiagnosisDataStatusLoading] = useState(false)
-  const [seenBackgroundWorkJobIds, setSeenBackgroundWorkJobIds] = useState<string[]>([])
   const [pullDistance, setPullDistance] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const hasLoadedWorkStatusRef = useRef(false)
@@ -83,6 +84,19 @@ export function MarketingWorkspace() {
   const placeRankingBatchSnapshotRef = useRef('')
   const touchStartYRef = useRef(0)
   const isPullingRef = useRef(false)
+
+  useEffect(() => {
+    try {
+      const rawValue = window.localStorage.getItem(backgroundWorkNotificationReadStorageKey)
+      const parsedValue = rawValue ? JSON.parse(rawValue) : []
+
+      if (Array.isArray(parsedValue)) {
+        setReadBackgroundWorkNotificationIds(parsedValue.filter((item): item is string => typeof item === 'string'))
+      }
+    } catch {
+      setReadBackgroundWorkNotificationIds([])
+    }
+  }, [])
 
   const openView = (nextView: ViewKey) => {
     setView(nextView)
@@ -140,23 +154,6 @@ export function MarketingWorkspace() {
 
     return () => {
       isMounted = false
-    }
-  }, [])
-
-  useEffect(() => {
-    try {
-      const saved =
-        window.localStorage.getItem(seenBackgroundWorkJobsStorageKey)
-        ?? window.localStorage.getItem(seenAiDiagnosisRefreshJobsStorageKey)
-      const parsed = saved ? JSON.parse(saved) : []
-
-      if (Array.isArray(parsed)) {
-        setSeenBackgroundWorkJobIds(
-          parsed.filter((item): item is string => typeof item === 'string'),
-        )
-      }
-    } catch {
-      setSeenBackgroundWorkJobIds([])
     }
   }, [])
 
@@ -233,26 +230,6 @@ export function MarketingWorkspace() {
     }
   }, [authUser, isWorkStatusOpen])
 
-  const markBackgroundWorkJobsSeen = () => {
-    const terminalIds = getTerminalBackgroundWorkJobIds({
-      aiDiagnosisStatus: aiDiagnosisDataStatus,
-      placeRankingKeywords: placeRankingBatchKeywords,
-    })
-
-    if (terminalIds.length === 0) {
-      return
-    }
-
-    setSeenBackgroundWorkJobIds((current) => {
-      const next = Array.from(new Set([...current, ...terminalIds])).slice(-80)
-
-      window.localStorage.setItem(seenBackgroundWorkJobsStorageKey, JSON.stringify(next))
-      window.localStorage.setItem(seenAiDiagnosisRefreshJobsStorageKey, JSON.stringify(next))
-
-      return next
-    })
-  }
-
   const handleLogout = async () => {
     setIsLoggingOut(true)
 
@@ -273,6 +250,7 @@ export function MarketingWorkspace() {
       || savedView === 'blog'
       || savedView === 'place'
       || savedView === 'diagnosis'
+      || savedView === 'competitor'
       || savedView === 'tracking'
     ) {
       setView(savedView)
@@ -369,15 +347,43 @@ export function MarketingWorkspace() {
   const pullIndicatorHeight = Math.min(pullDistance, pullRefreshMaxDistance)
   const activePullDistance = isRefreshing ? pullRefreshThreshold : pullIndicatorHeight
   const isHomeView = view === 'home'
+  const backgroundWorkJobs = createBackgroundWorkJobCards({
+    aiDiagnosisStatus: aiDiagnosisDataStatus,
+    placeRankingKeywords: placeRankingBatchKeywords,
+  })
   const hasRunningBackgroundWork = hasRunningBackgroundWorkJob({
     aiDiagnosisStatus: aiDiagnosisDataStatus,
     placeRankingKeywords: placeRankingBatchKeywords,
   })
-  const hasUnreadBackgroundWorkResult = hasUnreadTerminalBackgroundWorkJob({
-    aiDiagnosisStatus: aiDiagnosisDataStatus,
-    placeRankingKeywords: placeRankingBatchKeywords,
-    seenIds: seenBackgroundWorkJobIds,
+  const unreadBackgroundWorkCount = countUnreadBackgroundWorkJobs({
+    jobs: backgroundWorkJobs,
+    readIds: readBackgroundWorkNotificationIds,
   })
+  const markBackgroundWorkNotificationsAsRead = () => {
+    const nextReadIds = mergeReadBackgroundWorkNotificationIds({
+      jobs: backgroundWorkJobs,
+      readIds: readBackgroundWorkNotificationIds,
+    })
+
+    setReadBackgroundWorkNotificationIds(nextReadIds)
+
+    try {
+      window.localStorage.setItem(backgroundWorkNotificationReadStorageKey, JSON.stringify(nextReadIds))
+    } catch {
+      // Ignore storage failures. The next poll will still show the current state.
+    }
+  }
+  const backgroundWorkNotificationSignature = backgroundWorkJobs
+    .map((job) => job.notificationId)
+    .join('|')
+
+  useEffect(() => {
+    if (!isWorkStatusOpen || unreadBackgroundWorkCount === 0) {
+      return
+    }
+
+    markBackgroundWorkNotificationsAsRead()
+  }, [backgroundWorkNotificationSignature, isWorkStatusOpen, unreadBackgroundWorkCount])
 
   if (isSessionChecking) {
     return (
@@ -484,26 +490,32 @@ export function MarketingWorkspace() {
               <button
                 type="button"
                 onClick={() => {
-                  setIsWorkStatusOpen((current) => !current)
+                  setIsWorkStatusOpen((current) => {
+                    const nextOpen = !current
+
+                    if (nextOpen) {
+                      markBackgroundWorkNotificationsAsRead()
+                    }
+
+                    return nextOpen
+                  })
                 }}
                 aria-label="작업 알림 열기"
                 aria-expanded={isWorkStatusOpen}
                 className={`relative grid h-11 w-11 place-items-center rounded-md border transition focus:outline-none focus:ring-4 focus:ring-cyan-300/15 ${
-                  hasUnreadBackgroundWorkResult
-                    ? 'border-rose-300/45 bg-rose-400/14 text-rose-50 hover:bg-rose-400/22'
-                    : hasRunningBackgroundWork
+                  hasRunningBackgroundWork
                       ? 'border-cyan-300/45 bg-cyan-300/12 text-cyan-50 hover:bg-cyan-300/18'
                       : 'border-white/10 bg-white/[0.05] text-slate-100 hover:border-cyan-300/50 hover:bg-white/[0.08]'
                 }`}
               >
-                <span className="relative block h-5 w-5" aria-hidden="true">
-                  <span className="absolute left-1/2 top-1 h-3.5 w-3 -translate-x-1/2 rounded-t-full border-2 border-current" />
-                  <span className="absolute bottom-0 left-1/2 h-1.5 w-3.5 -translate-x-1/2 rounded-b-full border-b-2 border-l-2 border-r-2 border-current" />
-                  <span className="absolute bottom-[-2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-current" />
+                <span className="relative block h-6 w-6" aria-hidden="true">
+                  <span className="absolute left-1/2 top-1 h-4 w-3.5 -translate-x-1/2 rounded-t-full border-2 border-current" />
+                  <span className="absolute bottom-1 left-1/2 h-1.5 w-4.5 -translate-x-1/2 rounded-b-full border-b-2 border-l-2 border-r-2 border-current" />
+                  <span className="absolute bottom-[-1px] left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-current" />
                 </span>
-                {hasUnreadBackgroundWorkResult ? (
-                  <span className="absolute -right-1 -top-1 rounded-full border border-[#070a12] bg-rose-400 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
-                    완료
+                {unreadBackgroundWorkCount > 0 ? (
+                  <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full border border-[#070a12] bg-red-500 px-1.5 text-[10px] font-black leading-none text-white shadow-[0_1px_5px_rgba(239,68,68,0.36)]">
+                    {formatNotificationBadgeCount(unreadBackgroundWorkCount)}
                   </span>
                 ) : hasRunningBackgroundWork ? (
                   <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5">
@@ -529,9 +541,9 @@ export function MarketingWorkspace() {
           </header>
 
           <WorkStatusPanel
+            jobs={backgroundWorkJobs}
             isLoading={isAiDiagnosisDataStatusLoading}
             isOpen={isWorkStatusOpen}
-            onDismissCompleted={markBackgroundWorkJobsSeen}
             onCancelJob={async (jobId) => {
               await fetch('/api/ai-place-diagnosis/harness/cancel', {
                 method: 'POST',
@@ -549,12 +561,9 @@ export function MarketingWorkspace() {
                 setAiDiagnosisDataStatus(data)
               }
             }}
-            placeRankingKeywords={placeRankingBatchKeywords}
-            seenIds={seenBackgroundWorkJobIds}
-            status={aiDiagnosisDataStatus}
+            readNotificationIds={readBackgroundWorkNotificationIds}
             onClose={() => {
               setIsWorkStatusOpen(false)
-              markBackgroundWorkJobsSeen()
             }}
           />
 
@@ -570,8 +579,9 @@ export function MarketingWorkspace() {
             onClose={() => setIsMenuOpen(false)}
             onLogout={handleLogout}
             onOpenBlogPosting={() => openView('blog')}
-            onOpenPlaceDiagnosis={() => openView('diagnosis')}
             onOpenKeyword={() => openView('keyword')}
+            onOpenPlaceCompetitor={() => openView('competitor')}
+            onOpenPlaceDiagnosis={() => openView('diagnosis')}
             onOpenPlaceRanking={() => openView('place')}
             onOpenPlaceTracking={openPlaceTrackingManager}
             user={authUser}
@@ -586,6 +596,7 @@ export function MarketingWorkspace() {
             {view === 'home' ? (
               <HomeView
                 onOpenBlogPosting={() => openView('blog')}
+                onOpenPlaceCompetitor={() => openView('competitor')}
                 onOpenPlaceDiagnosis={() => openView('diagnosis')}
                 onOpenKeyword={() => openView('keyword')}
                 onOpenPlaceRanking={() => openView('place')}
@@ -605,6 +616,7 @@ export function MarketingWorkspace() {
             ) : null}
             {view === 'place' ? <PlaceRankingTool /> : null}
             {view === 'diagnosis' ? <AiPlaceDiagnosisTool /> : null}
+            {view === 'competitor' ? <AiPlaceCompetitorComparisonTool /> : null}
             {view === 'tracking' ? <PlaceTrackingDashboard mode="manager" /> : null}
           </section>
         </div>
@@ -614,31 +626,22 @@ export function MarketingWorkspace() {
 }
 
 function WorkStatusPanel({
+  jobs,
   isLoading,
   isOpen,
   onCancelJob,
   onClose,
-  onDismissCompleted,
-  placeRankingKeywords,
-  seenIds,
-  status,
+  readNotificationIds,
 }: {
+  jobs: BackgroundWorkJobCardModel[]
   isLoading: boolean
   isOpen: boolean
   onCancelJob: (jobId: string) => Promise<void>
   onClose: () => void
-  onDismissCompleted: () => void
-  placeRankingKeywords: PlaceRankingBatchKeyword[]
-  seenIds: string[]
-  status: AiDiagnosisDataRefreshStatus | null
+  readNotificationIds: string[]
 }) {
-  const jobs = createBackgroundWorkJobCards({
-    aiDiagnosisStatus: status,
-    placeRankingKeywords,
-    seenIds,
-  })
   const hasJobs = jobs.length > 0
-  const hasTerminalJobs = jobs.some((job) => job.isTerminal)
+  const readNotificationIdSet = new Set(readNotificationIds)
 
   return (
     <div
@@ -679,16 +682,6 @@ function WorkStatusPanel({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]">
-          {hasTerminalJobs ? (
-            <button
-              type="button"
-              onClick={onDismissCompleted}
-              className="mb-3 min-h-10 w-full rounded-md border border-white/10 bg-white/[0.045] px-3 text-xs font-black text-slate-200 transition hover:border-cyan-300/35 hover:bg-cyan-300/10 hover:text-cyan-50"
-            >
-              완료 알림 지우기
-            </button>
-          ) : null}
-
           {isLoading && !hasJobs ? (
             <div className="rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] p-4">
               <span className="block h-2 overflow-hidden rounded-full bg-white/10">
@@ -702,7 +695,8 @@ function WorkStatusPanel({
             <div className="grid gap-3">
               {jobs.map((job) => (
                 <BackgroundWorkJobCard
-                  key={job.id}
+                  key={job.notificationId}
+                  isUnread={!readNotificationIdSet.has(job.notificationId)}
                   job={job}
                   onCancelJob={onCancelJob}
                 />
@@ -729,8 +723,10 @@ type BackgroundWorkStep = {
 
 type BackgroundWorkJobCardModel = {
   id: string
+  notificationId: string
   title: string
   subtitle: string
+  message: string
   keyword: string
   status: 'FRESH' | 'NEEDS_REFRESH' | 'QUEUED' | 'UPDATING' | 'PARTIAL' | 'FAILED'
   label: string
@@ -747,125 +743,169 @@ type BackgroundWorkJobCardModel = {
 }
 
 function BackgroundWorkJobCard({
+  isUnread,
   job,
   onCancelJob,
 }: {
+  isUnread: boolean
   job: BackgroundWorkJobCardModel
   onCancelJob: (jobId: string) => Promise<void>
 }) {
   const [isCancelling, setIsCancelling] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const eventTime = job.updatedAt ?? job.startedAt
+  const iconText = job.status === 'FAILED' ? '!' : job.status === 'UPDATING' ? '●' : job.status === 'QUEUED' ? '…' : '✓'
 
   return (
-    <article className="rounded-md border border-white/10 bg-white/[0.045] p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-black text-white">{job.title}</h3>
-          <p className="mt-1 truncate text-xs font-bold text-cyan-100/80">{job.subtitle}</p>
-        </div>
+    <article className={`border-b border-white/10 px-1 py-4 last:border-b-0 ${isUnread ? 'bg-cyan-300/[0.025]' : ''}`}>
+      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-3">
         <span
           className={[
-            'shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black',
+            'grid h-11 w-11 shrink-0 place-items-center rounded-md border text-sm font-black',
             job.tone === 'rose'
-              ? 'border-rose-300/25 bg-rose-400/12 text-rose-100'
+              ? 'border-rose-300/25 bg-rose-400/14 text-rose-100'
               : job.tone === 'amber'
-                ? 'border-amber-300/25 bg-amber-300/12 text-amber-100'
+                ? 'border-amber-300/25 bg-amber-300/14 text-amber-100'
                 : job.tone === 'emerald'
-                  ? 'border-emerald-300/25 bg-emerald-300/12 text-emerald-100'
+                  ? 'border-emerald-300/25 bg-emerald-300/14 text-emerald-100'
                   : job.tone === 'cyan'
-                    ? 'border-cyan-300/25 bg-cyan-300/12 text-cyan-100'
+                    ? 'border-cyan-300/25 bg-cyan-300/14 text-cyan-100'
                     : 'border-white/10 bg-white/[0.06] text-slate-200',
           ].join(' ')}
+          aria-hidden="true"
         >
-          {job.label}
+          {iconText}
         </span>
-      </div>
-
-      <div className="mt-4">
-        <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
-          <span>{job.progressText}</span>
-          <span className="text-slate-200">{Math.round(job.progress)}%</span>
-        </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-          <div
-            className={`h-full rounded-full ${
-              job.tone === 'rose'
-                ? 'bg-rose-400'
-                : job.tone === 'amber'
-                  ? 'bg-amber-300'
-                  : job.tone === 'emerald'
-                    ? 'bg-emerald-300'
-                    : 'bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400'
-            }`}
-            style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }}
-          />
-        </div>
-      </div>
-
-      <ol className="mt-4 grid gap-2">
-        {job.steps.map((step) => (
-          <li key={step.label} className="flex items-center gap-2 text-xs font-bold">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="min-w-0 truncate text-sm font-black text-white">{job.title}</h3>
+            {isUnread ? (
+              <span className="shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-black text-white">
+                새 알림
+              </span>
+            ) : null}
             <span
               className={[
-                'grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px]',
-                step.state === 'done'
-                  ? 'border-emerald-300/35 bg-emerald-300/14 text-emerald-100'
-                  : step.state === 'active'
-                    ? 'border-cyan-300/45 bg-cyan-300/14 text-cyan-100'
-                    : step.state === 'failed'
-                      ? 'border-rose-300/35 bg-rose-400/14 text-rose-100'
-                      : 'border-white/10 bg-white/[0.04] text-slate-500',
+                'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black',
+                job.tone === 'rose'
+                  ? 'border-rose-300/25 bg-rose-400/12 text-rose-100'
+                  : job.tone === 'amber'
+                    ? 'border-amber-300/25 bg-amber-300/12 text-amber-100'
+                    : job.tone === 'emerald'
+                      ? 'border-emerald-300/25 bg-emerald-300/12 text-emerald-100'
+                      : job.tone === 'cyan'
+                        ? 'border-cyan-300/25 bg-cyan-300/12 text-cyan-100'
+                        : 'border-white/10 bg-white/[0.06] text-slate-200',
               ].join(' ')}
             >
-              {step.state === 'done' ? '✓' : step.state === 'active' ? '●' : step.state === 'failed' ? '!' : ''}
+              {job.label}
             </span>
-            <span
-              className={
-                step.state === 'pending'
-                  ? 'text-slate-500'
-                  : step.state === 'failed'
-                    ? 'text-rose-100'
-                    : 'text-slate-200'
-              }
-            >
-              {step.label}
-            </span>
-          </li>
-        ))}
-      </ol>
+          </div>
+          <p className="mt-1 truncate text-xs font-bold text-cyan-100/75">{job.subtitle}</p>
+          <p className="mt-2 break-keep text-sm font-bold leading-6 text-slate-300">{job.message}</p>
+          <p className="mt-1 text-xs font-bold text-slate-500">
+            {eventTime ? formatRelativeTime(eventTime) : '방금 전'} · {isUnread ? '안읽음' : '읽음'}
+          </p>
 
-      {job.errorMessage ? (
-        <p className="mt-3 rounded-md border border-rose-300/20 bg-rose-400/[0.08] px-3 py-2 text-xs font-bold leading-5 text-rose-100">
-          {job.errorMessage}
-        </p>
-      ) : null}
-      {!job.errorMessage && job.statusReason ? (
-        <p className="mt-3 rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-xs font-bold leading-5 text-cyan-100/85">
-          {job.statusReason}
-        </p>
-      ) : null}
+          <button
+            type="button"
+            onClick={() => setIsExpanded((current) => !current)}
+            className="mt-3 text-xs font-black text-cyan-100 transition hover:text-white"
+            aria-expanded={isExpanded}
+          >
+            {isExpanded ? '상세 접기' : '상세보기'}
+          </button>
 
-      <div className="mt-4 grid gap-1 text-[11px] font-bold text-slate-500">
-        <p>시작: {job.startedAt ? formatDateTime(job.startedAt) : '확인 중'}</p>
-        <p>최근 갱신: {job.updatedAt ? formatDateTime(job.updatedAt) : '확인 중'}</p>
+          {isExpanded ? (
+            <div className="mt-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
+              <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-400">
+                <span>{job.progressText}</span>
+                <span className="text-slate-200">{Math.round(job.progress)}%</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full ${
+                    job.tone === 'rose'
+                      ? 'bg-rose-400'
+                      : job.tone === 'amber'
+                        ? 'bg-amber-300'
+                        : job.tone === 'emerald'
+                          ? 'bg-emerald-300'
+                          : 'bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400'
+                  }`}
+                  style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }}
+                />
+              </div>
+
+              <ol className="mt-3 grid gap-2">
+                {job.steps.map((step) => (
+                  <li key={step.label} className="flex items-center gap-2 text-xs font-bold">
+                    <span
+                      className={[
+                        'grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px]',
+                        step.state === 'done'
+                          ? 'border-emerald-300/35 bg-emerald-300/14 text-emerald-100'
+                          : step.state === 'active'
+                            ? 'border-cyan-300/45 bg-cyan-300/14 text-cyan-100'
+                            : step.state === 'failed'
+                              ? 'border-rose-300/35 bg-rose-400/14 text-rose-100'
+                              : 'border-white/10 bg-white/[0.04] text-slate-500',
+                      ].join(' ')}
+                    >
+                      {step.state === 'done' ? '✓' : step.state === 'active' ? '●' : step.state === 'failed' ? '!' : ''}
+                    </span>
+                    <span
+                      className={
+                        step.state === 'pending'
+                          ? 'text-slate-500'
+                          : step.state === 'failed'
+                            ? 'text-rose-100'
+                            : 'text-slate-200'
+                      }
+                    >
+                      {step.label}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+
+              {job.errorMessage ? (
+                <p className="mt-3 rounded-md border border-rose-300/20 bg-rose-400/[0.08] px-3 py-2 text-xs font-bold leading-5 text-rose-100">
+                  {job.errorMessage}
+                </p>
+              ) : null}
+              {!job.errorMessage && job.statusReason ? (
+                <p className="mt-3 rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-xs font-bold leading-5 text-cyan-100/85">
+                  {job.statusReason}
+                </p>
+              ) : null}
+
+              <div className="mt-3 grid gap-1 text-[11px] font-bold text-slate-500">
+                <p>시작: {job.startedAt ? formatDateTime(job.startedAt) : '확인 중'}</p>
+                <p>최근 갱신: {job.updatedAt ? formatDateTime(job.updatedAt) : '확인 중'}</p>
+              </div>
+
+              {job.canCancel ? (
+                <button
+                  type="button"
+                  disabled={isCancelling}
+                  onClick={async () => {
+                    setIsCancelling(true)
+                    try {
+                      await onCancelJob(job.id)
+                    } finally {
+                      setIsCancelling(false)
+                    }
+                  }}
+                  className="mt-3 min-h-9 w-full rounded-md border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-black text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCancelling ? '중도취소 중...' : '중도취소'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
-
-      {job.canCancel ? (
-        <button
-          type="button"
-          disabled={isCancelling}
-          onClick={async () => {
-            setIsCancelling(true)
-            try {
-              await onCancelJob(job.id)
-            } finally {
-              setIsCancelling(false)
-            }
-          }}
-          className="mt-3 min-h-10 w-full rounded-md border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-black text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isCancelling ? '중도취소 중...' : '중도취소'}
-        </button>
-      ) : null}
     </article>
   )
 }
@@ -873,24 +913,20 @@ function BackgroundWorkJobCard({
 function createBackgroundWorkJobCards({
   aiDiagnosisStatus,
   placeRankingKeywords,
-  seenIds = [],
 }: {
   aiDiagnosisStatus: AiDiagnosisDataRefreshStatus | null
   placeRankingKeywords: PlaceRankingBatchKeyword[]
-  seenIds?: string[]
 }): BackgroundWorkJobCardModel[] {
-  const seen = new Set(seenIds)
   const now = Date.now()
 
   return [
-    ...createAiDiagnosisRefreshJobCards(aiDiagnosisStatus, seen, now),
-    ...createPlaceRankingBatchJobCards(placeRankingKeywords, seen, now),
+    ...createAiDiagnosisRefreshJobCards(aiDiagnosisStatus, now),
+    ...createPlaceRankingBatchJobCards(placeRankingKeywords, now),
   ].sort((a, b) => getWorkJobSortTime(b) - getWorkJobSortTime(a))
 }
 
 function createAiDiagnosisRefreshJobCards(
   status: AiDiagnosisDataRefreshStatus | null,
-  seenIds: Set<string>,
   now: number,
 ): BackgroundWorkJobCardModel[] {
   if (!status) {
@@ -898,7 +934,7 @@ function createAiDiagnosisRefreshJobCards(
   }
 
   return status.keywords
-    .filter((keyword) => shouldShowAiDiagnosisRefreshJob(keyword, seenIds, now))
+    .filter((keyword) => shouldShowAiDiagnosisRefreshJob(keyword, now))
     .map((keyword) => {
       const run = keyword.latestRun
       const isTerminal = isTerminalAiDiagnosisRefreshStatus(keyword.status)
@@ -923,8 +959,14 @@ function createAiDiagnosisRefreshJobCards(
 
       return {
         id: run?.id ?? `ai-diagnosis:${keyword.normalizedKeyword}:${keyword.latestProfile?.createdAt ?? 'none'}`,
+        notificationId: createAiDiagnosisRefreshNotificationId(keyword),
         title: 'AI 진단 데이터 수집',
         subtitle: keyword.keyword,
+        message: createAiDiagnosisNotificationMessage({
+          evaluatedCount,
+          status: keyword.status,
+          totalCount,
+        }),
         keyword: keyword.keyword,
         status: keyword.status,
         label: formatAiDiagnosisRefreshStatusLabel(keyword.status),
@@ -959,11 +1001,10 @@ function createAiDiagnosisRefreshJobCards(
 
 function createPlaceRankingBatchJobCards(
   keywords: PlaceRankingBatchKeyword[],
-  seenIds: Set<string>,
   now: number,
 ): BackgroundWorkJobCardModel[] {
   return keywords
-    .filter((keyword) => shouldShowPlaceRankingBatchJob(keyword, seenIds, now))
+    .filter((keyword) => shouldShowPlaceRankingBatchJob(keyword, now))
     .map((keyword) => {
       const status = normalizePlaceRankingBatchStatus(keyword.lastRunStatus)
       const isRunning = status === 'UPDATING'
@@ -973,8 +1014,13 @@ function createPlaceRankingBatchJobCards(
 
       return {
         id: createPlaceRankingBatchJobId(keyword),
+        notificationId: createPlaceRankingBatchJobId(keyword),
         title: '플레이스 순위 자동 기록',
         subtitle: keyword.keyword,
+        message: createPlaceRankingNotificationMessage({
+          message: keyword.lastRunMessage,
+          status,
+        }),
         keyword: keyword.keyword,
         status,
         label: formatPlaceRankingBatchWorkStatusLabel(status),
@@ -994,7 +1040,6 @@ function createPlaceRankingBatchJobCards(
 
 function shouldShowAiDiagnosisRefreshJob(
   keyword: AiDiagnosisDataRefreshStatus['keywords'][number],
-  seenIds: Set<string>,
   now: number,
 ) {
   if (keyword.status === 'QUEUED' || keyword.status === 'UPDATING') {
@@ -1002,12 +1047,6 @@ function shouldShowAiDiagnosisRefreshJob(
   }
 
   if (!isTerminalAiDiagnosisRefreshStatus(keyword.status)) {
-    return false
-  }
-
-  const runId = keyword.latestRun?.id
-
-  if (!runId || seenIds.has(runId)) {
     return false
   }
 
@@ -1029,7 +1068,6 @@ function shouldShowAiDiagnosisRefreshJob(
 
 function shouldShowPlaceRankingBatchJob(
   keyword: PlaceRankingBatchKeyword,
-  seenIds: Set<string>,
   now: number,
 ) {
   const status = normalizePlaceRankingBatchStatus(keyword.lastRunStatus)
@@ -1042,9 +1080,7 @@ function shouldShowPlaceRankingBatchJob(
     return false
   }
 
-  const jobId = createPlaceRankingBatchJobId(keyword)
-
-  if (seenIds.has(jobId) || !keyword.lastRunAt) {
+  if (!keyword.lastRunAt) {
     return false
   }
 
@@ -1053,8 +1089,60 @@ function shouldShowPlaceRankingBatchJob(
   return !Number.isNaN(updatedTime) && now - updatedTime <= terminalWorkNotificationRetentionMs
 }
 
+function createAiDiagnosisNotificationMessage({
+  evaluatedCount,
+  status,
+  totalCount,
+}: {
+  evaluatedCount: number
+  status: AiDiagnosisDataRefreshStatus['keywords'][number]['status']
+  totalCount: number
+}) {
+  switch (status) {
+    case 'FAILED':
+      return 'AI 진단 데이터 수집 중 오류가 발생했습니다.'
+    case 'PARTIAL':
+      return `${totalCount}개 플레이스 중 일부 데이터만 반영되었습니다.`
+    case 'FRESH':
+      return `${totalCount}개 플레이스의 AI 진단 기준 데이터가 반영되었습니다.`
+    case 'UPDATING':
+      return `${evaluatedCount}/${totalCount}개 플레이스 데이터를 분석 중입니다.`
+    case 'QUEUED':
+      return '작업 순서를 기다리고 있습니다.'
+    default:
+      return 'AI 진단 데이터 수집 상태를 확인할 수 있습니다.'
+  }
+}
+
+function createPlaceRankingNotificationMessage({
+  message,
+  status,
+}: {
+  message: string | null
+  status: BackgroundWorkJobCardModel['status']
+}) {
+  if (status === 'FAILED') {
+    return message || '플레이스 순위 자동 기록 중 오류가 발생했습니다.'
+  }
+
+  if (status === 'UPDATING') {
+    return '플레이스 순위 데이터를 기록 중입니다.'
+  }
+
+  return message || '플레이스 순위 자동 기록이 완료되었습니다.'
+}
+
 function createPlaceRankingBatchJobId(keyword: PlaceRankingBatchKeyword) {
   return `place-ranking:${keyword.id}:${keyword.lastRunAt ?? 'none'}:${keyword.lastRunStatus ?? 'none'}`
+}
+
+function createAiDiagnosisRefreshNotificationId(
+  keyword: AiDiagnosisDataRefreshStatus['keywords'][number],
+) {
+  const run = keyword.latestRun
+  const updatedAt = run?.completedAt ?? keyword.latestProfile?.createdAt ?? run?.createdAt ?? 'none'
+
+  return `ai-diagnosis:${run?.id ?? keyword.normalizedKeyword}:${keyword.status}:${updatedAt}`
 }
 
 function normalizePlaceRankingBatchStatus(
@@ -1120,6 +1208,35 @@ function getWorkJobSortTime(job: BackgroundWorkJobCardModel) {
   return Number.isNaN(time) ? 0 : time
 }
 
+function countUnreadBackgroundWorkJobs({
+  jobs,
+  readIds,
+}: {
+  jobs: BackgroundWorkJobCardModel[]
+  readIds: string[]
+}) {
+  const readIdSet = new Set(readIds)
+
+  return jobs.filter((job) => !readIdSet.has(job.notificationId)).length
+}
+
+function mergeReadBackgroundWorkNotificationIds({
+  jobs,
+  readIds,
+}: {
+  jobs: BackgroundWorkJobCardModel[]
+  readIds: string[]
+}) {
+  const activeNotificationIds = new Set(jobs.map((job) => job.notificationId))
+  const retainedReadIds = readIds.filter((id) => activeNotificationIds.has(id))
+
+  return Array.from(new Set([...retainedReadIds, ...jobs.map((job) => job.notificationId)]))
+}
+
+function formatNotificationBadgeCount(count: number) {
+  return count > 99 ? '99+' : String(count)
+}
+
 function isTerminalAiDiagnosisRefreshStatus(
   status: AiDiagnosisDataRefreshStatus['keywords'][number]['status'],
 ) {
@@ -1177,65 +1294,6 @@ function formatAiDiagnosisRefreshStatusLabel(
   }
 }
 
-function getTerminalBackgroundWorkJobIds({
-  aiDiagnosisStatus,
-  placeRankingKeywords,
-}: {
-  aiDiagnosisStatus: AiDiagnosisDataRefreshStatus | null
-  placeRankingKeywords: PlaceRankingBatchKeyword[]
-}) {
-  const now = Date.now()
-  const aiDiagnosisIds = aiDiagnosisStatus
-    ? aiDiagnosisStatus.keywords
-        .filter((keyword) => isTerminalAiDiagnosisRefreshStatus(keyword.status))
-        .filter((keyword) => {
-          const updatedAt =
-            keyword.latestRun?.completedAt ?? keyword.latestRun?.createdAt ?? keyword.latestProfile?.createdAt ?? null
-
-          if (!updatedAt) {
-            return false
-          }
-
-          const updatedTime = new Date(updatedAt).getTime()
-
-          return !Number.isNaN(updatedTime) && now - updatedTime <= terminalWorkNotificationRetentionMs
-        })
-        .map((keyword) => keyword.latestRun?.id)
-        .filter((id): id is string => Boolean(id))
-    : []
-  const placeRankingIds = placeRankingKeywords
-    .filter((keyword) => {
-      const status = normalizePlaceRankingBatchStatus(keyword.lastRunStatus)
-
-      return (status === 'FRESH' || status === 'FAILED') && Boolean(keyword.lastRunAt)
-    })
-    .filter((keyword) => {
-      const updatedTime = new Date(keyword.lastRunAt ?? '').getTime()
-
-      return !Number.isNaN(updatedTime) && now - updatedTime <= terminalWorkNotificationRetentionMs
-    })
-    .map(createPlaceRankingBatchJobId)
-
-  return [...aiDiagnosisIds, ...placeRankingIds]
-}
-
-function hasUnreadTerminalBackgroundWorkJob({
-  aiDiagnosisStatus,
-  placeRankingKeywords,
-  seenIds,
-}: {
-  aiDiagnosisStatus: AiDiagnosisDataRefreshStatus | null
-  placeRankingKeywords: PlaceRankingBatchKeyword[]
-  seenIds: string[]
-}) {
-  const seen = new Set(seenIds)
-
-  return getTerminalBackgroundWorkJobIds({
-    aiDiagnosisStatus,
-    placeRankingKeywords,
-  }).some((id) => !seen.has(id))
-}
-
 function hasRunningBackgroundWorkJob({
   aiDiagnosisStatus,
   placeRankingKeywords,
@@ -1247,12 +1305,51 @@ function hasRunningBackgroundWorkJob({
     || placeRankingKeywords.some((keyword) => normalizePlaceRankingBatchStatus(keyword.lastRunStatus) === 'UPDATING')
 }
 
+function formatRelativeTime(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '방금 전'
+  }
+
+  const diffMs = Math.max(0, Date.now() - date.getTime())
+  const diffMinutes = Math.floor(diffMs / 60000)
+
+  if (diffMinutes < 1) {
+    return '방금 전'
+  }
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}분 전`
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60)
+
+  if (diffHours < 24) {
+    return `${diffHours}시간 전`
+  }
+
+  return formatDateTime(value)
+}
+
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('ko-KR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'Asia/Seoul',
-  }).format(new Date(value))
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  try {
+    return new Intl.DateTimeFormat('ko-KR', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Seoul',
+    }).format(date)
+  } catch {
+    return date.toLocaleString('ko-KR')
+  }
 }
 
 function SideMenu({
@@ -1263,6 +1360,7 @@ function SideMenu({
   onLogout,
   onOpenBlogPosting,
   onOpenKeyword,
+  onOpenPlaceCompetitor,
   onOpenPlaceDiagnosis,
   onOpenPlaceRanking,
   onOpenPlaceTracking,
@@ -1275,6 +1373,7 @@ function SideMenu({
   onLogout: () => void
   onOpenBlogPosting: () => void
   onOpenKeyword: () => void
+  onOpenPlaceCompetitor: () => void
   onOpenPlaceDiagnosis: () => void
   onOpenPlaceRanking: () => void
   onOpenPlaceTracking: () => void
@@ -1334,6 +1433,11 @@ function SideMenu({
             active={activeView === 'diagnosis'}
             label="AI 플레이스 진단"
             onClick={onOpenPlaceDiagnosis}
+          />
+          <MenuButton
+            active={activeView === 'competitor'}
+            label="AI 플레이스 경쟁사 비교"
+            onClick={onOpenPlaceCompetitor}
           />
           <MenuButton
             active={activeView === 'keyword'}

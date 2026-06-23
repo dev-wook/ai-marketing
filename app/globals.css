@@ -32,6 +32,26 @@ textarea {
   font: inherit;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled),
+  a[href],
+  [role="button"],
+  summary {
+    cursor: pointer;
+  }
+
+  button:not(:disabled):hover,
+  a[href]:hover,
+  [role="button"]:hover {
+    filter: brightness(1.06);
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
+
 @keyframes keyword-progress {
   0% {
     transform: translateX(-100%);

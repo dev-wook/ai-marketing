@@ -317,7 +317,7 @@ export function AiPlaceDiagnosisTool() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="mt-3 min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45 md:w-fit"
+            className="mt-3 min-h-14 w-full rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {isLoading ? '진단 중' : 'AI 진단 시작'}
           </button>
@@ -792,11 +792,15 @@ function formatAvailableAt(value: string) {
     return value
   }
 
-  return new Intl.DateTimeFormat('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(date)
+  try {
+    return new Intl.DateTimeFormat('ko-KR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(date)
+  } catch {
+    return date.toLocaleTimeString('ko-KR')
+  }
 }
 
 function formatProductPrice(product: AiPlaceDiagnosisResponse['target']['bookingProducts'][number]) {
