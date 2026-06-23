@@ -132,7 +132,7 @@ function createStatusReason({
   }
 
   if (status === 'UPDATING') {
-    return '6개 단위로 AI 평가를 진행하고 있습니다. 다음 배치는 약 75초 간격으로 실행됩니다.'
+    return '10개 단위로 AI 평가를 진행하고 있습니다. 다음 배치는 약 75초 간격으로 실행됩니다.'
   }
 
   if (status === 'FAILED') {

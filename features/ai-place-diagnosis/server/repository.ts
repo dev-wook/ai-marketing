@@ -706,7 +706,7 @@ export async function saveAiPlaceDiagnosisRun({
 }
 
 export async function createAiPlaceHarnessJob({
-  batchSize = 6,
+  batchSize = 10,
   collectionRunId,
   keywordId,
   runId,
@@ -864,7 +864,7 @@ export async function claimNextAiPlaceHarnessJob() {
       `
         update public.ai_place_harness_jobs
         set status = 'RUNNING',
-            batch_size = least(batch_size, 6),
+            batch_size = least(batch_size, 10),
             locked_at = now(),
             started_at = coalesce(started_at, now()),
             error_message = null

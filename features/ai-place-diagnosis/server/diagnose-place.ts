@@ -235,7 +235,7 @@ async function runAiPlaceDiagnosis({
       keyword,
       normalized: normalizedSnapshot.normalized,
     })
-    const generatedText = await generateGeminiText(prompt)
+    const generatedText = await generateGeminiText(prompt, { task: 'realtime-diagnosis' })
 
     geminiPayload = parseJsonPayload<GeminiRealtimeDiagnosisPayload>(generatedText)
     geminiInvocation = {

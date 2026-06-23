@@ -200,7 +200,7 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
   }
 
   const rankStart = job.next_rank_start
-  const effectiveBatchSize = Math.min(job.batch_size, 6)
+  const effectiveBatchSize = Math.min(job.batch_size, 10)
   const rankEnd = Math.min(rankStart + effectiveBatchSize - 1, job.total_count)
   const snapshots = await listAiPlaceHarnessSnapshotsForBatch({
     collectionRunId: job.collection_run_id,
@@ -230,6 +230,7 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
           normalized,
           profile,
         }),
+        { task: 'benchmark-calibration' },
       )
       const payload = parseJsonPayload<{
         semanticScores?: Record<string, number>
@@ -707,7 +708,9 @@ async function createBenchmarkLlmSummary({
   baseSignals: ReturnType<typeof createSignalSummaryFromStatistics>
 }) {
   try {
-    const text = await generateGeminiText(createBenchmarkPrompt({ keyword, statistics, baseSignals }))
+    const text = await generateGeminiText(createBenchmarkPrompt({ keyword, statistics, baseSignals }), {
+      task: 'benchmark-calibration',
+    })
 
     return parseJsonPayload<BenchmarkLlmSummary>(text)
   } catch (error) {

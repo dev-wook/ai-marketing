@@ -43,7 +43,8 @@ export type GeminiErrorMetadata = {
 
 export type GeminiLocalRateLimitMetadata = {
   status: 429
-  quotaScope: 'minute'
+  model: string
+  quotaScope: 'daily' | 'minute'
   quotaLimit: number
   retryAfterMs: number
   availableAt: string
@@ -83,18 +84,62 @@ export class GeminiRateLimitError extends Error {
 }
 
 const defaultGeminiTextModel = 'gemini-3.5-flash'
-const defaultGeminiFallbackTextModels = ['gemini-2.5-flash-lite']
+const defaultRealtimeGeminiModels = ['gemini-3.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite']
+const defaultBenchmarkGeminiModels = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-3.5-flash']
+const defaultGeminiFallbackTextModels = ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite']
 const retryableGeminiStatuses = new Set([429, 500, 503])
 const maxRetryDelayMs = 5000
 const maxGeminiAttemptsPerModel = 3
-const geminiMinuteLimit = parsePositiveInteger(process.env.GEMINI_REQUESTS_PER_MINUTE, 8)
 const geminiMinuteWindowMs = 60 * 1000
-const geminiRequestTimestamps: number[] = []
-let geminiCooldownUntil = 0
+const geminiDailyWindowMs = 24 * 60 * 60 * 1000
+const geminiModelUsage = new Map<
+  string,
+  {
+    requestTimestamps: number[]
+    dailyCount: number
+    dailyWindowStartedAt: number
+    cooldownUntil: number
+  }
+>()
 
-export async function generateGeminiText(prompt: string, useGoogleSearch = false) {
+type GeminiTask = 'default' | 'realtime-diagnosis' | 'benchmark-calibration'
+
+type GeminiTextOptions = {
+  useGoogleSearch?: boolean
+  task?: GeminiTask
+  modelCandidates?: string[]
+}
+
+type GeminiModelQuota = {
+  dailyLimit: number
+  minuteLimit: number
+}
+
+const geminiModelQuotas: Record<string, GeminiModelQuota> = {
+  'gemini-3.5-flash': {
+    dailyLimit: parsePositiveInteger(process.env.GEMINI_3_5_FLASH_DAILY_LIMIT, 20),
+    minuteLimit: parsePositiveInteger(process.env.GEMINI_3_5_FLASH_REQUESTS_PER_MINUTE, 5),
+  },
+  'gemini-3.1-flash-lite': {
+    dailyLimit: parsePositiveInteger(process.env.GEMINI_3_1_FLASH_LITE_DAILY_LIMIT, 500),
+    minuteLimit: parsePositiveInteger(process.env.GEMINI_3_1_FLASH_LITE_REQUESTS_PER_MINUTE, 15),
+  },
+  'gemini-2.5-flash-lite': {
+    dailyLimit: parsePositiveInteger(process.env.GEMINI_2_5_FLASH_LITE_DAILY_LIMIT, 20),
+    minuteLimit: parsePositiveInteger(process.env.GEMINI_2_5_FLASH_LITE_REQUESTS_PER_MINUTE, 10),
+  },
+}
+
+export async function generateGeminiText(
+  prompt: string,
+  optionsOrUseGoogleSearch: GeminiTextOptions | boolean = false,
+) {
   const apiKey = process.env.GEMINI_API_KEY
   const model = process.env.GEMINI_TEXT_MODEL ?? defaultGeminiTextModel
+  const options =
+    typeof optionsOrUseGoogleSearch === 'boolean'
+      ? { useGoogleSearch: optionsOrUseGoogleSearch }
+      : optionsOrUseGoogleSearch
 
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured.')
@@ -102,9 +147,13 @@ export async function generateGeminiText(prompt: string, useGoogleSearch = false
 
   return requestGeminiTextWithFallback({
     apiKey,
-    models: getGeminiModelCandidates(model),
+    models: getGeminiModelCandidates({
+      primaryModel: model,
+      task: options.task ?? 'default',
+      overrideModels: options.modelCandidates,
+    }),
     prompt,
-    useGoogleSearch,
+    useGoogleSearch: options.useGoogleSearch ?? false,
   })
 }
 
@@ -131,6 +180,18 @@ async function requestGeminiTextWithFallback({
       })
     } catch (error) {
       lastError = error
+
+      if (
+        error instanceof GeminiRateLimitError &&
+        error.metadata.quotaScope === 'daily' &&
+        models.indexOf(model) < models.length - 1
+      ) {
+        console.warn('Gemini local daily quota exhausted, trying fallback model', {
+          fromModel: model,
+          nextModel: models[models.indexOf(model) + 1],
+        })
+        continue
+      }
 
       if (!(error instanceof GeminiApiError) || !shouldTryNextModel(error)) {
         throw error
@@ -205,7 +266,7 @@ async function requestGeminiTextOnce({
   prompt: string
   useGoogleSearch: boolean
 }) {
-  rememberGeminiRequestOrThrow()
+  rememberGeminiRequestOrThrow(model)
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -262,22 +323,59 @@ async function requestGeminiTextOnce({
 }
 
 export function getGeminiLocalRateLimitMetadata() {
-  const retryAfterMs = getGeminiLocalRetryAfterMs(Date.now())
+  const model = process.env.GEMINI_TEXT_MODEL ?? defaultGeminiTextModel
+  const retryAfterMs = Math.max(
+    getGeminiLocalDailyRetryAfterMs(model, Date.now()),
+    getGeminiLocalMinuteRetryAfterMs(model, Date.now()),
+  )
 
   if (retryAfterMs <= 0) {
     return null
   }
 
-  return createGeminiLocalRateLimitMetadata(retryAfterMs)
+  return createGeminiLocalRateLimitMetadata({
+    model,
+    quotaScope: getGeminiLocalDailyRetryAfterMs(model, Date.now()) > 0 ? 'daily' : 'minute',
+    retryAfterMs,
+  })
 }
 
-function getGeminiModelCandidates(primaryModel: string) {
+function getGeminiModelCandidates({
+  overrideModels,
+  primaryModel,
+  task,
+}: {
+  primaryModel: string
+  task: GeminiTask
+  overrideModels?: string[]
+}) {
+  if (overrideModels?.length) {
+    return Array.from(new Set(overrideModels))
+  }
+
+  if (task === 'benchmark-calibration') {
+    return parseModelList(process.env.GEMINI_BENCHMARK_TEXT_MODELS, defaultBenchmarkGeminiModels)
+  }
+
+  if (task === 'realtime-diagnosis') {
+    return parseModelList(process.env.GEMINI_REALTIME_TEXT_MODELS, defaultRealtimeGeminiModels)
+  }
+
   const fallbackModels =
     process.env.GEMINI_FALLBACK_TEXT_MODELS?.split(',')
       .map((model) => model.trim())
       .filter(Boolean) ?? defaultGeminiFallbackTextModels
 
   return Array.from(new Set([primaryModel, ...fallbackModels]))
+}
+
+function parseModelList(value: string | undefined, fallback: string[]) {
+  const models = value
+    ?.split(',')
+    .map((model) => model.trim())
+    .filter(Boolean)
+
+  return Array.from(new Set(models?.length ? models : fallback))
 }
 
 function shouldRetryGeminiError(error: GeminiApiError) {
@@ -293,7 +391,10 @@ function shouldRetryGeminiError(error: GeminiApiError) {
 }
 
 function shouldTryNextModel(error: GeminiApiError) {
-  return error.status === 429 && (isModelQuotaError(error) || isDailyQuotaError(error))
+  return (
+    (error.status === 429 && (isModelQuotaError(error) || isDailyQuotaError(error))) ||
+    isModelUnavailableError(error)
+  )
 }
 
 function isDailyQuotaError(error: GeminiApiError) {
@@ -316,6 +417,17 @@ function isModelQuotaError(error: GeminiApiError) {
     ) ??
       false)
   )
+}
+
+function isModelUnavailableError(error: GeminiApiError) {
+  if (error.status !== 400 && error.status !== 404) {
+    return false
+  }
+
+  const body = parseGeminiErrorBody(error.body)
+  const message = body.error?.message ?? error.body
+
+  return /model|not found|not supported|unsupported|is not found|not available/i.test(message)
 }
 
 export function getGeminiErrorMetadata(error: GeminiApiError): GeminiErrorMetadata {
@@ -345,53 +457,127 @@ function getRetryDelayMs(error: GeminiApiError, attempt: number) {
   return Math.min(Math.max(retryDelayMs, fallbackDelayMs), maxRetryDelayMs)
 }
 
-function rememberGeminiRequestOrThrow() {
+function rememberGeminiRequestOrThrow(model: string) {
   const now = Date.now()
-  const retryAfterMs = getGeminiLocalRetryAfterMs(now)
+  const dailyRetryAfterMs = getGeminiLocalDailyRetryAfterMs(model, now)
 
-  if (retryAfterMs > 0) {
-    throw new GeminiRateLimitError(createGeminiLocalRateLimitMetadata(retryAfterMs))
+  if (dailyRetryAfterMs > 0) {
+    throw new GeminiRateLimitError(
+      createGeminiLocalRateLimitMetadata({
+        model,
+        quotaScope: 'daily',
+        retryAfterMs: dailyRetryAfterMs,
+      }),
+    )
   }
 
-  geminiRequestTimestamps.push(now)
+  const retryAfterMs = getGeminiLocalMinuteRetryAfterMs(model, now)
+
+  if (retryAfterMs > 0) {
+    throw new GeminiRateLimitError(
+      createGeminiLocalRateLimitMetadata({
+        model,
+        quotaScope: 'minute',
+        retryAfterMs,
+      }),
+    )
+  }
+
+  const usage = getGeminiUsage(model, now)
+  usage.requestTimestamps.push(now)
+  usage.dailyCount += 1
 }
 
 function rememberGeminiCooldown(error: GeminiApiError) {
   const retryAfterMs = getRetryInfo(error).retryDelayMs
 
   if (retryAfterMs && retryAfterMs > 0) {
-    geminiCooldownUntil = Math.max(geminiCooldownUntil, Date.now() + retryAfterMs)
+    const usage = getGeminiUsage(error.model, Date.now())
+
+    usage.cooldownUntil = Math.max(usage.cooldownUntil, Date.now() + retryAfterMs)
   }
 }
 
-function getGeminiLocalRetryAfterMs(now: number) {
+function getGeminiLocalDailyRetryAfterMs(model: string, now: number) {
+  const quota = getGeminiModelQuota(model)
+  const usage = getGeminiUsage(model, now)
+
+  return usage.dailyCount >= quota.dailyLimit
+    ? geminiDailyWindowMs - (now - usage.dailyWindowStartedAt)
+    : 0
+}
+
+function getGeminiLocalMinuteRetryAfterMs(model: string, now: number) {
+  const quota = getGeminiModelQuota(model)
+  const usage = getGeminiUsage(model, now)
+
   while (
-    geminiRequestTimestamps.length > 0 &&
-    now - geminiRequestTimestamps[0] >= geminiMinuteWindowMs
+    usage.requestTimestamps.length > 0 &&
+    now - usage.requestTimestamps[0] >= geminiMinuteWindowMs
   ) {
-    geminiRequestTimestamps.shift()
+    usage.requestTimestamps.shift()
   }
 
   const windowRetryAfterMs =
-    geminiRequestTimestamps.length >= geminiMinuteLimit
-      ? geminiMinuteWindowMs - (now - geminiRequestTimestamps[0])
+    usage.requestTimestamps.length >= quota.minuteLimit
+      ? geminiMinuteWindowMs - (now - usage.requestTimestamps[0])
       : 0
-  const cooldownRetryAfterMs = Math.max(0, geminiCooldownUntil - now)
+  const cooldownRetryAfterMs = Math.max(0, usage.cooldownUntil - now)
 
   return Math.ceil(Math.max(windowRetryAfterMs, cooldownRetryAfterMs))
 }
 
-function createGeminiLocalRateLimitMetadata(retryAfterMs: number): GeminiLocalRateLimitMetadata {
+function createGeminiLocalRateLimitMetadata({
+  model,
+  quotaScope,
+  retryAfterMs,
+}: {
+  model: string
+  quotaScope: GeminiLocalRateLimitMetadata['quotaScope']
+  retryAfterMs: number
+}): GeminiLocalRateLimitMetadata {
+  const quota = getGeminiModelQuota(model)
+  const quotaLimit = quotaScope === 'daily' ? quota.dailyLimit : quota.minuteLimit
   const availableAt = new Date(Date.now() + retryAfterMs).toISOString()
+  const scopeLabel = quotaScope === 'daily' ? '일일' : '분당'
 
   return {
     status: 429,
-    quotaScope: 'minute',
-    quotaLimit: geminiMinuteLimit,
+    model,
+    quotaScope,
+    quotaLimit,
     retryAfterMs,
     availableAt,
-    message: `Gemini API 호출이 일시적으로 제한되었습니다. 약 ${formatRetryAfter(retryAfterMs)} 후 다시 이용할 수 있습니다.`,
+    message: `Gemini ${model} ${scopeLabel} 호출 한도에 도달했습니다. 약 ${formatRetryAfter(retryAfterMs)} 후 다시 이용할 수 있습니다.`,
   }
+}
+
+function getGeminiUsage(model: string, now: number) {
+  const current = geminiModelUsage.get(model)
+
+  if (current && now - current.dailyWindowStartedAt < geminiDailyWindowMs) {
+    return current
+  }
+
+  const next = {
+    requestTimestamps: current?.requestTimestamps ?? [],
+    dailyCount: 0,
+    dailyWindowStartedAt: now,
+    cooldownUntil: 0,
+  }
+
+  geminiModelUsage.set(model, next)
+
+  return next
+}
+
+function getGeminiModelQuota(model: string) {
+  return (
+    geminiModelQuotas[model] ?? {
+      dailyLimit: parsePositiveInteger(process.env.GEMINI_DEFAULT_DAILY_LIMIT, 20),
+      minuteLimit: parsePositiveInteger(process.env.GEMINI_REQUESTS_PER_MINUTE, 5),
+    }
+  )
 }
 
 function getRetryInfo(error: GeminiApiError) {
