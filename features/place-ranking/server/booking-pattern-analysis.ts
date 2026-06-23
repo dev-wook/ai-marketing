@@ -13,8 +13,9 @@ const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
 export async function collectBookingPatternAnalysis(
   body: PlaceBookingPatternRequest,
   targetDate = normalizeDate(body.targetDate),
+  options: { maxSampleDates?: number } = {},
 ): Promise<PlaceBookingPatternResponse> {
-  const dates = getRecentSameWeekdayDates(targetDate)
+  const dates = limitRecentDates(getRecentSameWeekdayDates(targetDate), options.maxSampleDates)
   const snapshots = await runWithConcurrency(
     dates,
     bookingPatternConcurrency,
@@ -227,21 +228,21 @@ function getRecentSameWeekdayDates(targetDate: string) {
 
 function getCycleWindowDates(targetDate: string) {
   const target = createLocalDate(targetDate)
-  const start = new Date(target)
-  const end = new Date(target)
+  const fourWeeksAgo = new Date(target)
+  const fiveWeeksAgo = new Date(target)
 
-  start.setDate(start.getDate() - 37)
-  end.setDate(end.getDate() - 26)
+  fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28)
+  fiveWeeksAgo.setDate(fiveWeeksAgo.getDate() - 35)
 
-  const dates: string[] = []
-  const cursor = new Date(start)
+  return [fiveWeeksAgo, fourWeeksAgo].map(formatDateValue)
+}
 
-  while (cursor <= end) {
-    dates.push(formatDateValue(cursor))
-    cursor.setDate(cursor.getDate() + 1)
+function limitRecentDates(dates: string[], maxSampleDates?: number) {
+  if (!maxSampleDates || dates.length <= maxSampleDates) {
+    return dates
   }
 
-  return dates
+  return dates.slice(-maxSampleDates)
 }
 
 function normalizeDate(value?: string) {

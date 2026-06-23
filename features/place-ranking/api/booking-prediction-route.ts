@@ -31,6 +31,8 @@ const geminiPredictionModels = [
   'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite',
 ]
+const predictionPatternSampleLimit = 8
+const geminiPredictionTimeoutMs = 24_000
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -45,7 +47,9 @@ export async function POST(request: Request) {
         bookingBusinessId: body.bookingBusinessId,
         date: targetDate,
       }),
-      collectBookingPatternAnalysis(body, targetDate),
+      collectBookingPatternAnalysis(body, targetDate, {
+        maxSampleDates: predictionPatternSampleLimit,
+      }),
       collectCycleWindowStatus({
         bookingUrl: body.bookingUrl,
         bookingBusinessId: body.bookingBusinessId,
@@ -70,19 +74,22 @@ export async function POST(request: Request) {
     })
 
     try {
-      const text = await generateGeminiText(createPredictionPrompt({
-        cycleProduct,
-        currentProduct: selectedProduct,
-        fallback,
-        patternProduct,
-        targetDate,
-        weekdayLabel: pattern.weekdayLabel,
-        patternSampledDateCount: pattern.sampledDateCount,
-        cycleSampledDateCount: cycle.sampledDateCount,
-      }), {
-        task: 'realtime-diagnosis',
-        modelCandidates: geminiPredictionModels,
-      })
+      const text = await withTimeout(
+        generateGeminiText(createPredictionPrompt({
+          cycleProduct,
+          currentProduct: selectedProduct,
+          fallback,
+          patternProduct,
+          targetDate,
+          weekdayLabel: pattern.weekdayLabel,
+          patternSampledDateCount: pattern.sampledDateCount,
+          cycleSampledDateCount: cycle.sampledDateCount,
+        }), {
+          task: 'realtime-diagnosis',
+          modelCandidates: geminiPredictionModels,
+        }),
+        geminiPredictionTimeoutMs,
+      )
       const payload = parseJsonPayload<GeminiBookingPredictionPayload>(text)
 
       return NextResponse.json(mergeGeminiPrediction(fallback, payload))
@@ -428,4 +435,22 @@ function normalizeDate(value?: string) {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Gemini booking prediction timed out.'))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timer)
+        reject(error)
+      })
+  })
 }
