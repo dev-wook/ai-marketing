@@ -5,6 +5,7 @@ export type AiPlaceDiagnosisRequest = {
   placeUrl?: string
   keyword?: string
   comparisonLimit?: number
+  fallbackPlace?: AiPlaceDiagnosisPlaceSearchItem
   placeIntroduction?: string
   menuItemsText?: string
 }

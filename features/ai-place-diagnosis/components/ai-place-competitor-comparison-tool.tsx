@@ -1,8 +1,8 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { RecentSearchList, ToolLoadingPanel } from '@/features/platform/components/tool-ui'
+import { ToolLoadingPanel } from '@/features/platform/components/tool-ui'
 import type {
   AiPlaceDiagnosisPlaceSearchItem,
   AiPlaceDiagnosisPlaceSearchResponse,
@@ -35,16 +35,14 @@ const initialSelectionState: PlaceSelectionState = {
   errorMessage: '',
 }
 
-const recentComparisonPlaceSearchStorageKey = 'aiva:recent-ai-place-comparison-places'
-const maxRecentPlaceSearches = 5
 const placeSearchLoadingSteps = [
   '네이버 플레이스에서 후보 매장을 찾고 있습니다.',
   '대표 이미지와 주소 정보를 정리하고 있습니다.',
   '비교할 플레이스 후보를 구성하고 있습니다.',
 ]
 const comparisonLoadingSteps = [
-  '좌측 플레이스의 AI 진단 데이터를 수집하고 있습니다.',
-  '우측 플레이스의 AI 진단 데이터를 수집하고 있습니다.',
+  '플레이스 1의 AI 진단 데이터를 수집하고 있습니다.',
+  '플레이스 2의 AI 진단 데이터를 수집하고 있습니다.',
   '항목별 점수와 전환 신호를 비교하고 있습니다.',
   '강점과 보완 포인트를 정리하고 있습니다.',
 ]
@@ -74,16 +72,18 @@ async function requestPlaceSearch(query: string) {
 }
 
 async function requestDiagnosis({
+  fallbackPlace,
   keyword,
   placeId,
 }: {
+  fallbackPlace: AiPlaceDiagnosisPlaceSearchItem
   keyword: string
   placeId: string
 }) {
   const response = await fetch('/api/ai-place-diagnosis/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keyword, placeId }),
+    body: JSON.stringify({ fallbackPlace, keyword, placeId }),
   })
   const body = (await response.json()) as AiPlaceDiagnosisResponse | ComparisonErrorBody
 
@@ -107,7 +107,6 @@ export function AiPlaceCompetitorComparisonTool() {
   const [keyword, setKeyword] = useState('')
   const [left, setLeft] = useState<PlaceSelectionState>(initialSelectionState)
   const [right, setRight] = useState<PlaceSelectionState>(initialSelectionState)
-  const [recentPlaceSearches, setRecentPlaceSearches] = useState<string[]>([])
   const [leftResult, setLeftResult] = useState<AiPlaceDiagnosisResponse | null>(null)
   const [rightResult, setRightResult] = useState<AiPlaceDiagnosisResponse | null>(null)
   const [isComparing, setIsComparing] = useState(false)
@@ -121,10 +120,6 @@ export function AiPlaceCompetitorComparisonTool() {
     () => Boolean(keyword.trim() && left.selected && right.selected && !isSearching && !isComparing),
     [isComparing, isSearching, keyword, left.selected, right.selected],
   )
-
-  useEffect(() => {
-    setRecentPlaceSearches(readRecentPlaceSearches())
-  }, [])
 
   const updateSide = (side: ComparisonSide, updater: (current: PlaceSelectionState) => PlaceSelectionState) => {
     if (side === 'left') {
@@ -167,7 +162,6 @@ export function AiPlaceCompetitorComparisonTool() {
         isSearching: false,
         items: response.items,
       }))
-      setRecentPlaceSearches(saveRecentPlaceSearch(trimmedQuery))
     } catch (error) {
       updateSide(side, (current) => ({
         ...current,
@@ -183,18 +177,6 @@ export function AiPlaceCompetitorComparisonTool() {
   const handleSearch = async (side: ComparisonSide, event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     await searchPlaces(side, side === 'left' ? left.query : right.query)
-  }
-
-  const applyRecentSearch = async (side: ComparisonSide, query: string) => {
-    updateSide(side, (current) => ({
-      ...current,
-      query,
-    }))
-    await searchPlaces(side, query)
-  }
-
-  const removeRecentPlaceSearch = (query: string) => {
-    setRecentPlaceSearches(deleteRecentPlaceSearch(query))
   }
 
   const handleCompare = async (event: FormEvent<HTMLFormElement>) => {
@@ -215,10 +197,16 @@ export function AiPlaceCompetitorComparisonTool() {
     }, 1400)
 
     try {
-      const [leftDiagnosis, rightDiagnosis] = await Promise.all([
-        requestDiagnosis({ keyword, placeId: left.selected.id }),
-        requestDiagnosis({ keyword, placeId: right.selected.id }),
-      ])
+      const leftDiagnosis = await requestDiagnosis({
+        fallbackPlace: left.selected,
+        keyword,
+        placeId: left.selected.id,
+      })
+      const rightDiagnosis = await requestDiagnosis({
+        fallbackPlace: right.selected,
+        keyword,
+        placeId: right.selected.id,
+      })
 
       setLeftResult(leftDiagnosis)
       setRightResult(rightDiagnosis)
@@ -243,7 +231,7 @@ export function AiPlaceCompetitorComparisonTool() {
             AI 플레이스 경쟁사 비교
           </h1>
           <p className="break-keep text-sm font-semibold leading-7 text-slate-300">
-            좌우 플레이스를 검색해 선택하고 분석 키워드를 입력하면, AI 플레이스 진단 데이터를
+            플레이스 1과 플레이스 2를 검색해 선택하고 분석 키워드를 입력하면, AI 플레이스 진단 데이터를
             기준으로 점수, 리뷰, 콘텐츠, 예약·전환 신호의 우위와 약점을 비교합니다.
           </p>
         </div>
@@ -251,40 +239,34 @@ export function AiPlaceCompetitorComparisonTool() {
         <div className="grid gap-4 lg:grid-cols-2">
           <PlaceSearchColumn
             disabled={isComparing || right.isSearching}
-            label="좌측 플레이스"
-            onApplyRecentSearch={(query) => applyRecentSearch('left', query)}
+            label="플레이스 1"
             onChangeQuery={(query) => {
               setLeft((current) => ({ ...current, query, selected: null }))
               setLeftResult(null)
               setRightResult(null)
             }}
-            onRemoveRecentSearch={removeRecentPlaceSearch}
             onSearch={(event) => handleSearch('left', event)}
             onSelect={(place) => {
               setLeft((current) => ({ ...current, selected: place }))
               setLeftResult(null)
               setRightResult(null)
             }}
-            recentPlaceSearches={recentPlaceSearches}
             selection={left}
           />
           <PlaceSearchColumn
             disabled={isComparing || left.isSearching}
-            label="우측 플레이스"
-            onApplyRecentSearch={(query) => applyRecentSearch('right', query)}
+            label="플레이스 2"
             onChangeQuery={(query) => {
               setRight((current) => ({ ...current, query, selected: null }))
               setLeftResult(null)
               setRightResult(null)
             }}
-            onRemoveRecentSearch={removeRecentPlaceSearch}
             onSearch={(event) => handleSearch('right', event)}
             onSelect={(place) => {
               setRight((current) => ({ ...current, selected: place }))
               setLeftResult(null)
               setRightResult(null)
             }}
-            recentPlaceSearches={recentPlaceSearches}
             selection={right}
           />
         </div>
@@ -358,22 +340,16 @@ export function AiPlaceCompetitorComparisonTool() {
 function PlaceSearchColumn({
   disabled,
   label,
-  onApplyRecentSearch,
   onChangeQuery,
-  onRemoveRecentSearch,
   onSearch,
   onSelect,
-  recentPlaceSearches,
   selection,
 }: {
   disabled: boolean
   label: string
-  onApplyRecentSearch: (query: string) => void
   onChangeQuery: (query: string) => void
-  onRemoveRecentSearch: (query: string) => void
   onSearch: (event: FormEvent<HTMLFormElement>) => void
   onSelect: (place: AiPlaceDiagnosisPlaceSearchItem) => void
-  recentPlaceSearches: string[]
   selection: PlaceSelectionState
 }) {
   const canSearch = Boolean(selection.query.trim() && !selection.isSearching && !disabled)
@@ -399,15 +375,6 @@ function PlaceSearchColumn({
           </button>
         </div>
       </form>
-
-      <RecentSearchList
-        disabled={selection.isSearching || disabled}
-        keywords={recentPlaceSearches}
-        label="최근 플레이스 검색"
-        max={3}
-        onRemove={onRemoveRecentSearch}
-        onSelect={onApplyRecentSearch}
-      />
 
       {selection.errorMessage ? (
         <p className="break-keep rounded-md border border-rose-300/25 bg-rose-400/10 p-3 text-xs font-black leading-5 text-rose-100">
@@ -448,13 +415,16 @@ function ComparisonResult({
   const metricRows = createMetricComparisonRows(leftResult, rightResult)
   const leftWins = [...categoryRows, ...metricRows].filter((row) => row.winner === 'left').length
   const rightWins = [...categoryRows, ...metricRows].filter((row) => row.winner === 'right').length
+  const leftName = leftResult.target.name
+  const rightName = rightResult.target.name
+  const dataNotice = createDiagnosisDataNotice(leftResult, rightResult)
 
   return (
     <section className="grid gap-5">
       <div className="rounded-md border border-white/10 bg-[#0b1220]/88 p-5 md:p-6">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <ComparisonHeaderCard result={leftResult} sideLabel="좌측" />
-          <ComparisonHeaderCard result={rightResult} sideLabel="우측" />
+          <ComparisonHeaderCard result={leftResult} sideLabel="플레이스 1" />
+          <ComparisonHeaderCard result={rightResult} sideLabel="플레이스 2" />
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -464,8 +434,8 @@ function ComparisonResult({
               overallWinner === 'tie'
                 ? '동률'
                 : overallWinner === 'left'
-                  ? leftResult.target.name
-                  : rightResult.target.name
+                  ? leftName
+                  : rightName
             }
           />
           <ScoreMetric
@@ -477,25 +447,39 @@ function ComparisonResult({
             value={`${leftWins}:${rightWins}`}
           />
         </div>
+
+        {dataNotice ? (
+          <p className="mt-4 break-keep rounded-md border border-amber-200/25 bg-amber-300/10 p-3 text-xs font-black leading-5 text-amber-100">
+            {dataNotice}
+          </p>
+        ) : null}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="항목별 AI 점수 비교">
-          <div className="grid gap-3">
-            {categoryRows.map((row) => (
-              <ComparisonRow key={row.label} row={row} />
-            ))}
-          </div>
-        </Panel>
+      <Panel title="항목별 AI 점수 비교">
+        <div className="grid gap-3">
+          {categoryRows.map((row) => (
+            <ComparisonRow
+              key={row.label}
+              leftName={leftName}
+              rightName={rightName}
+              row={row}
+            />
+          ))}
+        </div>
+      </Panel>
 
-        <Panel title="운영 지표 비교">
-          <div className="grid gap-3">
-            {metricRows.map((row) => (
-              <ComparisonRow key={row.label} row={row} />
-            ))}
-          </div>
-        </Panel>
-      </div>
+      <Panel title="운영 지표 비교">
+        <div className="grid gap-3">
+          {metricRows.map((row) => (
+            <ComparisonRow
+              key={row.label}
+              leftName={leftName}
+              rightName={rightName}
+              row={row}
+            />
+          ))}
+        </div>
+      </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title={`${leftResult.target.name} 강세·약세`}>
@@ -513,10 +497,10 @@ function ComparisonResult({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="좌측 플레이스 개선 우선순위">
+        <Panel title={`${leftName} 개선 우선순위`}>
           <NumberedList items={leftResult.priorities.slice(0, 5)} />
         </Panel>
-        <Panel title="우측 플레이스 개선 우선순위">
+        <Panel title={`${rightName} 개선 우선순위`}>
           <NumberedList items={rightResult.priorities.slice(0, 5)} />
         </Panel>
       </div>
@@ -549,7 +533,7 @@ function ComparisonHeaderCard({
           {result.target.name}
         </h2>
         <p className="mt-2 break-keep text-sm font-semibold leading-6 text-slate-300">
-          참고 순위 {result.target.rank}위 · {result.target.category}
+          참고 순위 {formatRankLabel(result.target.rank)} · {result.target.category}
         </p>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
@@ -565,49 +549,75 @@ type ComparisonRowModel = {
   label: string
   leftValue: string
   rightValue: string
+  leftDetail: string
+  rightDetail: string
   leftScore: number
   rightScore: number
   winner: 'left' | 'right' | 'tie'
 }
 
-function ComparisonRow({ row }: { row: ComparisonRowModel }) {
-  const maxValue = Math.max(row.leftScore, row.rightScore, 1)
-
+function ComparisonRow({
+  leftName,
+  rightName,
+  row,
+}: {
+  leftName: string
+  rightName: string
+  row: ComparisonRowModel
+}) {
   return (
     <div className="grid gap-3 rounded-md border border-white/10 bg-white/[0.035] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="break-keep text-sm font-black text-white">{row.label}</p>
         <span className={getWinnerBadgeClassName(row.winner)}>
-          {row.winner === 'tie' ? '비슷함' : row.winner === 'left' ? '좌측 우위' : '우측 우위'}
+          {row.winner === 'tie' ? '비슷함' : row.winner === 'left' ? `${leftName} 우위` : `${rightName} 우위`}
         </span>
       </div>
-      <div className="grid gap-2">
-        <BarLine label="좌측" value={row.leftValue} width={(row.leftScore / maxValue) * 100} />
-        <BarLine label="우측" value={row.rightValue} width={(row.rightScore / maxValue) * 100} />
+      <div className="grid overflow-hidden rounded-md border border-white/10 md:grid-cols-2">
+        <ComparisonSideCell
+          active={row.winner === 'left'}
+          detail={row.leftDetail}
+          name={leftName}
+          value={row.leftValue}
+        />
+        <ComparisonSideCell
+          active={row.winner === 'right'}
+          detail={row.rightDetail}
+          name={rightName}
+          value={row.rightValue}
+        />
       </div>
     </div>
   )
 }
 
-function BarLine({
-  label,
+function ComparisonSideCell({
+  active,
+  detail,
+  name,
   value,
-  width,
 }: {
-  label: string
+  active: boolean
+  detail: string
+  name: string
   value: string
-  width: number
 }) {
   return (
-    <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_4.5rem] items-center gap-3">
-      <p className="text-xs font-black text-slate-400">{label}</p>
-      <div className="h-2 overflow-hidden rounded-full bg-white/10">
-        <div
-          className="h-full rounded-full bg-cyan-200"
-          style={{ width: `${Math.max(4, Math.min(100, width))}%` }}
-        />
+    <div
+      className={`grid min-h-32 content-start gap-3 border-white/10 p-4 md:border-l md:first:border-l-0 ${
+        active ? 'bg-cyan-300/10' : 'bg-white/[0.025]'
+      }`}
+    >
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-xs font-black text-slate-300">{name}</p>
+        {active ? (
+          <span className="shrink-0 rounded-md bg-cyan-100 px-2 py-1 text-[10px] font-black text-[#071018]">
+            우위
+          </span>
+        ) : null}
       </div>
-      <p className="text-right text-xs font-black text-slate-200">{value}</p>
+      <p className="break-keep text-2xl font-black text-white">{value}</p>
+      <p className="break-keep text-xs font-semibold leading-5 text-slate-400">{detail}</p>
     </div>
   )
 }
@@ -781,6 +791,8 @@ function createCategoryComparisonRows(
       rightScore: rightValue,
       leftValue: `${leftScore.score}/${leftScore.maxScore}`,
       rightValue: `${rightValue}/${rightScore?.maxScore ?? leftScore.maxScore}`,
+      leftDetail: leftScore.reason,
+      rightDetail: rightScore?.reason ?? leftScore.reason,
       winner: toWinner(leftScore.score, rightValue),
     } satisfies ComparisonRowModel
   })
@@ -798,8 +810,10 @@ function createMetricComparisonRows(
       label: '참고 순위',
       leftScore: reverseRankScore(left.rank),
       rightScore: reverseRankScore(right.rank),
-      leftValue: `${left.rank}위`,
-      rightValue: `${right.rank}위`,
+      leftValue: formatRankLabel(left.rank),
+      rightValue: formatRankLabel(right.rank),
+      leftDetail: '현재 키워드 검색 결과에서 확인된 참고 순위입니다. 순위는 점수에 직접 반영하지 않고 비교 참고값으로만 봅니다.',
+      rightDetail: '현재 키워드 검색 결과에서 확인된 참고 순위입니다. 순위는 점수에 직접 반영하지 않고 비교 참고값으로만 봅니다.',
       winner: toWinner(reverseRankScore(left.rank), reverseRankScore(right.rank)),
     },
     {
@@ -808,6 +822,8 @@ function createMetricComparisonRows(
       rightScore: right.metrics.totalReviewCount,
       leftValue: `${left.metrics.totalReviewCount.toLocaleString()}개`,
       rightValue: `${right.metrics.totalReviewCount.toLocaleString()}개`,
+      leftDetail: '방문자 리뷰 수는 신뢰도 보조 신호입니다. 절대 개수보다 리뷰 문구의 구체성과 서비스 적합도가 더 중요합니다.',
+      rightDetail: '방문자 리뷰 수는 신뢰도 보조 신호입니다. 절대 개수보다 리뷰 문구의 구체성과 서비스 적합도가 더 중요합니다.',
       winner: toWinner(left.metrics.totalReviewCount, right.metrics.totalReviewCount),
     },
     {
@@ -816,6 +832,8 @@ function createMetricComparisonRows(
       rightScore: right.metrics.blogCafeReviewCount,
       leftValue: `${left.metrics.blogCafeReviewCount.toLocaleString()}개`,
       rightValue: `${right.metrics.blogCafeReviewCount.toLocaleString()}개`,
+      leftDetail: '블로그 리뷰는 외부 콘텐츠와 검색 신뢰의 보조 신호로 봅니다. 본문 품질 분석은 현재 비교에 포함하지 않습니다.',
+      rightDetail: '블로그 리뷰는 외부 콘텐츠와 검색 신뢰의 보조 신호로 봅니다. 본문 품질 분석은 현재 비교에 포함하지 않습니다.',
       winner: toWinner(left.metrics.blogCafeReviewCount, right.metrics.blogCafeReviewCount),
     },
     {
@@ -824,6 +842,8 @@ function createMetricComparisonRows(
       rightScore: right.metrics.imageCount,
       leftValue: `${left.metrics.imageCount.toLocaleString()}개`,
       rightValue: `${right.metrics.imageCount.toLocaleString()}개`,
+      leftDetail: '이미지는 정보량과 전환 보조 신호입니다. 단순 개수보다 시술 결과, 공간, 상담 장면의 균형이 중요합니다.',
+      rightDetail: '이미지는 정보량과 전환 보조 신호입니다. 단순 개수보다 시술 결과, 공간, 상담 장면의 균형이 중요합니다.',
       winner: toWinner(left.metrics.imageCount, right.metrics.imageCount),
     },
     {
@@ -832,13 +852,34 @@ function createMetricComparisonRows(
       rightScore: right.bookingProducts.length,
       leftValue: `${left.bookingProducts.length}개`,
       rightValue: `${right.bookingProducts.length}개`,
+      leftDetail: '예약상품은 AI가 서비스 구조를 이해하는 핵심 데이터입니다. 상품명, 설명, 가격, 소요시간, 주의사항을 함께 봅니다.',
+      rightDetail: '예약상품은 AI가 서비스 구조를 이해하는 핵심 데이터입니다. 상품명, 설명, 가격, 소요시간, 주의사항을 함께 봅니다.',
       winner: toWinner(left.bookingProducts.length, right.bookingProducts.length),
     },
   ] satisfies ComparisonRowModel[]
 }
 
+function createDiagnosisDataNotice(
+  leftResult: AiPlaceDiagnosisResponse,
+  rightResult: AiPlaceDiagnosisResponse,
+) {
+  const defaultProfilePlaces = [leftResult, rightResult]
+    .filter((result) => result.benchmark.profile.status !== 'ACTIVE')
+    .map((result) => result.target.name)
+
+  if (!defaultProfilePlaces.length) {
+    return ''
+  }
+
+  return `${defaultProfilePlaces.join(', ')}은 현재 키워드의 활성 AI 진단 기준 데이터가 부족해 기본 진단 기준과 이번 진단에서 새로 수집한 데이터를 함께 사용했습니다. 이번 결과는 이후 기준 보강 데이터로 누적됩니다.`
+}
+
 function reverseRankScore(rank: number) {
   return Math.max(0, 301 - rank)
+}
+
+function formatRankLabel(rank: number) {
+  return rank > 300 ? '300위 밖' : `${rank}위`
 }
 
 function toWinner(leftScore: number, rightScore: number): ComparisonRowModel['winner'] {
@@ -855,55 +896,6 @@ function getWinnerBadgeClassName(winner: ComparisonRowModel['winner']) {
   }
 
   return 'rounded-md border border-cyan-200/25 bg-cyan-300/12 px-2 py-1 text-[11px] font-black text-cyan-100'
-}
-
-function readRecentPlaceSearches() {
-  if (typeof window === 'undefined') {
-    return []
-  }
-
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(recentComparisonPlaceSearchStorageKey) ?? '[]')
-
-    return Array.isArray(parsed)
-      ? parsed.filter((keyword): keyword is string => typeof keyword === 'string').slice(0, maxRecentPlaceSearches)
-      : []
-  } catch {
-    return []
-  }
-}
-
-function saveRecentPlaceSearch(query: string) {
-  if (typeof window === 'undefined') {
-    return []
-  }
-
-  const trimmedQuery = query.trim()
-
-  if (!trimmedQuery) {
-    return readRecentPlaceSearches()
-  }
-
-  const nextQueries = [
-    trimmedQuery,
-    ...readRecentPlaceSearches().filter((recentQuery) => recentQuery !== trimmedQuery),
-  ].slice(0, maxRecentPlaceSearches)
-
-  window.localStorage.setItem(recentComparisonPlaceSearchStorageKey, JSON.stringify(nextQueries))
-
-  return nextQueries
-}
-
-function deleteRecentPlaceSearch(query: string) {
-  if (typeof window === 'undefined') {
-    return []
-  }
-
-  const nextQueries = readRecentPlaceSearches().filter((recentQuery) => recentQuery !== query)
-
-  window.localStorage.setItem(recentComparisonPlaceSearchStorageKey, JSON.stringify(nextQueries))
-
-  return nextQueries
 }
 
 function createRetryNotice(error: unknown) {

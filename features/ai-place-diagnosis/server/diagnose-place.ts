@@ -7,6 +7,7 @@ import type {
   AiPlaceDiagnosisDataSource,
   AiPlaceDiagnosisMetrics,
   AiPlaceDiagnosisPlaceProfile,
+  AiPlaceDiagnosisPlaceSearchItem,
   AiPlaceDiagnosisRequest,
   AiPlaceDiagnosisResponse,
   AiPlaceDiagnosisScore,
@@ -96,7 +97,12 @@ export async function diagnoseAiPlace(
   const placeId = resolveRequestedPlaceId(request)
   const keywordRow = await upsertAiPlaceKeyword(keyword)
   const rankings = await collectNaverPlaceRankings({ keyword, limit: rankingLimit })
-  const targetPlace = rankings.items.find((item) => item.id === placeId)
+  const targetPlace =
+    rankings.items.find((item) => item.id === placeId) ??
+    createFallbackTargetPlace({
+      fallbackPlace: request.fallbackPlace,
+      placeId,
+    })
 
   if (!targetPlace) {
     throw new Error('해당 플레이스를 키워드 상위 300개 결과에서 찾지 못했습니다.')
@@ -148,6 +154,61 @@ export async function diagnoseAiPlace(
   diagnosisSingleFlights.set(cacheKey, diagnosisPromise)
 
   return diagnosisPromise
+}
+
+function createFallbackTargetPlace({
+  fallbackPlace,
+  placeId,
+}: {
+  fallbackPlace?: AiPlaceDiagnosisPlaceSearchItem
+  placeId: string
+}): PlaceRankingItem | null {
+  if (!fallbackPlace || fallbackPlace.id !== placeId) {
+    return null
+  }
+
+  return {
+    id: fallbackPlace.id,
+    name: fallbackPlace.name,
+    category: fallbackPlace.category,
+    rank: rankingLimit + 1,
+    displayRank: rankingLimit + 1,
+    rawText: fallbackPlace.name,
+    ad: {
+      isAd: false,
+    },
+    location: {
+      address: fallbackPlace.address,
+      commonAddress: fallbackPlace.address,
+      fullAddress: fallbackPlace.address,
+      latitude: 0,
+      longitude: 0,
+    },
+    businessHours: {},
+    images: {
+      imageCount: fallbackPlace.imageUrl ? 1 : 0,
+      imageUrls: fallbackPlace.imageUrl ? [fallbackPlace.imageUrl] : [],
+      mainImageUrl: fallbackPlace.imageUrl,
+    },
+    actions: {
+      hasBooking: false,
+    },
+    benefits: {
+      couponCount: 0,
+      coupons: [],
+      hasCoupon: false,
+    },
+    options: [],
+    reviews: {
+      blogCafeReviewCount: 0,
+      bookingReviewCount: 0,
+      images: [],
+      snippets: [],
+      totalReviewCount: 0,
+    },
+    badges: [],
+    hashtags: [],
+  }
 }
 
 function resolveRequestedPlaceId(request: AiPlaceDiagnosisRequest) {
