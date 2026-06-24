@@ -3049,7 +3049,7 @@ function BookingPredictionModal({
       onClick={onClose}
     >
       <section
-        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.58)]"
+        className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.58)] xl:max-w-7xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
@@ -3074,7 +3074,7 @@ function BookingPredictionModal({
         </div>
 
         <div
-          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch] sm:px-5"
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch] sm:px-5 lg:px-6"
           data-aiva-scroll-lock-allow="true"
         >
           {isLoading ? (
@@ -3111,14 +3111,14 @@ function BookingPredictionModal({
                 ) : null}
               </section>
 
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <ForecastDecisionCard outlook={prediction.todayOutlook} featured />
                 <ForecastDecisionCard outlook={prediction.weekOutlook} />
                 <ForecastDecisionCard outlook={prediction.nextWeekOutlook} />
                 <StatusInsightCard insight={prediction.statusInsight} />
               </div>
 
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+              <div className="grid gap-3">
                 <PredictionWindowList
                   title="예약 집중 예상 시간"
                   tone="busy"
@@ -3131,8 +3131,10 @@ function BookingPredictionModal({
                 />
               </div>
 
-              <PredictionBulletSection title="운영 추천" items={prediction.recommendedActions} />
-              <PredictionBulletSection title="판단 근거" items={prediction.basis} />
+              {prediction.recommendedActions.length ? (
+                <PredictionBulletSection title="운영 추천" items={prediction.recommendedActions} />
+              ) : null}
+              <PredictionBulletSection title="판단 근거" items={prediction.basis} collapsible />
             </div>
           ) : null}
         </div>
@@ -3158,7 +3160,7 @@ function BookingPredictionSkeleton() {
         </div>
       </section>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {['오늘 예약 전망', '이번 주 전망', '다음 주 전망', '평소 대비 상태'].map((label, index) => (
           <div
             key={label}
@@ -3179,13 +3181,13 @@ function BookingPredictionSkeleton() {
         ))}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      <div className="grid gap-3">
         <PredictionWindowSkeleton title="예약 집중 예상 시간" tone="busy" />
         <PredictionWindowSkeleton title="개인 업무 추천 시간" tone="quiet" />
       </div>
 
       <PredictionBulletSkeleton title="운영 추천" rows={3} />
-      <PredictionBulletSkeleton title="판단 근거" rows={4} />
+      <PredictionBulletSkeleton title="판단 근거" rows={3} />
     </div>
   )
 }
@@ -3213,7 +3215,7 @@ function PredictionWindowSkeleton({
         {title}
       </p>
       <SkeletonLine className="mt-2 h-3 w-10/12" />
-      <div className="mt-3 grid gap-2">
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {[0, 1, 2].map((item) => (
           <div key={item} className="rounded-md border border-white/10 bg-white/[0.045] p-3">
             <div className="flex items-center justify-between gap-3">
@@ -3335,6 +3337,12 @@ function PredictionWindowList({
   tone: 'busy' | 'quiet'
   windows: PlaceBookingPredictionResponse['busyWindows']
 }) {
+  const visibleWindows = windows.slice(0, 3)
+  const cardGridClass =
+    visibleWindows.length <= 1
+      ? 'grid gap-2'
+      : 'grid gap-2 md:grid-cols-2 xl:grid-cols-3'
+
   return (
     <section
       className={`rounded-md border p-4 ${
@@ -3352,23 +3360,20 @@ function PredictionWindowList({
       </p>
       <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-500">
         {tone === 'busy'
-          ? '예약 유입 가능성이 높아 대기와 응대가 필요한 시간입니다.'
-          : '예약 가능성이 낮아 개인 업무나 정리 시간을 잡기 좋은 후보입니다.'}
+          ? '예약 대기와 상담 응대가 필요한 시간만 정리했습니다.'
+          : '개인 업무나 정리 시간을 잡기 좋은 후보만 정리했습니다.'}
       </p>
-      {windows.length ? (
-        <div className="mt-3 grid gap-2">
-          {windows.slice(0, 3).map((window, index) => (
+      {visibleWindows.length ? (
+        <div className={`mt-3 ${cardGridClass}`}>
+          {visibleWindows.map((window, index) => (
             <div
               key={`${title}-${window.timeRange}-${window.reason}`}
               className="rounded-md border border-white/10 bg-white/[0.045] p-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-base font-black text-white">
-                  {index + 1}위 · {window.timeRange}
+                  추천 {index + 1} · {window.timeRange}
                 </p>
-                <span className="rounded-full bg-white/[0.08] px-2 py-1 text-[11px] font-black text-slate-300">
-                  신뢰 {window.confidence}%
-                </span>
               </div>
               <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-400">
                 {window.reason}
@@ -3388,7 +3393,38 @@ function PredictionWindowList({
   )
 }
 
-function PredictionBulletSection({ items, title }: { items: string[]; title: string }) {
+function PredictionBulletSection({
+  collapsible = false,
+  items,
+  title,
+}: {
+  collapsible?: boolean
+  items: string[]
+  title: string
+}) {
+  if (collapsible) {
+    return (
+      <details className="group rounded-md border border-white/10 bg-white/[0.035] p-4">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-white transition hover:text-cyan-100">
+          <span>{title}</span>
+          <span className="text-xs font-black text-slate-500">
+            열기
+          </span>
+        </summary>
+        <ul className="mt-3 grid gap-2">
+          {items.map((item) => (
+            <li
+              key={`${title}-${item}`}
+              className="break-keep rounded-md bg-white/[0.04] p-3 text-xs font-semibold leading-5 text-slate-300"
+            >
+              {item}
+            </li>
+          ))}
+        </ul>
+      </details>
+    )
+  }
+
   return (
     <section className="rounded-md border border-white/10 bg-white/[0.035] p-4">
       <p className="text-sm font-black text-white">{title}</p>

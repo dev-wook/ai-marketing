@@ -168,6 +168,7 @@ function createPredictionPrompt({
 목표:
 - 사용자가 "오늘 더 예약이 들어올지", "언제 대기해야 할지", "언제 개인 업무를 봐도 될지", "이번 주/다음 주가 바쁜지"를 바로 판단하게 한다.
 - 점수 자체를 설명하지 말고 운영 판단과 추천 행동을 말한다.
+- 같은 분석 기준을 반복 설명하지 말고 결과와 행동 중심으로 짧게 말한다.
 
 예측 기준:
 - 4~5주 재방문 주기: 대상일 기준 26~37일 전 예약 시간대가 이번 주 수요로 이어질 가능성을 본다.
@@ -181,6 +182,8 @@ function createPredictionPrompt({
 - 고객명이나 개인 식별 정보는 없으므로 개인별 확정 예측처럼 말하지 않는다.
 - demandIndex, confidence 같은 숫자는 내부 계산값이므로 summary, basis, recommendedActions에서 직접 강조하지 않는다.
 - busyWindows.reason과 quietWindows.reason에는 "점수"라는 표현을 쓰지 말고 예약 유입 가능성, 재방문 신호, 운영 여유를 설명한다.
+- basis에는 표본 수, 계산 방식보다 "평소보다 증가/감소", "가능 슬롯 부족", "재방문 예상군 증가"처럼 사용자가 이해할 수 있는 근거만 넣는다.
+- recommendedActions는 특별한 판단 가치가 있을 때만 2~4개로 제한한다.
 
 응답 스키마:
 {
@@ -325,6 +328,21 @@ function createFallbackPrediction({
     todayOutlook,
     weekOutlook,
   })
+  const recommendedActions = createRecommendedActions({
+    busyWindows,
+    quietWindows,
+    statusInsight,
+    todayOutlook,
+    weekOutlook,
+  })
+  const basis = createReadableBasis({
+    currentAvailableSlots,
+    currentBookedSlots,
+    nextWeekOutlook,
+    statusInsight,
+    todayOutlook,
+    weekOutlook,
+  })
 
   return {
     targetDate,
@@ -349,19 +367,8 @@ function createFallbackPrediction({
           : '오늘은 강한 추가 예약 신호가 제한적이어서 개인 업무 시간을 확보해도 무리가 적어 보입니다.',
     busyWindows,
     quietWindows,
-    recommendedActions: [
-      todayOutlook.recommendation,
-      weekOutlook.recommendation,
-      nextWeekOutlook.recommendation,
-      statusInsight.headline,
-    ],
-    basis: [
-      `최근 3개월 ${weekdayLabel}요일 표본 ${patternSampledDateCount}일을 확인했습니다.`,
-      `4~5주 전 주기 표본 ${cycleSampledDateCount}일을 함께 반영했습니다.`,
-      `평소 같은 요일 대비 ${todayOutlook.comparisonText} 흐름으로 해석했습니다.`,
-      `4~5주 전 재방문 주기 기준 다음 주는 ${nextWeekOutlook.comparisonText}로 판단했습니다.`,
-      `현재 선택일 예약됨 ${currentBookedSlots}개, 가능 ${currentAvailableSlots}개를 반영했습니다.`,
-    ],
+    recommendedActions,
+    basis,
     data: {
       currentBookedSlots,
       currentAvailableSlots,
@@ -456,17 +463,15 @@ function createBusyWindowReason(
     (patternBucket?.bookingRelatedBlockedCount ?? 0) +
     (cycleBucket?.bookingRelatedBlockedCount ?? 0)
 
-  return [
-    `최근 같은 요일에서 ${time} 전후 예약 유입이 다른 시간대보다 높게 나타났습니다.`,
-    cycleDemandScore > 0
-      ? '4~5주 재방문 주기에서도 같은 시간대 선호가 함께 확인됩니다.'
-      : '',
-    blockedCount > 0
-      ? `실제 예약 주변에 막힌 슬롯 ${blockedCount}건이 있어 예약 연동 차단 가능성을 일부 반영했습니다.`
-      : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
+  if (blockedCount > 0) {
+    return '예약이 몰리거나 시술로 인해 막힐 가능성이 높은 시간대입니다.'
+  }
+
+  if (cycleDemandScore > 0 && patternDemandScore > 0) {
+    return '예약 문의가 들어올 가능성이 높은 시간대입니다.'
+  }
+
+  return '예약 유입 가능성이 높은 시간대입니다.'
 }
 
 function createQuietWindowReason(
@@ -478,17 +483,15 @@ function createQuietWindowReason(
   const cycleDemandScore = cycleBucket ? getBucketDemandScore(cycleBucket) : 0
   const availableCount = patternBucket?.availableCount ?? 0
 
-  return [
-    `최근 같은 요일에서 ${time} 전후 예약 유입 빈도가 다른 시간대보다 낮습니다.`,
-    cycleDemandScore > 0
-      ? '4~5주 재방문 주기 신호도 집중 시간대보다 약합니다.'
-      : '4~5주 재방문 주기에서도 뚜렷한 예약 신호가 제한적입니다.',
-    availableCount > 0
-      ? `최근 표본에서 예약 가능한 슬롯이 남아 있었던 비율이 있어 개인 업무 후보로 봅니다.`
-      : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
+  if (availableCount > 0 && patternDemandScore === 0 && cycleDemandScore === 0) {
+    return '비교적 여유로운 시간대로 예상됩니다.'
+  }
+
+  if (cycleDemandScore > 0) {
+    return '집중 시간대보다 예약 가능성이 낮은 후보 시간입니다.'
+  }
+
+  return '개인 업무나 정리 시간을 잡기 좋은 시간대입니다.'
 }
 
 function createTodayOutlook({
@@ -621,6 +624,67 @@ function createStatusInsight({
     headline: '최근 평균과 비슷한 예약 흐름입니다.',
     reason: '일부 시간대 신호는 있으나 전체 흐름은 평소 수준에서 크게 벗어나지 않습니다.',
   }
+}
+
+function createRecommendedActions({
+  busyWindows,
+  quietWindows,
+  statusInsight,
+  todayOutlook,
+  weekOutlook,
+}: {
+  busyWindows: PlaceBookingPredictionWindow[]
+  quietWindows: PlaceBookingPredictionWindow[]
+  statusInsight: PlaceBookingPredictionResponse['statusInsight']
+  todayOutlook: PlaceBookingPredictionResponse['todayOutlook']
+  weekOutlook: PlaceBookingPredictionResponse['weekOutlook']
+}) {
+  const actions = [
+    todayOutlook.status === 'BUSY'
+      ? '오늘은 예약 문의 대응 시간을 남겨두는 편이 좋습니다.'
+      : null,
+    weekOutlook.status === 'BUSY'
+      ? '이번 주 예약 흐름은 평소보다 강한 편입니다.'
+      : weekOutlook.status === 'QUIET'
+        ? '이번 주는 비교적 여유로운 운영이 예상됩니다.'
+        : null,
+    busyWindows[0] ? `${busyWindows[0].timeRange} 전후는 예약 대기 시간을 확보하세요.` : null,
+    quietWindows[0] ? `${quietWindows[0].timeRange} 전후는 개인 업무나 콘텐츠 정리에 적합합니다.` : null,
+    statusInsight.status !== 'NORMAL' ? statusInsight.headline : null,
+  ].filter((item): item is string => Boolean(item))
+
+  return actions.length ? Array.from(new Set(actions)).slice(0, 4) : []
+}
+
+function createReadableBasis({
+  currentAvailableSlots,
+  currentBookedSlots,
+  nextWeekOutlook,
+  statusInsight,
+  todayOutlook,
+  weekOutlook,
+}: {
+  currentAvailableSlots: number
+  currentBookedSlots: number
+  nextWeekOutlook: PlaceBookingPredictionResponse['nextWeekOutlook']
+  statusInsight: PlaceBookingPredictionResponse['statusInsight']
+  todayOutlook: PlaceBookingPredictionResponse['todayOutlook']
+  weekOutlook: PlaceBookingPredictionResponse['weekOutlook']
+}) {
+  const basis = [
+    `${todayOutlook.label}은 ${todayOutlook.comparisonText} 흐름입니다.`,
+    `${weekOutlook.label}은 ${weekOutlook.comparisonText} 수준으로 보입니다.`,
+    `${nextWeekOutlook.label}은 ${nextWeekOutlook.comparisonText} 흐름입니다.`,
+    currentBookedSlots > 0 && currentAvailableSlots === 0
+      ? '현재 예약 가능 슬롯이 대부분 소진된 상태입니다.'
+      : null,
+    currentAvailableSlots > currentBookedSlots
+      ? '아직 운영 여유로 볼 수 있는 예약 가능 시간이 남아 있습니다.'
+      : null,
+    statusInsight.reason,
+  ].filter((item): item is string => Boolean(item))
+
+  return Array.from(new Set(basis)).slice(0, 5)
 }
 
 function getBucketDemandScore(bucket: {
