@@ -342,7 +342,6 @@ export function AiDiagnosisDataManager({
       })
     } finally {
       setIsRefreshLoading(false)
-      setRefreshTarget(null)
     }
   }
 
@@ -623,7 +622,11 @@ export function AiDiagnosisDataManager({
           isLoading={isRefreshLoading}
           target={refreshTarget}
           onCancel={() => setRefreshTarget(null)}
-          onConfirm={() => runRefresh(refreshTarget)}
+          onConfirm={() => {
+            const target = refreshTarget
+            setRefreshTarget(null)
+            void runRefresh(target)
+          }}
         />
       ) : null}
     </>

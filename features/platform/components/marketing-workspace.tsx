@@ -12,10 +12,9 @@ import type { PlaceRankingBatchKeyword } from '@/features/place-ranking/types'
 import { PlaceTrackingDashboard } from '@/features/place-tracking/components/place-tracking-dashboard'
 import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
-import { MenuButton } from './menu-button'
 import { useBodyScrollLock } from './use-body-scroll-lock'
 
-type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'diagnosis' | 'competitor' | 'tracking'
+type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'diagnosis' | 'competitor' | 'tracking' | 'my'
 type AiDiagnosisDataRefreshStatus = {
   checkedAt: string
   hasUpdatingKeyword: boolean
@@ -54,6 +53,7 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   diagnosis: 'AI 플레이스 진단',
   competitor: 'AI 플레이스 경쟁사 비교',
   tracking: '플레이스 관리',
+  my: '마이',
 }
 
 type MobileNavItem = {
@@ -71,6 +71,7 @@ type MobileNavIcon =
   | 'compare'
   | 'keyword'
   | 'blog'
+  | 'my'
 
 const mobileNavigationItems: MobileNavItem[] = [
   {
@@ -104,16 +105,10 @@ const mobileNavigationItems: MobileNavItem[] = [
     icon: 'compare',
   },
   {
-    key: 'keyword',
-    label: '키워드 분석',
-    shortLabel: '키워드',
-    icon: 'keyword',
-  },
-  {
-    key: 'blog',
-    label: '블로그 원고 작성',
-    shortLabel: '블로그',
-    icon: 'blog',
+    key: 'my',
+    label: '마이',
+    shortLabel: '마이',
+    icon: 'my',
   },
 ]
 
@@ -122,7 +117,6 @@ export function MarketingWorkspace() {
   const [blogInitialKeyword, setBlogInitialKeyword] = useState('')
   const [blogInitialKeywordKey, setBlogInitialKeywordKey] = useState(0)
   const [blogAutoAnalyzeKey, setBlogAutoAnalyzeKey] = useState(0)
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [isSessionChecking, setIsSessionChecking] = useState(true)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -153,7 +147,6 @@ export function MarketingWorkspace() {
 
   const openView = (nextView: ViewKey) => {
     setView(nextView)
-    setIsMenuOpen(false)
   }
 
   const openViewFromNavigation = (nextView: ViewKey) => {
@@ -300,7 +293,7 @@ export function MarketingWorkspace() {
     }
   }
 
-  useBodyScrollLock(isWorkStatusOpen || isMenuOpen || isAiDiagnosisDataManagerOpen)
+  useBodyScrollLock(isWorkStatusOpen || isAiDiagnosisDataManagerOpen)
 
   const isHomeView = view === 'home'
   const backgroundWorkJobs = createBackgroundWorkJobCards({
@@ -362,7 +355,7 @@ export function MarketingWorkspace() {
             className={`fixed inset-x-0 top-0 z-50 min-h-[72px] items-center border-b border-white/10 bg-[#070a12]/92 px-5 py-3 shadow-[0_14px_34px_rgba(0,0,0,0.2)] backdrop-blur-xl md:relative md:inset-auto md:z-20 md:min-h-0 md:border-b-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-0 ${
               isHomeView
                 ? 'flex justify-between'
-                : 'grid grid-cols-[44px_minmax(0,1fr)_140px] gap-3'
+                : 'grid grid-cols-[44px_minmax(0,1fr)_94px] gap-3 md:grid-cols-[44px_minmax(0,1fr)_140px]'
             }`}
           >
             {isHomeView ? (
@@ -452,16 +445,11 @@ export function MarketingWorkspace() {
               </button>
               <button
                 type="button"
-                onClick={() => setIsMenuOpen((current) => !current)}
-                aria-label="메뉴 열기"
-                aria-expanded={isMenuOpen}
-                className="grid h-11 w-11 place-items-center rounded-md border border-white/10 bg-white/[0.05] transition hover:border-cyan-300/50 hover:bg-white/[0.08]"
+                onClick={() => openView('my')}
+                aria-label="마이 화면 열기"
+                className="relative hidden h-11 w-11 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-slate-100 transition hover:border-cyan-300/50 hover:bg-white/[0.08] focus:outline-none focus:ring-4 focus:ring-cyan-300/15 md:grid"
               >
-                <span className="grid gap-1.5">
-                  <span className="block h-0.5 w-5 rounded-full bg-white" />
-                  <span className="block h-0.5 w-5 rounded-full bg-white" />
-                  <span className="block h-0.5 w-5 rounded-full bg-white" />
-                </span>
+                <MobileNavIconRenderer icon="my" />
               </button>
             </div>
           </header>
@@ -498,21 +486,6 @@ export function MarketingWorkspace() {
             onClose={() => setIsAiDiagnosisDataManagerOpen(false)}
           />
 
-          <SideMenu
-            activeView={view}
-            isLoggingOut={isLoggingOut}
-            isOpen={isMenuOpen}
-            onClose={() => setIsMenuOpen(false)}
-            onLogout={handleLogout}
-            onOpenBlogPosting={() => openView('blog')}
-            onOpenKeyword={() => openView('keyword')}
-            onOpenPlaceCompetitor={() => openView('competitor')}
-            onOpenPlaceDiagnosis={() => openView('diagnosis')}
-            onOpenPlaceRanking={() => openView('place')}
-            onOpenPlaceTracking={openPlaceTrackingManager}
-            user={authUser}
-          />
-
           <section
             className="min-w-0 flex-1 pt-[96px] pb-[calc(102px+env(safe-area-inset-bottom))] lg:py-8 md:pt-6 md:pb-6"
           >
@@ -541,6 +514,14 @@ export function MarketingWorkspace() {
             {view === 'diagnosis' ? <AiPlaceDiagnosisTool /> : null}
             {view === 'competitor' ? <AiPlaceCompetitorComparisonTool /> : null}
             {view === 'tracking' ? <PlaceTrackingDashboard mode="manager" /> : null}
+            {view === 'my' ? (
+              <MyView
+                isLoggingOut={isLoggingOut}
+                onLogout={handleLogout}
+                onOpenScheduling={() => setIsAiDiagnosisDataManagerOpen(true)}
+                user={authUser}
+              />
+            ) : null}
           </section>
 
           <MobileBottomNavigation
@@ -594,7 +575,7 @@ function MobileBottomNavigationButton({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       aria-label={item.label}
-      className={`grid min-h-[58px] min-w-[52px] flex-1 place-items-center rounded-[18px] px-1 py-1.5 text-center transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/18 ${
+      className={`grid min-h-[58px] min-w-[46px] flex-1 place-items-center rounded-[18px] px-0.5 py-1.5 text-center transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/18 ${
         active
           ? 'bg-cyan-200/14 text-cyan-100 shadow-[0_0_22px_rgba(103,232,249,0.13)]'
           : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
@@ -689,6 +670,15 @@ function MobileNavIconRenderer({ icon }: { icon: MobileNavIcon }) {
     )
   }
 
+  if (icon === 'my') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <circle cx="12" cy="8" r="3.2" />
+        <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+      </svg>
+    )
+  }
+
   return (
     <svg {...commonProps} aria-hidden="true">
       <path d="M6 4.5h10.5A1.5 1.5 0 0 1 18 6v14H7.5A1.5 1.5 0 0 1 6 18.5z" />
@@ -696,6 +686,71 @@ function MobileNavIconRenderer({ icon }: { icon: MobileNavIcon }) {
       <path d="M9 12h6" />
       <path d="M9 16h4" />
     </svg>
+  )
+}
+
+function MyView({
+  isLoggingOut,
+  onLogout,
+  onOpenScheduling,
+  user,
+}: {
+  isLoggingOut: boolean
+  onLogout: () => void
+  onOpenScheduling: () => void
+  user: AuthUser | null
+}) {
+  return (
+    <div className="mx-auto grid w-full max-w-4xl gap-5">
+      <section className="rounded-md border border-cyan-300/20 bg-[#0b1727]/82 p-5 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:p-6">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
+          My
+        </p>
+        <h1 className="mt-2 text-2xl font-black text-white md:text-3xl">마이</h1>
+        <p className="mt-2 break-keep text-sm font-semibold leading-7 text-slate-300">
+          계정 정보와 운영 관리 기능을 확인합니다.
+        </p>
+
+        <div className="mt-5 flex items-center gap-4 rounded-md border border-white/10 bg-white/[0.05] p-4">
+          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-cyan-300/25 bg-cyan-300/12 text-lg font-black text-cyan-100">
+            {(user?.nickname || user?.username || 'A').slice(0, 1).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-lg font-black text-white">
+              {user ? user.nickname : '관리자'}
+            </p>
+            <p className="mt-1 truncate text-sm font-bold text-slate-400">
+              {user ? user.username : '로그인 사용자'}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-3 rounded-md border border-white/10 bg-[#0b1220]/88 p-4 md:p-5">
+        <button
+          type="button"
+          onClick={onOpenScheduling}
+          className="flex min-h-14 items-center justify-between gap-4 rounded-md border border-white/10 bg-white/[0.04] px-4 text-left transition hover:border-cyan-300/35 hover:bg-cyan-300/10"
+        >
+          <span>
+            <span className="block text-base font-black text-white">스케줄링 관리</span>
+            <span className="mt-1 block text-xs font-bold text-slate-400">
+              순위 자동 기록과 AI 진단 데이터 수집을 관리합니다.
+            </span>
+          </span>
+          <span className="text-xl font-black text-cyan-100">›</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          disabled={isLoggingOut}
+          className="flex min-h-14 items-center justify-center rounded-md border border-rose-300/20 bg-rose-400/10 px-4 text-sm font-black text-rose-100 transition hover:border-rose-200/40 hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isLoggingOut ? '로그아웃 중' : '로그아웃'}
+        </button>
+      </section>
+    </div>
   )
 }
 
@@ -1427,122 +1482,4 @@ function formatDateTime(value: string) {
   } catch {
     return date.toLocaleString('ko-KR')
   }
-}
-
-function SideMenu({
-  activeView,
-  isLoggingOut,
-  isOpen,
-  onClose,
-  onLogout,
-  onOpenBlogPosting,
-  onOpenKeyword,
-  onOpenPlaceCompetitor,
-  onOpenPlaceDiagnosis,
-  onOpenPlaceRanking,
-  onOpenPlaceTracking,
-  user,
-}: {
-  activeView: ViewKey
-  isLoggingOut: boolean
-  isOpen: boolean
-  onClose: () => void
-  onLogout: () => void
-  onOpenBlogPosting: () => void
-  onOpenKeyword: () => void
-  onOpenPlaceCompetitor: () => void
-  onOpenPlaceDiagnosis: () => void
-  onOpenPlaceRanking: () => void
-  onOpenPlaceTracking: () => void
-  user: AuthUser | null
-}) {
-  return (
-    <div
-      className={`fixed inset-0 z-[80] overflow-hidden overscroll-none transition-opacity duration-200 ${
-        isOpen ? 'pointer-events-auto' : 'pointer-events-none'
-      }`}
-      aria-hidden={!isOpen}
-    >
-      <button
-        type="button"
-        aria-label="메뉴 닫기"
-        onClick={onClose}
-        className={`absolute inset-0 bg-black/55 transition-opacity duration-200 ease-out ${
-          isOpen ? 'opacity-100' : 'opacity-0'
-        }`}
-      />
-      <aside
-        className={`absolute right-0 top-0 flex h-[100dvh] w-[min(88vw,380px)] transform-gpu flex-col overflow-hidden overscroll-contain border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
-      >
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
-              Account
-            </p>
-            <p className="mt-2 truncate text-lg font-black text-white">
-              {user ? `${user.nickname}(${user.username})` : '관리자'}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-xl font-black text-slate-200 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
-            aria-label="메뉴 닫기"
-          >
-            ×
-          </button>
-        </div>
-
-        <nav
-          className="grid min-h-0 gap-3 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]"
-          data-aiva-scroll-lock-allow="true"
-        >
-          <MenuButton
-            active={activeView === 'tracking'}
-            label="플레이스 관리"
-            onClick={onOpenPlaceTracking}
-          />
-          <MenuButton
-            active={activeView === 'place'}
-            label="플레이스 순위 조회"
-            onClick={onOpenPlaceRanking}
-          />
-          <MenuButton
-            active={activeView === 'diagnosis'}
-            label="AI 플레이스 진단"
-            onClick={onOpenPlaceDiagnosis}
-          />
-          <MenuButton
-            active={activeView === 'competitor'}
-            label="AI 플레이스 경쟁사 비교"
-            onClick={onOpenPlaceCompetitor}
-          />
-          <MenuButton
-            active={activeView === 'keyword'}
-            label="AI 키워드 분석"
-            onClick={onOpenKeyword}
-          />
-          <MenuButton
-            active={activeView === 'blog'}
-            label="AI 블로그 원고 작성"
-            onClick={onOpenBlogPosting}
-          />
-          <MenuButton label="AI 모델 이미지 생성" disabled />
-        </nav>
-
-        <div className="mt-auto border-t border-white/10 p-5">
-          <button
-            type="button"
-            onClick={onLogout}
-            disabled={isLoggingOut}
-            className="ml-auto flex h-11 items-center justify-center rounded-md border border-rose-300/20 bg-rose-400/10 px-4 text-sm font-black text-rose-100 transition hover:border-rose-200/40 hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isLoggingOut ? '로그아웃 중' : '로그아웃'}
-          </button>
-        </div>
-      </aside>
-    </div>
-  )
 }
