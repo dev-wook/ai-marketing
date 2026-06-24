@@ -67,6 +67,31 @@ export function ToolLoadingPanel({
   )
 }
 
+type ToolSimpleLoadingPanelProps = {
+  className?: string
+  message?: string
+}
+
+export function ToolSimpleLoadingPanel({
+  className = '',
+  message = '잠시만 기다려주세요.',
+}: ToolSimpleLoadingPanelProps) {
+  return (
+    <section
+      className={`grid min-h-36 place-items-center rounded-md border border-cyan-300/18 bg-white/[0.035] p-6 text-center ${className}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="grid justify-items-center gap-3">
+        <span className="grid h-12 w-12 place-items-center rounded-full border border-cyan-300/20 bg-cyan-300/[0.08]">
+          <span className="h-6 w-6 animate-spin rounded-full border-2 border-cyan-100/20 border-t-cyan-100" />
+        </span>
+        <p className="break-keep text-sm font-black text-cyan-50">{message}</p>
+      </div>
+    </section>
+  )
+}
+
 type RecentSearchListProps = {
   keywords: string[]
   onRemove: (keyword: string) => void

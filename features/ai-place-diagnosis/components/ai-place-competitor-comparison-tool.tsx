@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ToolLoadingPanel } from '@/features/platform/components/tool-ui'
+import { ToolLoadingPanel, ToolSimpleLoadingPanel } from '@/features/platform/components/tool-ui'
 import type {
   AiPlaceDiagnosisPlaceSearchItem,
   AiPlaceDiagnosisPlaceSearchResponse,
@@ -35,11 +35,6 @@ const initialSelectionState: PlaceSelectionState = {
   errorMessage: '',
 }
 
-const placeSearchLoadingSteps = [
-  '네이버 플레이스에서 후보 매장을 찾고 있습니다.',
-  '대표 이미지와 주소 정보를 정리하고 있습니다.',
-  '비교할 플레이스 후보를 구성하고 있습니다.',
-]
 const comparisonLoadingSteps = [
   '플레이스 1의 AI 진단 데이터를 수집하고 있습니다.',
   '플레이스 2의 AI 진단 데이터를 수집하고 있습니다.',
@@ -111,7 +106,6 @@ export function AiPlaceCompetitorComparisonTool() {
   const [rightResult, setRightResult] = useState<AiPlaceDiagnosisResponse | null>(null)
   const [isComparing, setIsComparing] = useState(false)
   const [loadingStep, setLoadingStep] = useState(0)
-  const [searchLoadingStep, setSearchLoadingStep] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
   const [errorRetryNotice, setErrorRetryNotice] = useState('')
 
@@ -149,10 +143,6 @@ export function AiPlaceCompetitorComparisonTool() {
     setLeftResult(null)
     setRightResult(null)
 
-    const timer = window.setInterval(() => {
-      setSearchLoadingStep((current) => (current + 1) % placeSearchLoadingSteps.length)
-    }, 1200)
-
     try {
       const response = await requestPlaceSearch(trimmedQuery)
 
@@ -168,9 +158,6 @@ export function AiPlaceCompetitorComparisonTool() {
         errorMessage: error instanceof Error ? error.message : '플레이스 검색에 실패했습니다.',
         isSearching: false,
       }))
-    } finally {
-      window.clearInterval(timer)
-      setSearchLoadingStep(0)
     }
   }
 
@@ -272,13 +259,7 @@ export function AiPlaceCompetitorComparisonTool() {
         </div>
 
         {isSearching ? (
-          <ToolLoadingPanel
-            eyebrow="Searching"
-            step={searchLoadingStep}
-            steps={placeSearchLoadingSteps}
-            subtitle="비교할 네이버 플레이스 후보를 찾고 있습니다."
-            title="플레이스를 검색하는 중입니다"
-          />
+          <ToolSimpleLoadingPanel message="플레이스를 검색하고 있습니다..." />
         ) : null}
 
         <form

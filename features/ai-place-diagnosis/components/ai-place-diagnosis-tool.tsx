@@ -2,7 +2,11 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { RecentSearchList, ToolLoadingPanel } from '@/features/platform/components/tool-ui'
+import {
+  RecentSearchList,
+  ToolLoadingPanel,
+  ToolSimpleLoadingPanel,
+} from '@/features/platform/components/tool-ui'
 import type {
   AiPlaceDiagnosisPlaceSearchItem,
   AiPlaceDiagnosisPlaceSearchResponse,
@@ -21,11 +25,6 @@ const loadingSteps = [
   '소개글과 예약상품 상세 데이터를 자동 보강하고 있습니다.',
   'AIVA 진단 기준에 맞춰 정보 구조를 평가하고 있습니다.',
   'AI 관점의 점수와 개선 피드백을 작성하고 있습니다.',
-]
-const placeSearchLoadingSteps = [
-  '네이버 플레이스에서 상호명을 검색하고 있습니다.',
-  '대표 이미지와 주소 정보를 정리하고 있습니다.',
-  '선택 가능한 플레이스 목록을 구성하고 있습니다.',
 ]
 const recentPlaceSearchStorageKey = 'aiva:recent-ai-place-diagnosis-places'
 const maxRecentPlaceSearches = 5
@@ -97,7 +96,6 @@ export function AiPlaceDiagnosisTool() {
   const [isSearching, setIsSearching] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [loadingStep, setLoadingStep] = useState(0)
-  const [searchLoadingStep, setSearchLoadingStep] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
   const [errorRetryNotice, setErrorRetryNotice] = useState('')
   const [errorLog, setErrorLog] = useState('')
@@ -131,10 +129,6 @@ export function AiPlaceDiagnosisTool() {
     setErrorRetryNotice('')
     setErrorLog('')
 
-    const timer = window.setInterval(() => {
-      setSearchLoadingStep((current) => (current + 1) % placeSearchLoadingSteps.length)
-    }, 1200)
-
     try {
       const response = await requestPlaceSearch(trimmedQuery)
 
@@ -148,8 +142,6 @@ export function AiPlaceDiagnosisTool() {
       setErrorRetryNotice(createRetryNotice(error))
       setErrorLog(JSON.stringify((error as { debug?: unknown }).debug ?? {}, null, 2))
     } finally {
-      window.clearInterval(timer)
-      setSearchLoadingStep(0)
       setIsSearching(false)
     }
   }
@@ -278,13 +270,7 @@ export function AiPlaceDiagnosisTool() {
         ) : null}
 
         {isSearching ? (
-          <ToolLoadingPanel
-            eyebrow="Searching"
-            step={searchLoadingStep}
-            steps={placeSearchLoadingSteps}
-            subtitle="플레이스명과 일치하는 네이버 플레이스 후보를 찾고 있습니다."
-            title="진단할 플레이스를 검색하는 중입니다"
-          />
+          <ToolSimpleLoadingPanel message="플레이스를 검색하고 있습니다..." />
         ) : null}
 
         {selectedPlace ? (

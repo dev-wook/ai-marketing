@@ -24,8 +24,13 @@ function recoverOrphanedScrollLock() {
   document.body.style.touchAction = ''
   document.body.style.position = ''
   document.body.style.top = ''
+  document.body.style.left = ''
+  document.body.style.right = ''
   document.body.style.width = ''
+  document.body.style.height = ''
+  document.documentElement.style.overflow = ''
   document.documentElement.style.overscrollBehavior = ''
+  document.documentElement.style.height = ''
   delete document.body.dataset[scrollLockDatasetKey]
   window.scrollTo(0, restoreY)
 }
@@ -42,8 +47,13 @@ export function useBodyScrollLock(active: boolean) {
     const previousTouchAction = document.body.style.touchAction
     const previousPosition = document.body.style.position
     const previousTop = document.body.style.top
+    const previousLeft = document.body.style.left
+    const previousRight = document.body.style.right
     const previousWidth = document.body.style.width
+    const previousHeight = document.body.style.height
+    const previousDocumentOverflow = document.documentElement.style.overflow
     const previousDocumentOverscrollBehavior = document.documentElement.style.overscrollBehavior
+    const previousDocumentHeight = document.documentElement.style.height
     const scrollY = window.scrollY
     let touchStartY = 0
 
@@ -51,9 +61,14 @@ export function useBodyScrollLock(active: boolean) {
     document.body.style.overscrollBehavior = 'none'
     document.body.style.position = 'fixed'
     document.body.style.top = `-${scrollY}px`
+    document.body.style.left = '0'
+    document.body.style.right = '0'
     document.body.style.width = '100%'
+    document.body.style.height = '100%'
     document.body.style.touchAction = previousTouchAction
+    document.documentElement.style.overflow = 'hidden'
     document.documentElement.style.overscrollBehavior = 'none'
+    document.documentElement.style.height = '100%'
     document.body.dataset[scrollLockDatasetKey] = 'true'
 
     const findAllowedScrollElement = (target: EventTarget | null) => {
@@ -69,6 +84,10 @@ export function useBodyScrollLock(active: boolean) {
     }
 
     const onTouchMove = (event: TouchEvent) => {
+      if (event.touches.length > 1) {
+        return
+      }
+
       const scrollElement = findAllowedScrollElement(event.target)
 
       if (!scrollElement) {
@@ -89,26 +108,47 @@ export function useBodyScrollLock(active: boolean) {
     }
 
     const onWheel = (event: WheelEvent) => {
-      if (!findAllowedScrollElement(event.target)) {
+      const scrollElement = findAllowedScrollElement(event.target)
+
+      if (!scrollElement) {
+        event.preventDefault()
+        return
+      }
+
+      const canScroll = scrollElement.scrollHeight > scrollElement.clientHeight
+      const isAtTop = scrollElement.scrollTop <= 0
+      const isAtBottom =
+        scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 1
+
+      if (
+        !canScroll ||
+        (isAtTop && event.deltaY < 0) ||
+        (isAtBottom && event.deltaY > 0)
+      ) {
         event.preventDefault()
       }
     }
 
-    document.addEventListener('touchstart', onTouchStart, { passive: true })
-    document.addEventListener('touchmove', onTouchMove, { passive: false })
-    document.addEventListener('wheel', onWheel, { passive: false })
+    document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true })
+    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
+    document.addEventListener('wheel', onWheel, { capture: true, passive: false })
 
     return () => {
-      document.removeEventListener('touchstart', onTouchStart)
-      document.removeEventListener('touchmove', onTouchMove)
-      document.removeEventListener('wheel', onWheel)
+      document.removeEventListener('touchstart', onTouchStart, { capture: true })
+      document.removeEventListener('touchmove', onTouchMove, { capture: true })
+      document.removeEventListener('wheel', onWheel, { capture: true })
       document.body.style.overflow = previousOverflow
       document.body.style.overscrollBehavior = previousOverscrollBehavior
       document.body.style.touchAction = previousTouchAction
       document.body.style.position = previousPosition
       document.body.style.top = previousTop
+      document.body.style.left = previousLeft
+      document.body.style.right = previousRight
       document.body.style.width = previousWidth
+      document.body.style.height = previousHeight
+      document.documentElement.style.overflow = previousDocumentOverflow
       document.documentElement.style.overscrollBehavior = previousDocumentOverscrollBehavior
+      document.documentElement.style.height = previousDocumentHeight
       delete document.body.dataset[scrollLockDatasetKey]
       window.scrollTo(0, scrollY)
     }

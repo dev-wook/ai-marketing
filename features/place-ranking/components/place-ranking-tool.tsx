@@ -2694,7 +2694,7 @@ function BookingStatusModal({
         </div>
 
         <div
-          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5"
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch] sm:px-5 sm:py-5"
           data-aiva-scroll-lock-allow="true"
         >
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_19rem] md:items-end">
@@ -3018,7 +3018,7 @@ function BookingPredictionModal({
         </div>
 
         <div
-          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5"
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch] sm:px-5"
           data-aiva-scroll-lock-allow="true"
         >
           {isLoading ? (
@@ -3074,14 +3074,14 @@ function BookingPredictionModal({
                 ) : null}
               </section>
 
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                 <PredictionWindowList
                   title="예약 집중 예상 시간"
                   tone="busy"
                   windows={prediction.busyWindows}
                 />
                 <PredictionWindowList
-                  title="비교적 여유로운 시간"
+                  title="운영 여유 후보 시간"
                   tone="quiet"
                   windows={prediction.quietWindows}
                 />
@@ -3204,6 +3204,11 @@ function PredictionWindowList({
         }`}
       >
         {title}
+      </p>
+      <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-500">
+        {tone === 'busy'
+          ? '실제 예약과 재방문 주기 신호가 상대적으로 높은 시간입니다.'
+          : '다른 시간대보다 수요 점수가 낮아 정비나 내부 업무 후보로 볼 수 있는 시간입니다.'}
       </p>
       {windows.length ? (
         <div className="mt-3 grid gap-2">

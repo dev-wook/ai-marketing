@@ -276,6 +276,10 @@ export type PlaceBookingPatternTimeBucket = {
   bookedCount: number
   availableCount: number
   closedCount: number
+  bookingRelatedBlockedCount: number
+  manualBlockedCount: number
+  offHoursClosedCount: number
+  demandScore: number
   observedCount: number
   intensity: PlaceBookingPatternIntensity
 }
@@ -440,6 +444,13 @@ export type PlaceBookingSlot = {
   bookingCount: number
   unitBookingCount: number
   status: PlaceBookingAvailabilityStatus
+  statusReason: PlaceBookingSlotStatusReason
 }
 
 export type PlaceBookingAvailabilityStatus = 'available' | 'booked' | 'closed'
+export type PlaceBookingSlotStatusReason =
+  | 'available'
+  | 'actual_booking'
+  | 'booking_related_block_estimated'
+  | 'manual_block_or_full'
+  | 'off_hours'

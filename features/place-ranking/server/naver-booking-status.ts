@@ -311,7 +311,14 @@ function mapSlot(slot: RawBookingScheduleSlot): PlaceBookingSlot {
     slot.isUnitBusinessDay !== false &&
     slot.isSaleDay !== false &&
     slot.isUnitSaleDay !== false
-  const status = hasBooking ? 'booked' : !isOpen ? 'closed' : remaining > 0 ? 'available' : 'booked'
+  const status = hasBooking ? 'booked' : remaining > 0 && isOpen ? 'available' : 'closed'
+  const statusReason = hasBooking
+    ? 'actual_booking'
+    : remaining > 0 && isOpen
+      ? 'available'
+      : !isOpen
+        ? 'off_hours'
+        : 'manual_block_or_full'
 
   return {
     time: formatTime(slot.unitStartTime || slot.unitStartDateTime),
@@ -321,6 +328,7 @@ function mapSlot(slot: RawBookingScheduleSlot): PlaceBookingSlot {
     bookingCount: toNumberOrDefault(slot.bookingCount, 0),
     unitBookingCount: toNumberOrDefault(slot.unitBookingCount, 0),
     status,
+    statusReason,
   }
 }
 

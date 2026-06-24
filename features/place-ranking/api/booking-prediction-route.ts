@@ -168,6 +168,8 @@ function createPredictionPrompt({
 - 주간 트렌드: 현재 예약 강도와 최근 같은 요일 평균을 비교해 이번 주 수요 방향을 본다.
 - 월간 트렌드: 최근 3개월 동일 요일 평균과 4~5주 전 주기 신호를 비교해 최근 수요 방향을 본다.
 - 현재 예약현황: 대상일에 이미 잡힌 예약 수와 남은 예약 가능 시간을 반영한다.
+- 슬롯 상태 해석: booked는 실제 예약, closed 중 actual booking 주변 시간대는 예약으로 인한 차단 추정, manual_block_or_full은 관리자 차단 가능성으로 본다.
+- busyWindows는 수요가 높은 시간만, quietWindows는 다른 시간대 대비 수요 점수가 낮고 운영 여유가 있는 시간만 제시한다.
 - 고객명이나 개인 식별 정보는 없으므로 개인별 확정 예측처럼 말하지 않는다.
 
 응답 스키마:
@@ -199,6 +201,7 @@ ${JSON.stringify({
           bookingCount: slot.bookingCount,
           unitBookingCount: slot.unitBookingCount,
           remaining: slot.remaining,
+          statusReason: slot.statusReason,
         })),
       }
     : null,
@@ -236,12 +239,22 @@ function createFallbackPrediction({
 }): PlaceBookingPredictionResponse {
   const currentBookedSlots = currentProduct?.summary.bookedSlots ?? 0
   const currentAvailableSlots = currentProduct?.summary.availableSlots ?? 0
-  const busyWindows = createPredictionWindows(patternProduct?.busiestTimes ?? [], cycleProduct)
-  const quietWindows = createPredictionWindows(patternProduct?.quietTimes ?? [], cycleProduct)
+  const busyWindows = createPredictionWindows({
+    cycleProduct,
+    patternProduct,
+    times: patternProduct?.busiestTimes ?? [],
+    tone: 'busy',
+  })
+  const quietWindows = createPredictionWindows({
+    cycleProduct,
+    patternProduct,
+    times: patternProduct?.quietTimes ?? [],
+    tone: 'quiet',
+  })
   const patternBookedCount =
-    patternProduct?.buckets.reduce((sum, bucket) => sum + bucket.bookedCount, 0) ?? 0
+    patternProduct?.buckets.reduce((sum, bucket) => sum + getBucketDemandScore(bucket), 0) ?? 0
   const cycleBookedCount =
-    cycleProduct?.buckets.reduce((sum, bucket) => sum + bucket.bookedCount, 0) ?? 0
+    cycleProduct?.buckets.reduce((sum, bucket) => sum + getBucketDemandScore(bucket), 0) ?? 0
   const sameWeekdayAverageBookings = roundToOne(
     patternBookedCount / Math.max(patternSampledDateCount, 1),
   )
@@ -300,7 +313,7 @@ function createFallbackPrediction({
     quietWindows,
     recommendedActions: [
       '바쁜 시간대 전후로 시술 준비 시간을 먼저 확보하세요.',
-      '여유 시간대는 개인 정비나 콘텐츠 촬영 후보 시간으로 활용하세요.',
+      '수요 점수가 낮은 시간대는 개인 정비나 콘텐츠 촬영 후보 시간으로 활용하세요.',
       '현재 예약 가능 시간이 줄어들면 예측 결과를 다시 확인하세요.',
     ],
     basis: [
@@ -345,30 +358,97 @@ function mergeGeminiPrediction(
       20,
     ),
     summary: toSafeText(payload.summary, fallback.summary),
-    busyWindows: toPredictionWindows(payload.busyWindows, fallback.busyWindows),
-    quietWindows: toPredictionWindows(payload.quietWindows, fallback.quietWindows),
+    busyWindows: toPredictionWindows(payload.busyWindows, fallback.busyWindows, 'busy'),
+    quietWindows: toPredictionWindows(payload.quietWindows, fallback.quietWindows, 'quiet'),
     recommendedActions: toStringArray(payload.recommendedActions, fallback.recommendedActions),
     basis: toStringArray(payload.basis, fallback.basis),
     aiAvailable: true,
   }
 }
 
-function createPredictionWindows(
-  times: string[],
-  cycleProduct: PlaceBookingPatternProduct | null,
-): PlaceBookingPredictionWindow[] {
+function createPredictionWindows({
+  cycleProduct,
+  patternProduct,
+  times,
+  tone,
+}: {
+  cycleProduct: PlaceBookingPatternProduct | null
+  patternProduct: PlaceBookingPatternProduct | null
+  times: string[]
+  tone: 'busy' | 'quiet'
+}): PlaceBookingPredictionWindow[] {
   return times.slice(0, 3).map((time) => {
+    const patternBucket = patternProduct?.buckets.find((bucket) => bucket.time === time)
     const cycleBucket = cycleProduct?.buckets.find((bucket) => bucket.time === time)
-    const confidence = Math.min(90, 45 + (cycleBucket?.bookedCount ?? 0) * 8)
+    const patternDemandScore = patternBucket ? getBucketDemandScore(patternBucket) : 0
+    const cycleDemandScore = cycleBucket ? getBucketDemandScore(cycleBucket) : 0
+    const confidence = Math.min(
+      90,
+      45 + patternDemandScore * 6 + cycleDemandScore * 8,
+    )
 
     return {
       timeRange: createTimeRange(time),
-      reason: cycleBucket?.bookedCount
-        ? `최근 같은 요일 패턴과 4~5주 전 주기 데이터에서 ${time} 전후 예약 신호가 확인됩니다.`
-        : `최근 같은 요일 패턴에서 ${time} 전후 예약 신호가 확인됩니다.`,
+      reason:
+        tone === 'busy'
+          ? createBusyWindowReason(time, patternBucket, cycleBucket)
+          : createQuietWindowReason(time, patternBucket, cycleBucket),
       confidence,
     }
   })
+}
+
+function createBusyWindowReason(
+  time: string,
+  patternBucket?: PlaceBookingPatternProduct['buckets'][number],
+  cycleBucket?: PlaceBookingPatternProduct['buckets'][number],
+) {
+  const patternDemandScore = patternBucket ? getBucketDemandScore(patternBucket) : 0
+  const cycleDemandScore = cycleBucket ? getBucketDemandScore(cycleBucket) : 0
+  const blockedCount =
+    (patternBucket?.bookingRelatedBlockedCount ?? 0) +
+    (cycleBucket?.bookingRelatedBlockedCount ?? 0)
+
+  return [
+    `최근 같은 요일에서 ${time} 전후 실제 예약 수요 점수 ${roundToOne(patternDemandScore)}점이 확인됩니다.`,
+    cycleDemandScore > 0
+      ? `4~5주 재방문 주기에서도 같은 시간대 수요 점수 ${roundToOne(cycleDemandScore)}점이 반영됐습니다.`
+      : '',
+    blockedCount > 0
+      ? `실제 예약 주변에 막힌 슬롯 ${blockedCount}건이 있어 예약 연동 차단 가능성을 일부 반영했습니다.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function createQuietWindowReason(
+  time: string,
+  patternBucket?: PlaceBookingPatternProduct['buckets'][number],
+  cycleBucket?: PlaceBookingPatternProduct['buckets'][number],
+) {
+  const patternDemandScore = patternBucket ? getBucketDemandScore(patternBucket) : 0
+  const cycleDemandScore = cycleBucket ? getBucketDemandScore(cycleBucket) : 0
+  const availableCount = patternBucket?.availableCount ?? 0
+
+  return [
+    `다른 시간대 대비 ${time} 전후의 동일 요일 수요 점수가 ${roundToOne(patternDemandScore)}점으로 낮습니다.`,
+    cycleDemandScore > 0
+      ? `4~5주 주기 신호는 ${roundToOne(cycleDemandScore)}점 수준이라 집중 시간대보다 약합니다.`
+      : '4~5주 재방문 주기에서도 뚜렷한 예약 신호가 제한적입니다.',
+    availableCount > 0
+      ? `최근 표본에서 예약 가능한 슬롯이 남아 있었던 비율이 있어 운영 여유 후보로 봅니다.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function getBucketDemandScore(bucket: {
+  bookedCount: number
+  bookingRelatedBlockedCount?: number
+}) {
+  return bucket.bookedCount + (bucket.bookingRelatedBlockedCount ?? 0) * 0.65
 }
 
 function calculateDemandIndex({
@@ -452,6 +532,7 @@ function selectPatternProduct(
 function toPredictionWindows(
   value: unknown,
   fallback: PlaceBookingPredictionWindow[],
+  tone: 'busy' | 'quiet',
 ): PlaceBookingPredictionWindow[] {
   if (!Array.isArray(value)) {
     return fallback
@@ -471,15 +552,30 @@ function toPredictionWindows(
         return null
       }
 
+      const fallbackWindow = fallback.find((window) => window.timeRange === timeRange)
+
+      if (tone === 'quiet' && isAmbiguousQuietReason(reason)) {
+        return fallbackWindow ?? null
+      }
+
       return {
         timeRange,
-        reason,
+        reason: reason || fallbackWindow?.reason || '',
         confidence: toSafeInteger(record.confidence, 55, 0, 100),
       }
     })
     .filter((item): item is PlaceBookingPredictionWindow => Boolean(item))
 
   return windows.length ? windows.slice(0, 4) : fallback
+}
+
+function isAmbiguousQuietReason(reason: string) {
+  return (
+    reason.includes('예약 신호가 확인') &&
+    !reason.includes('낮') &&
+    !reason.includes('여유') &&
+    !reason.includes('제한')
+  )
 }
 
 function parseJsonPayload<T>(text: string): T {

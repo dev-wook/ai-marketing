@@ -128,6 +128,10 @@ function createPatternProducts(responses: PlaceBookingStatusResponse[]) {
             bookedCount: 0,
             availableCount: 0,
             closedCount: 0,
+            bookingRelatedBlockedCount: 0,
+            manualBlockedCount: 0,
+            offHoursClosedCount: 0,
+            demandScore: 0,
             observedCount: 0,
             intensity: 'normal',
           }
@@ -140,6 +144,14 @@ function createPatternProducts(responses: PlaceBookingStatusResponse[]) {
           bucket.availableCount += 1
         } else {
           bucket.closedCount += 1
+
+          if (slot.statusReason === 'off_hours') {
+            bucket.offHoursClosedCount += 1
+          } else if (isClosedSlotNearBookedSlot(slot.time, product.slots)) {
+            bucket.bookingRelatedBlockedCount += 1
+          } else {
+            bucket.manualBlockedCount += 1
+          }
         }
 
         productState.buckets.set(slot.time, bucket)
@@ -154,16 +166,20 @@ function createPatternProducts(responses: PlaceBookingStatusResponse[]) {
       .filter((bucket) => bucket.time)
       .sort((left, right) => left.time.localeCompare(right.time))
     const activeBuckets = buckets.filter(
-      (bucket) => bucket.bookedCount > 0 || bucket.availableCount > 0,
+      (bucket) =>
+        bucket.bookedCount > 0 ||
+        bucket.availableCount > 0 ||
+        bucket.bookingRelatedBlockedCount > 0,
     )
-    const averageBooked =
-      activeBuckets.reduce((sum, bucket) => sum + bucket.bookedCount, 0) /
+    const averageDemand =
+      activeBuckets.reduce((sum, bucket) => sum + getBucketDemandScore(bucket), 0) /
       Math.max(activeBuckets.length, 1)
-    const maxBooked = Math.max(...activeBuckets.map((bucket) => bucket.bookedCount), 0)
-    const minBooked = Math.min(...activeBuckets.map((bucket) => bucket.bookedCount), 0)
+    const maxDemand = Math.max(...activeBuckets.map(getBucketDemandScore), 0)
+    const minDemand = Math.min(...activeBuckets.map(getBucketDemandScore), 0)
     const normalizedBuckets = buckets.map((bucket) => ({
       ...bucket,
-      intensity: classifyBucketIntensity(bucket, averageBooked, maxBooked, minBooked),
+      demandScore: roundToOne(getBucketDemandScore(bucket)),
+      intensity: classifyBucketIntensity(bucket, averageDemand, maxDemand, minDemand),
     }))
 
     return {
@@ -172,10 +188,12 @@ function createPatternProducts(responses: PlaceBookingStatusResponse[]) {
       buckets: normalizedBuckets,
       busiestTimes: normalizedBuckets
         .filter((bucket) => bucket.intensity === 'busy')
+        .sort((left, right) => right.demandScore - left.demandScore)
         .slice(0, 3)
         .map((bucket) => bucket.time),
       quietTimes: normalizedBuckets
         .filter((bucket) => bucket.intensity === 'quiet')
+        .sort((left, right) => left.demandScore - right.demandScore)
         .slice(0, 3)
         .map((bucket) => bucket.time),
     }
@@ -184,23 +202,75 @@ function createPatternProducts(responses: PlaceBookingStatusResponse[]) {
 
 function classifyBucketIntensity(
   bucket: PlaceBookingPatternTimeBucket,
-  averageBooked: number,
-  maxBooked: number,
-  minBooked: number,
+  averageDemand: number,
+  maxDemand: number,
+  minDemand: number,
 ): PlaceBookingPatternTimeBucket['intensity'] {
-  if (bucket.bookedCount === 0 && bucket.availableCount > 0) {
+  const demandScore = getBucketDemandScore(bucket)
+
+  if (bucket.offHoursClosedCount > 0 && bucket.observedCount === bucket.offHoursClosedCount) {
+    return 'normal'
+  }
+
+  if (
+    bucket.bookedCount === 0 &&
+    bucket.bookingRelatedBlockedCount === 0 &&
+    bucket.availableCount > 0
+  ) {
     return 'quiet'
   }
 
-  if (maxBooked > minBooked && bucket.bookedCount >= Math.max(2, averageBooked * 1.25)) {
+  if (maxDemand > minDemand && demandScore >= Math.max(2, averageDemand * 1.25)) {
     return 'busy'
   }
 
-  if (bucket.availableCount > 0 && bucket.bookedCount <= Math.max(0, averageBooked * 0.5)) {
+  if (
+    bucket.availableCount > 0 &&
+    bucket.manualBlockedCount <= bucket.availableCount &&
+    demandScore <= Math.max(0.5, averageDemand * 0.55)
+  ) {
     return 'quiet'
   }
 
   return 'normal'
+}
+
+function getBucketDemandScore(bucket: PlaceBookingPatternTimeBucket) {
+  return bucket.bookedCount + bucket.bookingRelatedBlockedCount * 0.65
+}
+
+function isClosedSlotNearBookedSlot(time: string, slots: Array<{ time: string; status: string }>) {
+  const minute = parseTimeToMinute(time)
+
+  if (minute === null) {
+    return false
+  }
+
+  return slots.some((slot) => {
+    if (slot.status !== 'booked') {
+      return false
+    }
+
+    const bookedMinute = parseTimeToMinute(slot.time)
+
+    return bookedMinute !== null && Math.abs(bookedMinute - minute) <= 90
+  })
+}
+
+function parseTimeToMinute(time: string) {
+  const [hourText, minuteText] = time.split(':')
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return null
+  }
+
+  return hour * 60 + minute
+}
+
+function roundToOne(value: number) {
+  return Math.round(value * 10) / 10
 }
 
 function getRecentSameWeekdayDates(targetDate: string) {
