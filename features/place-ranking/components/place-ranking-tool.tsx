@@ -3113,7 +3113,7 @@ function BookingPredictionModal({
 
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <ForecastDecisionCard outlook={prediction.todayOutlook} featured />
-                <ForecastDecisionCard outlook={prediction.weekOutlook} />
+                <WeeklyOperationCard weekly={prediction.weeklyOperation} />
                 <ForecastDecisionCard outlook={prediction.nextWeekOutlook} />
                 <StatusInsightCard insight={prediction.statusInsight} />
               </div>
@@ -3161,7 +3161,7 @@ function BookingPredictionSkeleton() {
       </section>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {['오늘 예약 전망', '이번 주 전망', '다음 주 전망', '평소 대비 상태'].map((label, index) => (
+        {['오늘 예약 전망', '이번 주 운영 현황', '다음 주 전망', '평소 대비 상태'].map((label, index) => (
           <div
             key={label}
             className={`rounded-md border p-4 ${
@@ -3283,6 +3283,53 @@ function ForecastDecisionCard({
       </p>
       <p className="mt-3 break-keep rounded-md bg-white/[0.055] px-3 py-2 text-xs font-black leading-5 text-white">
         {outlook.recommendation}
+      </p>
+    </div>
+  )
+}
+
+function WeeklyOperationCard({
+  weekly,
+}: {
+  weekly: PlaceBookingPredictionResponse['weeklyOperation']
+}) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="break-keep text-sm font-black text-white">{weekly.label}</p>
+        <ForecastStatusBadge status={weekly.status} />
+      </div>
+      <p className="mt-3 break-keep text-2xl font-black text-white">{weekly.expectedBookings}</p>
+      <p className="mt-1 break-keep text-xs font-black text-cyan-100/75">
+        {weekly.comparisonText}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-md bg-white/[0.045] px-3 py-2">
+          <p className="text-[11px] font-black text-slate-500">현재 예약</p>
+          <p className="mt-1 text-sm font-black text-white">{weekly.currentBookings}건</p>
+        </div>
+        <div className="rounded-md bg-white/[0.045] px-3 py-2">
+          <p className="text-[11px] font-black text-slate-500">진행률</p>
+          <p className="mt-1 text-sm font-black text-white">{weekly.progressPercent}%</p>
+        </div>
+      </div>
+      <p className="mt-3 break-keep rounded-md bg-white/[0.055] px-3 py-2 text-xs font-black leading-5 text-white">
+        남은 예상 예약 {weekly.remainingExpectedBookings}
+      </p>
+      {weekly.dailyForecasts.length ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {weekly.dailyForecasts.map((item) => (
+            <span
+              key={`${item.label}-${item.expectedBookings}`}
+              className="rounded-full bg-cyan-300/10 px-2 py-1 text-[11px] font-black text-cyan-100"
+            >
+              {item.label} {item.expectedBookings}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <p className="mt-3 break-keep text-xs font-semibold leading-5 text-slate-300">
+        {weekly.insight}
       </p>
     </div>
   )

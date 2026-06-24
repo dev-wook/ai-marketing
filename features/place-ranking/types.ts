@@ -353,6 +353,21 @@ export type PlaceBookingPredictionResponse = {
     headline: string
     reason: string
   }
+  weeklyOperation: {
+    label: string
+    status: PlaceBookingOutlookStatus
+    expectedBookings: string
+    currentBookings: number
+    progressPercent: number
+    remainingExpectedBookings: string
+    comparisonText: string
+    remainingBusinessDays: string[]
+    dailyForecasts: Array<{
+      label: string
+      expectedBookings: string
+    }>
+    insight: string
+  }
   summary: string
   busyWindows: PlaceBookingPredictionWindow[]
   quietWindows: PlaceBookingPredictionWindow[]
@@ -361,6 +376,7 @@ export type PlaceBookingPredictionResponse = {
   data: {
     currentBookedSlots: number
     currentAvailableSlots: number
+    futureBookedSlots: number
     patternSampledDateCount: number
     cycleSampledDateCount: number
     failedDateCount: number
