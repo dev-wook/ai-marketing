@@ -97,14 +97,15 @@ export function scoreAiPlace({
     createScore('conversion', {
       score:
         boolScore(features.conversion.hasBooking, 2) +
-        ratioScore(Math.min(features.conversion.bookingProductCount / 5, 1), 2) +
+        ratioScore(Math.min(features.conversion.bookingProductCount / 5, 1), 1.2) +
+        ratioScore(Math.min(features.conversion.bookingPolicyDescriptionCount / 2, 1), 0.8) +
         boolScore(features.conversion.hasTalktalk, 1) +
         boolScore(features.conversion.hasPhone, 1) +
         boolScore(features.conversion.hasWebsite, 1) +
         boolScore(features.conversion.hasNPay, 1) +
         boolScore(features.conversion.hasCoupon, 1) +
         boolScore(features.conversion.hasRoute, 1),
-      reason: '예약, 문의, 전화, 웹사이트, 네이버페이, 쿠폰 같은 전환 편의 신호를 낮은 배점으로 평가했습니다.',
+      reason: '예약, 예약상품 구조, 예약금/취소 안내, 문의, 전화, 웹사이트, 네이버페이, 쿠폰 같은 전환 편의 신호를 낮은 배점으로 평가했습니다.',
     }),
     createScore('differentiation', {
       score:
@@ -258,6 +259,10 @@ function createDefaultImprovements({
 
   if (!features.conversion.hasBooking) {
     improvements.push('가능하다면 네이버 예약상품을 등록해 AI가 서비스 구조를 이해할 수 있게 만드세요.')
+  }
+
+  if (features.conversion.hasBooking && features.conversion.bookingPolicyDescriptionCount === 0) {
+    improvements.push('예약금, 변경/취소, 노쇼 기준처럼 예약 전 확인해야 할 운영 안내를 명확히 추가하세요.')
   }
 
   return improvements.slice(0, 5)

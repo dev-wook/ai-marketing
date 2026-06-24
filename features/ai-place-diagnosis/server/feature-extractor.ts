@@ -86,8 +86,15 @@ export function extractAiPlaceFeatures({
   normalized: AiPlaceNormalizedSnapshot
 }): AiPlaceFeatureSet {
   const products = normalized.bookingProducts
+  const requiredBookingPolicyMenus = products.flatMap((product) =>
+    (product.treatmentMenuCategories ?? [])
+      .filter((category) => category.categoryTypeCode === 'REQUIRED')
+      .flatMap((category) => category.menus),
+  )
   const treatmentMenus = products.flatMap((product) =>
-    (product.treatmentMenuCategories ?? []).flatMap((category) => category.menus),
+    (product.treatmentMenuCategories ?? [])
+      .filter((category) => category.categoryTypeCode !== 'REQUIRED')
+      .flatMap((category) => category.menus),
   )
   const productDescriptions = [
     ...products.map((product) => product.description.trim()),
@@ -171,6 +178,9 @@ export function extractAiPlaceFeatures({
     conversion: {
       ...normalized.conversion,
       bookingProductCount: productCount,
+      bookingPolicyNoticeCount: requiredBookingPolicyMenus.length,
+      bookingPolicyDescriptionCount: requiredBookingPolicyMenus.filter((menu) => menu.description.trim().length > 0)
+        .length,
     },
   }
 }

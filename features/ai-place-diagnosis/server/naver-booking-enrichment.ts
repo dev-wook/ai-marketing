@@ -516,7 +516,6 @@ function mapProductDetail(detail?: RawBookingProductDetail | null) {
 
 function mapTreatmentMenuCategories(categories?: RawBookingOptionCategory[] | null) {
   return (categories ?? [])
-    .filter((category) => asString(category.categoryTypeCode) !== 'REQUIRED')
     .map((category) => ({
       id: asString(category.categoryId || category.id),
       name: asString(category.name),

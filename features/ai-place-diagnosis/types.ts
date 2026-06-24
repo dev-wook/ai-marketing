@@ -210,6 +210,8 @@ export type AiPlaceFeatureSet = {
   }
   conversion: AiPlaceNormalizedSnapshot['conversion'] & {
     bookingProductCount: number
+    bookingPolicyNoticeCount: number
+    bookingPolicyDescriptionCount: number
   }
 }
 

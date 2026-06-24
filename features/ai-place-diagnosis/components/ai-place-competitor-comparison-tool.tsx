@@ -949,6 +949,7 @@ function countDescribedProducts(result: AiPlaceDiagnosisResponse) {
     result.target.bookingProducts.filter((product) => product.description.trim().length > 0).length +
     result.target.bookingProducts
       .flatMap((product) => product.treatmentMenuCategories ?? [])
+      .filter((category) => category.categoryTypeCode !== 'REQUIRED')
       .flatMap((category) => category.menus)
       .filter((menu) => menu.description.trim().length > 0).length
   )
@@ -957,6 +958,7 @@ function countDescribedProducts(result: AiPlaceDiagnosisResponse) {
 function countTreatmentMenus(result: AiPlaceDiagnosisResponse) {
   return result.target.bookingProducts
     .flatMap((product) => product.treatmentMenuCategories ?? [])
+    .filter((category) => category.categoryTypeCode !== 'REQUIRED')
     .flatMap((category) => category.menus).length
 }
 
@@ -967,8 +969,17 @@ function countServiceMenus(result: AiPlaceDiagnosisResponse) {
 function countPricedTreatmentMenus(result: AiPlaceDiagnosisResponse) {
   return result.target.bookingProducts
     .flatMap((product) => product.treatmentMenuCategories ?? [])
+    .filter((category) => category.categoryTypeCode !== 'REQUIRED')
     .flatMap((category) => category.menus)
     .filter((menu) => menu.price !== null || menu.normalPrice !== null).length
+}
+
+function countRequiredBookingNotices(result: AiPlaceDiagnosisResponse) {
+  return result.target.bookingProducts
+    .flatMap((product) => product.treatmentMenuCategories ?? [])
+    .filter((category) => category.categoryTypeCode === 'REQUIRED')
+    .flatMap((category) => category.menus)
+    .filter((menu) => menu.description.trim().length > 0).length
 }
 
 function formatServiceMenuValue(result: AiPlaceDiagnosisResponse) {
@@ -1029,9 +1040,11 @@ function createBookingProductRationale(
   const pricedMenuCount = countPricedTreatmentMenus(result)
   const categoryNames = result.target.bookingProducts
     .flatMap((product) => product.treatmentMenuCategories ?? [])
+    .filter((category) => category.categoryTypeCode !== 'REQUIRED')
     .map((category) => category.name)
     .filter(Boolean)
     .slice(0, 4)
+  const requiredNoticeCount = countRequiredBookingNotices(result)
   const peerProductCount = peerResult.target.bookingProducts.length
   const peerServiceMenuCount = countServiceMenus(peerResult)
   const diff = countServiceMenus(result) - peerServiceMenuCount
@@ -1042,7 +1055,7 @@ function createBookingProductRationale(
         ? `${peerResult.target.name}보다 ${diff}개 많음`
         : `${peerResult.target.name}보다 ${Math.abs(diff)}개 적음`
 
-  return `${result.target.name}은 예약상품 ${productCount}개와 시술 메뉴 ${treatmentMenuCount}개가 확인되어 ${comparison}입니다. 가격이 확인된 시술은 ${pricedMenuCount}개, 설명이 있는 예약/시술 항목은 ${describedCount}개입니다.${categoryNames.length ? ` 카테고리는 ${categoryNames.join(', ')} 중심입니다.` : ''} 상품명뿐 아니라 대상, 결과 특징, 가격, 시술시간 설명까지 보강됐는지가 점수 근거가 됩니다.`
+  return `${result.target.name}은 예약상품 ${productCount}개와 시술 메뉴 ${treatmentMenuCount}개가 확인되어 ${comparison}입니다. 가격이 확인된 시술은 ${pricedMenuCount}개, 설명이 있는 예약/시술 항목은 ${describedCount}개입니다.${categoryNames.length ? ` 카테고리는 ${categoryNames.join(', ')} 중심입니다.` : ''}${requiredNoticeCount ? ` 예약금/변경/취소 같은 필수 안내도 ${requiredNoticeCount}개 확인되어 전환 신뢰 신호로 봅니다.` : ''} 상품명뿐 아니라 대상, 결과 특징, 가격, 시술시간 설명까지 보강됐는지가 점수 근거가 됩니다.`
 }
 
 function createDiagnosisDataNotice(
