@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PlaceBookingPredictionRequest
     const targetDate = normalizeDate(body.targetDate)
-    const [currentStatus, pattern, cycle, weekStatuses] = await Promise.all([
+    const [currentStatus, pattern, cycle, weekStatuses, recentWeekStatuses] = await Promise.all([
       collectNaverBookingStatus({
         bookingUrl: body.bookingUrl,
         bookingBusinessId: body.bookingBusinessId,
@@ -67,6 +67,7 @@ export async function POST(request: Request) {
         targetDate,
       }),
       collectWeekBookingStatuses(body, targetDate),
+      collectRecentEightWeekBookingStatuses(body, targetDate),
     ])
     const selectedProduct =
       currentStatus.products.find((product) => product.id === body.productId) ??
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
       failedDateCount: pattern.failedDateCount + cycle.failedDateCount,
       patternProduct,
       targetDate,
+      recentWeekStatuses,
       weekStatuses,
       weekdayLabel: pattern.weekdayLabel,
       patternSampledDateCount: pattern.sampledDateCount,
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
           fallback,
           patternProduct,
           targetDate,
+          recentWeekStatuses,
           weekStatuses,
           weekdayLabel: pattern.weekdayLabel,
           patternSampledDateCount: pattern.sampledDateCount,
@@ -155,6 +158,7 @@ function createPredictionPrompt({
   patternProduct,
   patternSampledDateCount,
   cycleSampledDateCount,
+  recentWeekStatuses,
   targetDate,
   weekStatuses,
   weekdayLabel,
@@ -165,6 +169,7 @@ function createPredictionPrompt({
   patternProduct: PlaceBookingPatternProduct | null
   patternSampledDateCount: number
   cycleSampledDateCount: number
+  recentWeekStatuses: PlaceBookingStatusResponse[]
   targetDate: string
   weekStatuses: PlaceBookingStatusResponse[]
   weekdayLabel: string
@@ -187,7 +192,8 @@ function createPredictionPrompt({
 - 월간 트렌드: 최근 3개월 동일 요일 평균과 4~5주 전 주기 신호를 비교해 최근 수요 방향을 본다.
 - 현재 예약현황: 대상일에 이미 잡힌 예약 수와 남은 예약 가능 시간을 반영한다.
 - 선택일이 오늘이면 현재 시간 이후 남은 시간대만 busyWindows/quietWindows에 제시한다.
-- 이번 주 전망은 현재까지 잡힌 예약, 남은 영업일, 최근 8개 동일 요일 평균 기반 추정치를 함께 해석한다.
+- 이번 주 전망은 최근 8주 주간 총 예약 평균과 비교한다.
+- 남은 영업일 예측은 각 요일별 최근 8주 평균을 사용한다.
 - 슬롯 상태 해석: booked는 실제 예약, closed 중 actual booking 주변 시간대는 예약으로 인한 차단 추정, manual_block_or_full은 관리자 차단 가능성으로 본다.
 - busyWindows는 수요가 높은 시간만, quietWindows는 다른 시간대 대비 예약 유입 가능성이 낮고 운영 여유가 있는 시간만 제시한다.
 - 고객명이나 개인 식별 정보는 없으므로 개인별 확정 예측처럼 말하지 않는다.
@@ -207,7 +213,7 @@ function createPredictionPrompt({
   "weekOutlook": {"label":"이번 주 전망","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
   "nextWeekOutlook": {"label":"다음 주 전망","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
   "statusInsight": {"label":"평소 대비 상태","status":"BUSY|NORMAL|QUIET","headline":"string","reason":"string"},
-  "weeklyOperation": {"label":"이번 주 운영 현황","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","currentBookings":number,"progressPercent":number,"remainingExpectedBookings":"string","comparisonText":"string","remainingBusinessDays":["목","금"],"dailyForecasts":[{"label":"목","expectedBookings":"4~5건"}],"insight":"string"},
+  "weeklyOperation": {"label":"이번 주 운영 현황","status":"BUSY|NORMAL|QUIET","conditionLabel":"매우 양호|양호|보통|주의|위험","conditionTone":"excellent|good|normal|caution|danger","expectedBookings":"string","recentWeeklyAverageBookings":number,"currentBookings":number,"progressPercent":number,"remainingForecastBookings":number,"remainingExpectedBookings":"string","comparisonRate":number,"comparisonText":"string","remainingBusinessDays":["목","금"],"dailyForecasts":[{"label":"목","expectedBookings":"4~5건"}],"insight":"string"},
   "summary": "string",
   "busyWindows": [{"timeRange":"10:00-12:00","reason":"string","confidence":0-100,"recommendation":"string"}],
   "quietWindows": [{"timeRange":"13:00-15:00","reason":"string","confidence":0-100,"recommendation":"string"}],
@@ -243,6 +249,11 @@ ${JSON.stringify({
     product: cycleProduct,
   },
   currentWeek: summarizeWeekStatuses(weekStatuses, currentProduct?.id, currentProduct?.name),
+  recentEightWeeks: summarizeRecentEightWeeks(
+    recentWeekStatuses,
+    currentProduct?.id,
+    currentProduct?.name,
+  ),
   codeFallbackReference: fallback,
 })}
 `.trim()
@@ -254,6 +265,7 @@ function createFallbackPrediction({
   failedDateCount,
   patternProduct,
   patternSampledDateCount,
+  recentWeekStatuses,
   cycleSampledDateCount,
   targetDate,
   weekStatuses,
@@ -264,6 +276,7 @@ function createFallbackPrediction({
   failedDateCount: number
   patternProduct: PlaceBookingPatternProduct | null
   patternSampledDateCount: number
+  recentWeekStatuses: PlaceBookingStatusResponse[]
   cycleSampledDateCount: number
   targetDate: string
   weekStatuses: PlaceBookingStatusResponse[]
@@ -350,7 +363,7 @@ function createFallbackPrediction({
   })
   const weeklyOperation = createWeeklyOperation({
     currentProduct,
-    expectedCenter,
+    recentWeekStatuses,
     sameWeekdayAverageBookings,
     targetDate,
     weekStatuses,
@@ -418,6 +431,8 @@ function mergeGeminiPrediction(
   fallback: PlaceBookingPredictionResponse,
   payload: GeminiBookingPredictionPayload,
 ): PlaceBookingPredictionResponse {
+  const minMinute = fallback.targetDate === getTodayKstDate() ? getCurrentKstMinute() : null
+
   return {
     ...fallback,
     demandLevel: toDemandLevel(payload.demandLevel, fallback.demandLevel),
@@ -440,8 +455,14 @@ function mergeGeminiPrediction(
     statusInsight: toStatusInsight(payload.statusInsight, fallback.statusInsight),
     weeklyOperation: toWeeklyOperation(payload.weeklyOperation, fallback.weeklyOperation),
     summary: toSafeText(payload.summary, fallback.summary),
-    busyWindows: toPredictionWindows(payload.busyWindows, fallback.busyWindows, 'busy'),
-    quietWindows: toPredictionWindows(payload.quietWindows, fallback.quietWindows, 'quiet'),
+    busyWindows: filterPredictionWindowsAfterMinute(
+      toPredictionWindows(payload.busyWindows, fallback.busyWindows, 'busy'),
+      minMinute,
+    ),
+    quietWindows: filterPredictionWindowsAfterMinute(
+      toPredictionWindows(payload.quietWindows, fallback.quietWindows, 'quiet'),
+      minMinute,
+    ),
     recommendedActions: toStringArray(payload.recommendedActions, fallback.recommendedActions),
     basis: toStringArray(payload.basis, fallback.basis),
     aiAvailable: true,
@@ -484,6 +505,24 @@ function createPredictionWindows({
           : '이 시간대는 개인 업무, 정리, 콘텐츠 촬영 후보로 적합합니다.',
     }
   })
+}
+
+function filterPredictionWindowsAfterMinute(
+  windows: PlaceBookingPredictionWindow[],
+  minMinute: number | null,
+) {
+  if (minMinute === null) {
+    return windows
+  }
+
+  return windows.filter((window) => isTimeRangeAfterMinute(window.timeRange, minMinute))
+}
+
+function isTimeRangeAfterMinute(timeRange: string, minMinute: number) {
+  const [, endText] = timeRange.split('-')
+  const endMinute = parseTimeToMinute(endText ?? timeRange)
+
+  return endMinute !== null && endMinute > minMinute
 }
 
 function createBusyWindowReason(
@@ -662,56 +701,111 @@ function createStatusInsight({
 
 function createWeeklyOperation({
   currentProduct,
-  expectedCenter,
+  recentWeekStatuses,
   sameWeekdayAverageBookings,
   targetDate,
   weekStatuses,
 }: {
   currentProduct: PlaceBookingProduct | null
-  expectedCenter: number
+  recentWeekStatuses: PlaceBookingStatusResponse[]
   sameWeekdayAverageBookings: number
   targetDate: string
   weekStatuses: PlaceBookingStatusResponse[]
 }): PlaceBookingPredictionResponse['weeklyOperation'] {
   const weekProducts = summarizeWeekStatuses(weekStatuses, currentProduct?.id, currentProduct?.name)
-  const currentBookings = weekProducts.reduce((sum, item) => sum + item.bookedSlots, 0)
-  const activeDayCount = Math.max(
-    1,
-    weekProducts.filter((item) => item.bookedSlots > 0 || item.availableSlots > 0).length ||
-      getRemainingWeekDates(targetDate).length ||
-      1,
+  const recentStats = summarizeRecentEightWeeks(
+    recentWeekStatuses,
+    currentProduct?.id,
+    currentProduct?.name,
   )
-  const recentEightWeekAverage = Math.max(1, Math.round(sameWeekdayAverageBookings * activeDayCount))
-  const expectedWeeklyBookings = Math.max(
-    currentBookings,
-    Math.round(recentEightWeekAverage * 0.65 + expectedCenter * activeDayCount * 0.35),
-  )
-  const remainingExpected = Math.max(0, expectedWeeklyBookings - currentBookings)
-  const comparisonRate = calculateTrendRate(expectedWeeklyBookings, recentEightWeekAverage)
-  const status = comparisonRate >= 20 ? 'BUSY' : comparisonRate <= -20 ? 'QUIET' : 'NORMAL'
+  const currentBookings = weekProducts
+    .filter((item) => item.date <= targetDate)
+    .reduce((sum, item) => sum + item.bookedSlots, 0)
   const remainingBusinessDays = getRemainingBusinessDayLabels(targetDate, weekProducts)
   const dailyForecasts = createRemainingDailyForecasts({
+    recentStats,
     remainingBusinessDays,
-    remainingExpected,
     sameWeekdayAverageBookings,
+    weekProducts,
   })
+  const remainingExpected = dailyForecasts.reduce(
+    (sum, item) => sum + item.expectedBookingsValue,
+    0,
+  )
+  const recentEightWeekAverage = Math.max(1, Math.round(recentStats.weeklyAverageBookings))
+  const expectedWeeklyBookings = currentBookings + remainingExpected
+  const comparisonRate = calculateTrendRate(expectedWeeklyBookings, recentEightWeekAverage)
+  const condition = classifyWeeklyCondition(comparisonRate)
 
   return {
     label: '이번 주 운영 현황',
-    status,
+    status: condition.status,
+    conditionLabel: condition.label,
+    conditionTone: condition.tone,
     expectedBookings: `${expectedWeeklyBookings}건 내외`,
+    recentWeeklyAverageBookings: recentEightWeekAverage,
     currentBookings,
     progressPercent: Math.round(clamp((currentBookings / Math.max(expectedWeeklyBookings, 1)) * 100, 0, 100)),
+    remainingForecastBookings: remainingExpected,
     remainingExpectedBookings: `${remainingExpected}건 내외`,
+    comparisonRate,
     comparisonText: formatComparisonText(comparisonRate),
     remainingBusinessDays,
-    dailyForecasts,
-    insight:
-      status === 'BUSY'
-        ? '이번 주는 최근 평균보다 예약 흐름이 좋은 상태입니다.'
-        : status === 'QUIET'
-          ? '이번 주는 최근 평균보다 예약 흐름이 저조한 상태입니다.'
-          : '이번 주는 최근 평균 수준의 예약 흐름을 유지하고 있습니다.',
+    dailyForecasts: dailyForecasts.map(({ expectedBookings, label }) => ({
+      expectedBookings,
+      label,
+    })),
+    insight: condition.insight,
+  }
+}
+
+function classifyWeeklyCondition(comparisonRate: number): {
+  insight: string
+  label: string
+  status: PlaceBookingPredictionResponse['weeklyOperation']['status']
+  tone: PlaceBookingPredictionResponse['weeklyOperation']['conditionTone']
+} {
+  if (comparisonRate >= 20) {
+    return {
+      insight: '최근 평균보다 예약 흐름이 매우 좋은 상태입니다.',
+      label: '매우 양호',
+      status: 'BUSY',
+      tone: 'excellent',
+    }
+  }
+
+  if (comparisonRate >= 5) {
+    return {
+      insight: '최근 평균보다 예약 흐름이 좋은 상태입니다.',
+      label: '양호',
+      status: 'BUSY',
+      tone: 'good',
+    }
+  }
+
+  if (comparisonRate > -5) {
+    return {
+      insight: '최근 평균 수준의 예약 흐름을 유지하고 있습니다.',
+      label: '보통',
+      status: 'NORMAL',
+      tone: 'normal',
+    }
+  }
+
+  if (comparisonRate > -20) {
+    return {
+      insight: '최근 평균보다 예약 흐름이 약한 상태입니다.',
+      label: '주의',
+      status: 'QUIET',
+      tone: 'caution',
+    }
+  }
+
+  return {
+    insight: '최근 평균보다 예약 흐름이 크게 저조한 상태입니다.',
+    label: '위험',
+    status: 'QUIET',
+    tone: 'danger',
   }
 }
 
@@ -887,6 +981,26 @@ async function collectWeekBookingStatuses(
   return snapshots.filter((snapshot): snapshot is PlaceBookingStatusResponse => Boolean(snapshot))
 }
 
+async function collectRecentEightWeekBookingStatuses(
+  body: PlaceBookingPredictionRequest,
+  targetDate: string,
+) {
+  const dates = getRecentEightWeekDates(targetDate)
+  const snapshots = await runWithConcurrency(dates, 4, async (date) => {
+    try {
+      return await collectNaverBookingStatus({
+        bookingUrl: body.bookingUrl,
+        bookingBusinessId: body.bookingBusinessId,
+        date,
+      })
+    } catch {
+      return null
+    }
+  })
+
+  return snapshots.filter((snapshot): snapshot is PlaceBookingStatusResponse => Boolean(snapshot))
+}
+
 function summarizeWeekStatuses(
   statuses: PlaceBookingStatusResponse[],
   productId?: string | null,
@@ -911,26 +1025,84 @@ function summarizeWeekStatuses(
     .sort((left, right) => left.date.localeCompare(right.date))
 }
 
+function summarizeRecentEightWeeks(
+  statuses: PlaceBookingStatusResponse[],
+  productId?: string | null,
+  productName?: string | null,
+) {
+  const rows = summarizeWeekStatuses(statuses, productId, productName)
+  const weeklyTotals = new Map<string, number>()
+  const weekdayTotals = new Map<number, number[]>()
+
+  rows.forEach((row) => {
+    const weekKey = getWeekStartDate(row.date)
+    const weekday = createLocalDate(row.date).getDay()
+
+    weeklyTotals.set(weekKey, (weeklyTotals.get(weekKey) ?? 0) + row.bookedSlots)
+
+    const values = weekdayTotals.get(weekday) ?? []
+    values.push(row.bookedSlots)
+    weekdayTotals.set(weekday, values)
+  })
+
+  const weeklyValues = Array.from(weeklyTotals.values())
+  const weekdayAverages = Array.from(weekdayTotals.entries()).reduce<Record<string, number>>(
+    (accumulator, [weekday, values]) => {
+      accumulator[String(weekday)] = roundToOne(
+        values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1),
+      )
+
+      return accumulator
+    },
+    {},
+  )
+
+  return {
+    sampledWeekCount: weeklyValues.length,
+    weeklyAverageBookings: roundToOne(
+      weeklyValues.reduce((sum, value) => sum + value, 0) / Math.max(weeklyValues.length, 1),
+    ),
+    weekdayAverages,
+    weeklyTotals: Array.from(weeklyTotals.entries()).map(([weekStart, bookedSlots]) => ({
+      bookedSlots,
+      weekStart,
+    })),
+  }
+}
+
 function createRemainingDailyForecasts({
+  recentStats,
   remainingBusinessDays,
-  remainingExpected,
   sameWeekdayAverageBookings,
+  weekProducts,
 }: {
+  recentStats: ReturnType<typeof summarizeRecentEightWeeks>
   remainingBusinessDays: string[]
-  remainingExpected: number
   sameWeekdayAverageBookings: number
-}): PlaceBookingPredictionResponse['weeklyOperation']['dailyForecasts'] {
+  weekProducts: ReturnType<typeof summarizeWeekStatuses>
+}): Array<
+  PlaceBookingPredictionResponse['weeklyOperation']['dailyForecasts'][number] & {
+    expectedBookingsValue: number
+  }
+> {
   if (!remainingBusinessDays.length) {
     return []
   }
 
-  const perDay = Math.max(0, Math.round(remainingExpected / remainingBusinessDays.length))
-
   return remainingBusinessDays.slice(0, 5).map((label) => {
-    const min = Math.max(0, perDay - 1)
-    const max = Math.max(min, Math.round(Math.max(perDay + 1, sameWeekdayAverageBookings)))
+    const weekday = bookingWeekdayLabels.indexOf(label)
+    const historicalAverage = weekday >= 0
+      ? recentStats.weekdayAverages[String(weekday)] ?? sameWeekdayAverageBookings
+      : sameWeekdayAverageBookings
+    const existingFutureBookings = weekProducts
+      .filter((item) => item.label === label)
+      .reduce((sum, item) => sum + item.bookedSlots, 0)
+    const center = Math.max(existingFutureBookings, Math.round(historicalAverage))
+    const min = Math.max(existingFutureBookings, center - 1)
+    const max = Math.max(min, center + 1)
 
     return {
+      expectedBookingsValue: center,
       label,
       expectedBookings: min === max ? `${max}건` : `${min}~${max}건`,
     }
@@ -945,14 +1117,42 @@ function getRemainingBusinessDayLabels(
   const minDate = targetDate === today ? today : targetDate
 
   return weekProducts
-    .filter((item) => item.date >= minDate && (item.totalSlots > 0 || item.availableSlots > 0 || item.bookedSlots > 0))
+    .filter((item) => item.date > minDate && (item.totalSlots > 0 || item.availableSlots > 0 || item.bookedSlots > 0))
     .map((item) => item.label)
 }
 
 function getRemainingWeekDates(targetDate: string) {
   const today = getTodayKstDate()
 
-  return getWeekDates(targetDate).filter((date) => date >= (targetDate === today ? today : targetDate))
+  return getWeekDates(targetDate).filter((date) => date > (targetDate === today ? today : targetDate))
+}
+
+function getRecentEightWeekDates(targetDate: string) {
+  const currentWeekStart = createLocalDate(getWeekStartDate(targetDate))
+  const dates: string[] = []
+
+  for (let weekOffset = 8; weekOffset >= 1; weekOffset -= 1) {
+    const weekStart = new Date(currentWeekStart)
+    weekStart.setDate(currentWeekStart.getDate() - weekOffset * 7)
+
+    for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
+      const date = new Date(weekStart)
+      date.setDate(weekStart.getDate() + dayOffset)
+      dates.push(formatDateValue(date))
+    }
+  }
+
+  return dates
+}
+
+function getWeekStartDate(value: string) {
+  const date = createLocalDate(value)
+  const day = date.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+
+  date.setDate(date.getDate() + diff)
+
+  return formatDateValue(date)
 }
 
 function getWeekDates(targetDate: string) {
@@ -1121,40 +1321,24 @@ function toWeeklyOperation(
   }
 
   const record = value as Record<string, unknown>
-  const dailyForecasts = Array.isArray(record.dailyForecasts)
-    ? record.dailyForecasts
-        .map((item) => {
-          if (!item || typeof item !== 'object') {
-            return null
-          }
-
-          const daily = item as Record<string, unknown>
-          const label = toSafeText(daily.label, '')
-          const expectedBookings = toSafeText(daily.expectedBookings, '')
-
-          return label && expectedBookings ? { label, expectedBookings } : null
-        })
-        .filter((item): item is { label: string; expectedBookings: string } => Boolean(item))
-        .slice(0, 5)
-    : fallback.dailyForecasts
+  const condition = classifyWeeklyCondition(fallback.comparisonRate)
 
   return {
-    label: toSafeText(record.label, fallback.label),
-    status: toOutlookStatusValue(record.status, fallback.status),
-    expectedBookings: toSafeText(record.expectedBookings, fallback.expectedBookings),
-    currentBookings: toSafeInteger(record.currentBookings, fallback.currentBookings, 0, 200),
-    progressPercent: toSafeInteger(record.progressPercent, fallback.progressPercent, 0, 100),
-    remainingExpectedBookings: toSafeText(
-      record.remainingExpectedBookings,
-      fallback.remainingExpectedBookings,
-    ),
-    comparisonText: toSafeText(record.comparisonText, fallback.comparisonText),
-    remainingBusinessDays: toStringArray(
-      record.remainingBusinessDays,
-      fallback.remainingBusinessDays,
-    ).slice(0, 7),
-    dailyForecasts,
-    insight: toSafeText(record.insight, fallback.insight),
+    label: fallback.label,
+    status: condition.status,
+    conditionLabel: condition.label,
+    conditionTone: condition.tone,
+    expectedBookings: fallback.expectedBookings,
+    recentWeeklyAverageBookings: fallback.recentWeeklyAverageBookings,
+    currentBookings: fallback.currentBookings,
+    progressPercent: fallback.progressPercent,
+    remainingForecastBookings: fallback.remainingForecastBookings,
+    remainingExpectedBookings: fallback.remainingExpectedBookings,
+    comparisonRate: fallback.comparisonRate,
+    comparisonText: fallback.comparisonText,
+    remainingBusinessDays: fallback.remainingBusinessDays,
+    dailyForecasts: fallback.dailyForecasts,
+    insight: toSafeText(record.insight, condition.insight),
   }
 }
 

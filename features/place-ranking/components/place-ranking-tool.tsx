@@ -3293,29 +3293,71 @@ function WeeklyOperationCard({
 }: {
   weekly: PlaceBookingPredictionResponse['weeklyOperation']
 }) {
+  const conditionMeta = getWeeklyConditionMeta(weekly.conditionTone)
+  const comparisonMeta = getWeeklyComparisonMeta(weekly.comparisonRate)
+
   return (
-    <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
-      <div className="flex items-start justify-between gap-3">
-        <p className="break-keep text-sm font-black text-white">{weekly.label}</p>
-        <ForecastStatusBadge status={weekly.status} />
-      </div>
-      <p className="mt-3 break-keep text-2xl font-black text-white">{weekly.expectedBookings}</p>
-      <p className="mt-1 break-keep text-xs font-black text-cyan-100/75">
-        {weekly.comparisonText}
-      </p>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <div className="rounded-md bg-white/[0.045] px-3 py-2">
-          <p className="text-[11px] font-black text-slate-500">현재 예약</p>
-          <p className="mt-1 text-sm font-black text-white">{weekly.currentBookings}건</p>
+    <div className="rounded-md border border-white/10 bg-white/[0.045] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="break-keep text-sm font-black text-white">이번 주 운영 흐름</p>
+          <p className="mt-1 break-keep text-xs font-semibold text-slate-400">
+            최근 8주 주간 평균과 이번 주 예상 예약을 비교합니다.
+          </p>
         </div>
-        <div className="rounded-md bg-white/[0.045] px-3 py-2">
-          <p className="text-[11px] font-black text-slate-500">진행률</p>
-          <p className="mt-1 text-sm font-black text-white">{weekly.progressPercent}%</p>
+        <span
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-black ${conditionMeta.badgeClassName}`}
+        >
+          <span className={`h-2 w-2 rounded-full ${conditionMeta.dotClassName}`} />
+          {weekly.conditionLabel}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-4">
+        <div className="rounded-md border border-white/10 bg-black/15 px-3 py-3">
+          <p className="text-[11px] font-black text-slate-500">최근 8주 평균 예약</p>
+          <p className="mt-1 text-lg font-black text-white">
+            {weekly.recentWeeklyAverageBookings}건
+          </p>
+        </div>
+        <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-3">
+          <p className="text-[11px] font-black text-cyan-100/70">이번 주 최종 예상</p>
+          <p className="mt-1 text-lg font-black text-white">{weekly.expectedBookings}</p>
+        </div>
+        <div className={`rounded-md border px-3 py-3 ${comparisonMeta.cardClassName}`}>
+          <p className="text-[11px] font-black text-white/60">평균 대비</p>
+          <p className={`mt-1 text-lg font-black ${comparisonMeta.textClassName}`}>
+            {comparisonMeta.label}
+          </p>
+        </div>
+        <div className={`rounded-md border px-3 py-3 ${conditionMeta.cardClassName}`}>
+          <p className="text-[11px] font-black text-white/60">이번 주 상태</p>
+          <p className="mt-1 text-lg font-black text-white">{weekly.conditionLabel}</p>
         </div>
       </div>
-      <p className="mt-3 break-keep rounded-md bg-white/[0.055] px-3 py-2 text-xs font-black leading-5 text-white">
-        남은 예상 예약 {weekly.remainingExpectedBookings}
-      </p>
+      <div className="mt-3 rounded-md border border-white/10 bg-black/15 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-black text-slate-500">현재 예약</p>
+            <p className="mt-1 text-base font-black text-white">{weekly.currentBookings}건</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] font-black text-slate-500">현재 진행률</p>
+            <p className="mt-1 text-base font-black text-white">{weekly.progressPercent}%</p>
+          </div>
+          <div className="basis-full md:basis-auto md:text-right">
+            <p className="text-[11px] font-black text-slate-500">남은 예상 예약</p>
+            <p className="mt-1 text-base font-black text-white">
+              {weekly.remainingForecastBookings}건
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+          <div
+            className={`h-full rounded-full ${conditionMeta.progressClassName}`}
+            style={{ width: `${weekly.progressPercent}%` }}
+          />
+        </div>
+      </div>
       {weekly.dailyForecasts.length ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {weekly.dailyForecasts.map((item) => (
@@ -3333,6 +3375,77 @@ function WeeklyOperationCard({
       </p>
     </div>
   )
+}
+
+function getWeeklyConditionMeta(
+  tone: PlaceBookingPredictionResponse['weeklyOperation']['conditionTone'],
+) {
+  if (tone === 'excellent') {
+    return {
+      badgeClassName: 'bg-lime-300/15 text-lime-100',
+      cardClassName: 'border-lime-300/25 bg-lime-300/[0.08]',
+      dotClassName: 'bg-lime-300',
+      progressClassName: 'bg-lime-300',
+    }
+  }
+
+  if (tone === 'good') {
+    return {
+      badgeClassName: 'bg-emerald-300/15 text-emerald-100',
+      cardClassName: 'border-emerald-300/25 bg-emerald-300/[0.08]',
+      dotClassName: 'bg-emerald-300',
+      progressClassName: 'bg-emerald-300',
+    }
+  }
+
+  if (tone === 'caution') {
+    return {
+      badgeClassName: 'bg-orange-300/15 text-orange-100',
+      cardClassName: 'border-orange-300/25 bg-orange-300/[0.08]',
+      dotClassName: 'bg-orange-300',
+      progressClassName: 'bg-orange-300',
+    }
+  }
+
+  if (tone === 'danger') {
+    return {
+      badgeClassName: 'bg-rose-300/15 text-rose-100',
+      cardClassName: 'border-rose-300/25 bg-rose-300/[0.08]',
+      dotClassName: 'bg-rose-300',
+      progressClassName: 'bg-rose-300',
+    }
+  }
+
+  return {
+    badgeClassName: 'bg-slate-300/15 text-slate-100',
+    cardClassName: 'border-white/10 bg-white/[0.045]',
+    dotClassName: 'bg-slate-300',
+    progressClassName: 'bg-slate-300',
+  }
+}
+
+function getWeeklyComparisonMeta(rate: number) {
+  if (rate > 0) {
+    return {
+      cardClassName: 'border-lime-300/25 bg-lime-300/[0.08]',
+      label: `▲ +${rate}%`,
+      textClassName: 'text-lime-100',
+    }
+  }
+
+  if (rate < 0) {
+    return {
+      cardClassName: 'border-rose-300/25 bg-rose-300/[0.08]',
+      label: `▼ ${rate}%`,
+      textClassName: 'text-rose-100',
+    }
+  }
+
+  return {
+    cardClassName: 'border-white/10 bg-white/[0.045]',
+    label: '변동 없음',
+    textClassName: 'text-white',
+  }
 }
 
 function StatusInsightCard({

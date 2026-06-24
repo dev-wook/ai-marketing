@@ -356,10 +356,15 @@ export type PlaceBookingPredictionResponse = {
   weeklyOperation: {
     label: string
     status: PlaceBookingOutlookStatus
+    conditionLabel: string
+    conditionTone: 'excellent' | 'good' | 'normal' | 'caution' | 'danger'
     expectedBookings: string
+    recentWeeklyAverageBookings: number
     currentBookings: number
     progressPercent: number
+    remainingForecastBookings: number
     remainingExpectedBookings: string
+    comparisonRate: number
     comparisonText: string
     remainingBusinessDays: string[]
     dailyForecasts: Array<{
