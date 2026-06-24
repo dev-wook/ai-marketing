@@ -6,6 +6,14 @@ const scrollLockDatasetKey = 'aivaScrollLocked'
 const scrollAllowedSelector = '[data-aiva-scroll-lock-allow="true"]'
 const touchMoveIntentThreshold = 7
 
+function isElementScrollable(element: HTMLElement) {
+  const style = window.getComputedStyle(element)
+  const overflowY = style.overflowY
+  const canOverflow = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay'
+
+  return canOverflow && element.scrollHeight > element.clientHeight
+}
+
 function recoverOrphanedScrollLock() {
   const looksLikeAivaScrollLock =
     document.body.dataset[scrollLockDatasetKey] === 'true' ||
@@ -75,6 +83,16 @@ export function useBodyScrollLock(active: boolean) {
     const findAllowedScrollElement = (target: EventTarget | null) => {
       if (!(target instanceof Element)) {
         return null
+      }
+
+      let currentElement: Element | null = target
+
+      while (currentElement && currentElement !== document.body && currentElement !== document.documentElement) {
+        if (currentElement instanceof HTMLElement && isElementScrollable(currentElement)) {
+          return currentElement
+        }
+
+        currentElement = currentElement.parentElement
       }
 
       return target.closest(scrollAllowedSelector) as HTMLElement | null

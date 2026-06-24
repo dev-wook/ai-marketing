@@ -417,7 +417,10 @@ export function AiDiagnosisDataManager({
             </button>
           </div>
 
-          <div className="min-h-0 overflow-y-auto p-3 sm:p-5">
+          <div
+            className="min-h-0 overflow-y-auto overscroll-contain p-3 [-webkit-overflow-scrolling:touch] [touch-action:pan-y] sm:p-5"
+            data-aiva-scroll-lock-allow="true"
+          >
             <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"

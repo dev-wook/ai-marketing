@@ -13,6 +13,8 @@ type PlaceListResponse = {
 }
 
 type PlaceTrackingDashboardProps = {
+  className?: string
+  mobileCompact?: boolean
   mode?: 'dashboard' | 'manager'
   onOpenManagerPage?: () => void
 }
@@ -25,7 +27,13 @@ type DashboardCacheEntry = {
   data: TrackingDashboardResponse
 }
 
+function joinClassNames(...classNames: Array<string | false | null | undefined>) {
+  return classNames.filter(Boolean).join(' ')
+}
+
 export function PlaceTrackingDashboard({
+  className = '',
+  mobileCompact = false,
   mode = 'dashboard',
   onOpenManagerPage,
 }: PlaceTrackingDashboardProps) {
@@ -219,16 +227,27 @@ export function PlaceTrackingDashboard({
   }
 
   return (
-    <section className="grid min-w-0 gap-4 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.22)] md:p-6">
-      <div className="grid min-w-0 gap-4 md:grid-cols-[1fr_auto] md:items-start">
+    <section
+      className={joinClassNames(
+        'grid min-w-0 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 shadow-[0_24px_70px_rgba(0,0,0,0.22)]',
+        mobileCompact ? 'gap-3 p-3 md:gap-4 md:p-6' : 'gap-4 p-4 md:p-6',
+        className,
+      )}
+    >
+      <div className="grid min-w-0 gap-2 md:grid-cols-[1fr_auto] md:items-start md:gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200/80">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/80 md:text-xs md:tracking-[0.2em]">
             Place Tracking
           </p>
-          <h2 className="mt-2 break-keep text-2xl font-black tracking-[-0.02em] text-white md:text-4xl">
+          <h2 className="mt-1 break-keep text-xl font-black tracking-[-0.02em] text-white md:mt-2 md:text-4xl">
             내 플레이스 순위
           </h2>
-          <p className="mt-3 max-w-2xl break-keep text-sm font-semibold leading-6 text-slate-300 md:text-base">
+          <p className={joinClassNames(
+            'max-w-2xl break-keep font-semibold text-slate-300',
+            mobileCompact
+              ? 'mt-1 text-xs leading-5 md:mt-3 md:text-base md:leading-6'
+              : 'mt-3 text-sm leading-6 md:text-base',
+          )}>
             등록한 플레이스가 주요 키워드에서 몇 위인지 바로 확인합니다.
           </p>
         </div>
@@ -271,6 +290,7 @@ export function PlaceTrackingDashboard({
             <TrackedPlaceCard
               key={place.id}
               isRefreshing={refreshingPlaceId === place.id}
+              mobileCompact={mobileCompact}
               onOpenManager={openManager}
               onRefresh={() => refreshPlaceDashboard(place.id)}
               place={place}
@@ -394,30 +414,43 @@ function createTrackingTargetSignatureFromDashboard(data: TrackingDashboardRespo
 
 function TrackedPlaceCard({
   isRefreshing,
+  mobileCompact,
   onOpenManager,
   onRefresh,
   place,
 }: {
   isRefreshing: boolean
+  mobileCompact?: boolean
   onOpenManager: () => void
   onRefresh: () => void
   place: TrackingDashboardPlace
 }) {
   return (
-    <article className="relative grid min-w-0 gap-4 rounded-md border border-cyan-300/14 bg-[#0a1220]/86 p-4 shadow-[0_18px_46px_rgba(0,0,0,0.18)] md:p-5">
-      <div className="grid min-w-0 gap-3 border-b border-white/10 pb-4 md:grid-cols-[1fr_auto] md:items-start">
+    <article
+      className={joinClassNames(
+        'relative grid min-w-0 rounded-md border border-cyan-300/14 bg-[#0a1220]/86 shadow-[0_18px_46px_rgba(0,0,0,0.18)]',
+        mobileCompact ? 'gap-3 p-3 md:gap-4 md:p-5' : 'gap-4 p-4 md:p-5',
+      )}
+    >
+      <div className={joinClassNames(
+        'grid min-w-0 border-b border-white/10 md:grid-cols-[1fr_auto] md:items-start',
+        mobileCompact ? 'gap-2 pb-3 md:gap-3 md:pb-4' : 'gap-3 pb-4',
+      )}>
         <div className="min-w-0 pr-12 md:pr-0">
-          <p className="truncate text-xl font-black text-white md:text-2xl">
+          <p className={joinClassNames(
+            'truncate font-black text-white',
+            mobileCompact ? 'text-lg md:text-2xl' : 'text-xl md:text-2xl',
+          )}>
             {place.placeName}
           </p>
-          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-black text-slate-400">
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 md:gap-2">
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-black text-slate-400 md:px-3 md:text-xs">
               ID {place.naverPlaceId}
             </span>
             <button
               type="button"
               onClick={onOpenManager}
-              className="inline-flex h-8 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/7 px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/12"
+              className="inline-flex h-7 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/7 px-2.5 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-300/12 md:h-8 md:px-3 md:text-xs"
             >
               플레이스 관리 →
             </button>
@@ -429,7 +462,7 @@ function TrackedPlaceCard({
           onClick={onRefresh}
           disabled={isRefreshing}
           aria-label={`${place.placeName} 순위 새로고침`}
-          className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-white transition hover:border-cyan-300/45 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60 md:static md:h-10 md:w-10"
+          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-white transition hover:border-cyan-300/45 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60 md:static md:h-10 md:w-10"
         >
           {isRefreshing ? (
             <span className="block h-4 w-4 animate-spin rounded-full border-2 border-cyan-100/30 border-t-cyan-100" />
@@ -453,21 +486,50 @@ function TrackedPlaceCard({
         </button>
       </div>
 
-      <div className="grid min-w-0 gap-2 sm:grid-cols-2 md:gap-3 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className={joinClassNames(
+        'grid min-w-0',
+        mobileCompact
+          ? 'gap-1.5 sm:grid-cols-2 md:gap-3 xl:grid-cols-3 2xl:grid-cols-4'
+          : 'gap-2 sm:grid-cols-2 md:gap-3 xl:grid-cols-3 2xl:grid-cols-4',
+      )}>
         {place.keywords.map((keyword) => (
           <div
             key={keyword.keywordId}
-            className="grid min-w-0 gap-3 rounded-md border border-cyan-300/12 bg-[#0d1828]/82 px-3.5 py-3.5 md:min-h-28 md:content-between"
+            className={joinClassNames(
+              'min-w-0 rounded-md border border-cyan-300/12 bg-[#0d1828]/82',
+              mobileCompact
+                ? 'flex items-center justify-between gap-2 px-2.5 py-2 md:grid md:min-h-28 md:content-between md:gap-3 md:px-3.5 md:py-3.5'
+                : 'grid gap-3 px-3.5 py-3.5 md:min-h-28 md:content-between',
+            )}
           >
-            <div className="flex min-w-0 items-start justify-between gap-3">
-              <RankBadge rank={keyword.rank} status={keyword.status} />
-              <RankChange change={keyword.rankChange} />
+            <div className={joinClassNames(
+              'flex min-w-0 items-center gap-2',
+              mobileCompact ? 'md:items-start md:justify-between md:gap-3' : 'items-start justify-between gap-3',
+            )}>
+              <RankBadge
+                mobileCompact={mobileCompact}
+                rank={keyword.rank}
+                status={keyword.status}
+              />
+              <div className={mobileCompact ? 'min-w-0 md:hidden' : 'hidden'}>
+                <p className="truncate text-sm font-black leading-tight text-slate-50">
+                  {keyword.keyword}
+                </p>
+              </div>
+              <div className={mobileCompact ? 'hidden md:block' : ''}>
+                <RankChange change={keyword.rankChange} mobileCompact={mobileCompact} />
+              </div>
             </div>
-            <div className="min-w-0">
+            <div className={joinClassNames('min-w-0', mobileCompact ? 'hidden md:block' : '')}>
               <p className="truncate text-base font-black leading-tight text-slate-50 md:text-lg">
                 {keyword.keyword}
               </p>
             </div>
+            {mobileCompact ? (
+              <div className="shrink-0 md:hidden">
+                <RankChange change={keyword.rankChange} mobileCompact />
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -476,15 +538,22 @@ function TrackedPlaceCard({
 }
 
 function RankBadge({
+  mobileCompact,
   rank,
   status,
 }: {
+  mobileCompact?: boolean
   rank: number | null
   status: 'found' | 'not_found'
 }) {
   if (status === 'not_found' || !rank) {
     return (
-      <span className="inline-flex w-fit rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-base font-black text-slate-500 md:text-lg">
+      <span className={joinClassNames(
+        'inline-flex w-fit rounded-md border border-white/10 bg-white/[0.035] font-black text-slate-500',
+        mobileCompact
+          ? 'px-2 py-1.5 text-xs md:px-3 md:py-2 md:text-lg'
+          : 'px-3 py-2 text-base md:text-lg',
+      )}>
         미노출
       </span>
     )
@@ -500,7 +569,13 @@ function RankBadge({
           : 'border-white/10 bg-white/[0.035] text-slate-300'
 
   return (
-    <span className={`inline-flex w-fit rounded-md border px-3 py-2 text-lg font-black leading-none md:text-2xl ${colorClass}`}>
+    <span className={joinClassNames(
+      'inline-flex w-fit rounded-md border font-black leading-none',
+      mobileCompact
+        ? 'px-2 py-1.5 text-base md:px-3 md:py-2 md:text-2xl'
+        : 'px-3 py-2 text-lg md:text-2xl',
+      colorClass,
+    )}>
       {rank}위
     </span>
   )
@@ -508,12 +583,17 @@ function RankBadge({
 
 function RankChange({
   change,
+  mobileCompact,
 }: {
   change: TrackingDashboardPlace['keywords'][number]['rankChange']
+  mobileCompact?: boolean
 }) {
   if (!change || change.direction === 'same') {
     return (
-      <p className="shrink-0 whitespace-nowrap pt-1 text-sm font-black text-slate-500 md:text-base">
+      <p className={joinClassNames(
+        'shrink-0 whitespace-nowrap font-black text-slate-500',
+        mobileCompact ? 'text-xs md:pt-1 md:text-base' : 'pt-1 text-sm md:text-base',
+      )}>
         변동 없음
       </p>
     )
@@ -522,7 +602,11 @@ function RankChange({
   const isUp = change.direction === 'up'
 
   return (
-    <p className={`shrink-0 whitespace-nowrap pt-1 text-sm font-black md:text-base ${isUp ? 'text-rose-300' : 'text-blue-300'}`}>
+    <p className={joinClassNames(
+      'shrink-0 whitespace-nowrap font-black',
+      mobileCompact ? 'text-xs md:pt-1 md:text-base' : 'pt-1 text-sm md:text-base',
+      isUp ? 'text-rose-300' : 'text-blue-300',
+    )}>
       {isUp ? '▲' : '▼'} {change.delta}
     </p>
   )
@@ -846,7 +930,10 @@ function PlaceTrackingManager({
   }
 
   return (
-    <div className="fixed inset-0 z-[45] overflow-y-auto bg-black/65 px-4 pb-4 pt-[calc(env(safe-area-inset-top)+88px)] backdrop-blur-sm md:z-[90] md:p-4">
+    <div
+      className="fixed inset-0 z-[45] overflow-y-auto overscroll-contain bg-black/65 px-4 pb-4 pt-[calc(env(safe-area-inset-top)+88px)] backdrop-blur-sm [-webkit-overflow-scrolling:touch] [touch-action:pan-y] md:z-[90] md:p-4"
+      data-aiva-scroll-lock-allow="true"
+    >
       {managerContent}
     </div>
   )

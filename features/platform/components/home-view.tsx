@@ -92,8 +92,14 @@ export function HomeView({
   ]
 
   return (
-    <div className="grid w-full min-w-0 gap-6 overflow-x-hidden">
-      <section className="rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:p-5">
+    <div className="grid w-full min-w-0 gap-4 overflow-x-hidden md:gap-6">
+      <PlaceTrackingDashboard
+        className="order-1 md:order-2"
+        mobileCompact
+        onOpenManagerPage={onOpenPlaceTracking}
+      />
+
+      <section className="order-2 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:order-1 md:p-5">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
@@ -113,7 +119,6 @@ export function HomeView({
         </div>
       </section>
 
-      <PlaceTrackingDashboard onOpenManagerPage={onOpenPlaceTracking} />
     </div>
   )
 }

@@ -567,28 +567,50 @@ function ComparisonRow({
   rightName: string
   row: ComparisonRowModel
 }) {
+  const shouldCollapseDetails = row.label === '예약/시술 메뉴'
+  const [isDetailOpen, setIsDetailOpen] = useState(!shouldCollapseDetails)
+
   return (
     <div className="grid gap-3 rounded-md border border-white/10 bg-white/[0.035] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="break-keep text-sm font-black text-white">{row.label}</p>
-        <span className={getWinnerBadgeClassName(row.winner)}>
-          {row.winner === 'tie' ? '비슷함' : row.winner === 'left' ? `${leftName} 우위` : `${rightName} 우위`}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {shouldCollapseDetails ? (
+            <button
+              type="button"
+              onClick={() => setIsDetailOpen((current) => !current)}
+              className="rounded-md border border-cyan-300/22 bg-cyan-300/[0.08] px-2.5 py-1 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-300/[0.14]"
+              aria-expanded={isDetailOpen}
+            >
+              {isDetailOpen ? '상세 접기' : '상세 보기'}
+            </button>
+          ) : null}
+          <span className={getWinnerBadgeClassName(row.winner)}>
+            {row.winner === 'tie' ? '비슷함' : row.winner === 'left' ? `${leftName} 우위` : `${rightName} 우위`}
+          </span>
+        </div>
       </div>
       <div className="grid overflow-hidden rounded-md border border-white/10 md:grid-cols-2">
         <ComparisonSideCell
           active={row.winner === 'left'}
           detail={row.leftDetail}
+          showDetail={isDetailOpen}
           name={leftName}
           value={row.leftValue}
         />
         <ComparisonSideCell
           active={row.winner === 'right'}
           detail={row.rightDetail}
+          showDetail={isDetailOpen}
           name={rightName}
           value={row.rightValue}
         />
       </div>
+      {shouldCollapseDetails && !isDetailOpen ? (
+        <p className="break-keep rounded-md border border-white/10 bg-black/15 px-3 py-2 text-xs font-semibold leading-5 text-slate-400">
+          카테고리별 시술 정보와 가격/설명 근거는 상세 보기에서 확인할 수 있습니다.
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -597,11 +619,13 @@ function ComparisonSideCell({
   active,
   detail,
   name,
+  showDetail = true,
   value,
 }: {
   active: boolean
   detail: string
   name: string
+  showDetail?: boolean
   value: string
 }) {
   return (
@@ -619,7 +643,9 @@ function ComparisonSideCell({
         ) : null}
       </div>
       <p className="break-keep text-2xl font-black text-white">{value}</p>
-      <p className="break-keep text-xs font-semibold leading-5 text-slate-400">{detail}</p>
+      {showDetail ? (
+        <p className="break-keep text-xs font-semibold leading-5 text-slate-400">{detail}</p>
+      ) : null}
     </div>
   )
 }

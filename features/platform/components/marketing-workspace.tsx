@@ -53,7 +53,7 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   diagnosis: 'AI 플레이스 진단',
   competitor: 'AI 플레이스 경쟁사 비교',
   tracking: '플레이스 관리',
-  my: '마이',
+  my: '마이페이지',
 }
 
 type MobileNavItem = {
@@ -706,7 +706,7 @@ function MyView({
         <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
           My
         </p>
-        <h1 className="mt-2 text-2xl font-black text-white md:text-3xl">마이</h1>
+        <h1 className="mt-2 text-2xl font-black text-white md:text-3xl">마이페이지</h1>
         <p className="mt-2 break-keep text-sm font-semibold leading-7 text-slate-300">
           계정 정보와 운영 관리 기능을 확인합니다.
         </p>
@@ -811,7 +811,7 @@ function WorkStatusPanel({
         </div>
 
         <div
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]"
           data-aiva-scroll-lock-allow="true"
         >
           {isLoading && !hasJobs ? (
