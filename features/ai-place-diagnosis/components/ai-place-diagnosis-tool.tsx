@@ -5,7 +5,6 @@ import type { ReactNode } from 'react'
 import {
   RecentSearchList,
   ToolLoadingPanel,
-  ToolSimpleLoadingPanel,
 } from '@/features/platform/components/tool-ui'
 import type {
   AiPlaceDiagnosisPlaceSearchItem,
@@ -235,9 +234,16 @@ export function AiPlaceDiagnosisTool() {
             <button
               type="submit"
               disabled={!canSearch}
-              className="min-h-14 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {isSearching ? '검색 중' : '플레이스 검색'}
+              {isSearching ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#070a12]/20 border-t-[#070a12]" />
+                  검색중...
+                </>
+              ) : (
+                '플레이스 검색'
+              )}
             </button>
           </div>
         </form>
@@ -267,10 +273,6 @@ export function AiPlaceDiagnosisTool() {
               ))}
             </div>
           </div>
-        ) : null}
-
-        {isSearching ? (
-          <ToolSimpleLoadingPanel message="플레이스를 검색하고 있습니다..." />
         ) : null}
 
         {selectedPlace ? (

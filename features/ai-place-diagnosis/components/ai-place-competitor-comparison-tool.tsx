@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ToolLoadingPanel, ToolSimpleLoadingPanel } from '@/features/platform/components/tool-ui'
+import { ToolLoadingPanel } from '@/features/platform/components/tool-ui'
 import type {
   AiPlaceDiagnosisPlaceSearchItem,
   AiPlaceDiagnosisPlaceSearchResponse,
@@ -225,7 +225,7 @@ export function AiPlaceCompetitorComparisonTool() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           <PlaceSearchColumn
-            disabled={isComparing || right.isSearching}
+            disabled={isComparing}
             label="플레이스 1"
             onChangeQuery={(query) => {
               setLeft((current) => ({ ...current, query, selected: null }))
@@ -241,7 +241,7 @@ export function AiPlaceCompetitorComparisonTool() {
             selection={left}
           />
           <PlaceSearchColumn
-            disabled={isComparing || left.isSearching}
+            disabled={isComparing}
             label="플레이스 2"
             onChangeQuery={(query) => {
               setRight((current) => ({ ...current, query, selected: null }))
@@ -257,10 +257,6 @@ export function AiPlaceCompetitorComparisonTool() {
             selection={right}
           />
         </div>
-
-        {isSearching ? (
-          <ToolSimpleLoadingPanel message="플레이스를 검색하고 있습니다..." />
-        ) : null}
 
         <form
           className="rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.18)]"
@@ -350,9 +346,16 @@ function PlaceSearchColumn({
           <button
             type="submit"
             disabled={!canSearch}
-            className="min-h-12 rounded-md border border-cyan-300/30 bg-cyan-300/12 px-5 text-sm font-black text-cyan-50 transition hover:border-cyan-200/60 hover:bg-cyan-300/18 disabled:cursor-not-allowed disabled:opacity-45"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-cyan-300/30 bg-cyan-300/12 px-5 text-sm font-black text-cyan-50 transition hover:border-cyan-200/60 hover:bg-cyan-300/18 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            검색
+            {selection.isSearching ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-50/20 border-t-cyan-50" />
+                검색중...
+              </>
+            ) : (
+              '검색'
+            )}
           </button>
         </div>
       </form>

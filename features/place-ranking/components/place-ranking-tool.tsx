@@ -3022,15 +3022,7 @@ function BookingPredictionModal({
           data-aiva-scroll-lock-allow="true"
         >
           {isLoading ? (
-            <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
-              <p className="font-black text-cyan-100">AI가 예약 수요를 예측하고 있습니다.</p>
-              <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
-                실시간 예약현황, 최근 3개월 같은 요일, 4~5주 전 예약 흐름을 함께 분석합니다.
-              </p>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
-              </div>
-            </div>
+            <BookingPredictionSkeleton />
           ) : errorMessage ? (
             <div className="rounded-md border border-rose-300/20 bg-rose-400/[0.08] p-4">
               <p className="font-black text-rose-100">{errorMessage}</p>
@@ -3123,6 +3115,126 @@ function BookingPredictionModal({
         </div>
       </section>
     </div>
+  )
+}
+
+function BookingPredictionSkeleton() {
+  return (
+    <div className="grid gap-4" role="status" aria-live="polite">
+      <section className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] p-4">
+        <div>
+          <p className="font-black text-cyan-100">AI 예약 수요를 분석하고 있습니다.</p>
+          <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
+            선택한 날짜의 예약 패턴과 재방문 흐름을 계산 중입니다.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          {['예상 예약 건수', '예약 수요 지수', '예측 신뢰도', '상태'].map((label, index) => (
+            <div
+              key={label}
+              className={`rounded-md border p-3 ${
+                index === 0
+                  ? 'border-cyan-200/30 bg-cyan-200/[0.08]'
+                  : 'border-white/10 bg-white/[0.045]'
+              }`}
+            >
+              <p className="text-[11px] font-black text-slate-500">{label}</p>
+              <SkeletonLine className="mt-3 h-6 w-20" />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 rounded-md border border-white/10 bg-[#070b15]/55 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <SkeletonLine className="h-3 w-20" />
+            <SkeletonLine className="h-4 w-24" />
+          </div>
+          <SkeletonLine className="mt-3 h-2 w-full rounded-full" />
+          <div className="mt-2 flex justify-between">
+            <SkeletonLine className="h-3 w-8" />
+            <SkeletonLine className="h-3 w-8" />
+            <SkeletonLine className="h-3 w-8" />
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2">
+          <SkeletonLine className="h-4 w-11/12" />
+          <SkeletonLine className="h-4 w-8/12" />
+        </div>
+      </section>
+
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <PredictionWindowSkeleton title="예약 집중 예상 시간" tone="busy" />
+        <PredictionWindowSkeleton title="운영 여유 후보 시간" tone="quiet" />
+      </div>
+
+      <PredictionBulletSkeleton title="예측 근거" rows={4} />
+      <PredictionBulletSkeleton title="운영 추천" rows={3} />
+    </div>
+  )
+}
+
+function PredictionWindowSkeleton({
+  title,
+  tone,
+}: {
+  title: string
+  tone: 'busy' | 'quiet'
+}) {
+  return (
+    <section
+      className={`rounded-md border p-4 ${
+        tone === 'busy'
+          ? 'border-orange-300/25 bg-orange-300/[0.08]'
+          : 'border-emerald-300/25 bg-emerald-300/[0.08]'
+      }`}
+    >
+      <p
+        className={`text-sm font-black ${
+          tone === 'busy' ? 'text-orange-100' : 'text-emerald-100'
+        }`}
+      >
+        {title}
+      </p>
+      <SkeletonLine className="mt-2 h-3 w-10/12" />
+      <div className="mt-3 grid gap-2">
+        {[0, 1, 2].map((item) => (
+          <div key={item} className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <SkeletonLine className="h-5 w-28" />
+              <SkeletonLine className="h-5 w-14 rounded-full" />
+            </div>
+            <SkeletonLine className="mt-3 h-3 w-full" />
+            <SkeletonLine className="mt-2 h-3 w-9/12" />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function PredictionBulletSkeleton({ rows, title }: { rows: number; title: string }) {
+  return (
+    <section className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+      <p className="text-sm font-black text-white">{title}</p>
+      <div className="mt-3 grid gap-2">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div key={`${title}-${index}`} className="rounded-md bg-white/[0.04] p-3">
+            <SkeletonLine className="h-3 w-full" />
+            <SkeletonLine className="mt-2 h-3 w-8/12" />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function SkeletonLine({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`block animate-pulse rounded-md bg-gradient-to-r from-white/[0.08] via-white/[0.16] to-white/[0.08] ${className}`}
+    />
   )
 }
 
