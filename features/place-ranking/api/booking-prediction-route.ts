@@ -180,7 +180,7 @@ function createPredictionPrompt({
 반드시 JSON만 반환한다.
 
 목표:
-- 사용자가 "오늘 더 예약이 들어올지", "언제 대기해야 할지", "언제 개인 업무를 봐도 될지", "이번 주/다음 주가 바쁜지"를 바로 판단하게 한다.
+- 사용자가 "오늘 더 예약이 들어올지", "언제 예약이 몰릴지", "언제 비교적 여유로울지", "이번 주/다음 주가 바쁜지"를 바로 판단하게 한다.
 - 점수 자체를 설명하지 말고 운영 판단과 추천 행동을 말한다.
 - 같은 분석 기준을 반복 설명하지 말고 결과와 행동 중심으로 짧게 말한다.
 
@@ -192,7 +192,7 @@ function createPredictionPrompt({
 - 월간 트렌드: 최근 3개월 동일 요일 평균과 4~5주 전 주기 신호를 비교해 최근 수요 방향을 본다.
 - 현재 예약현황: 대상일에 이미 잡힌 예약 수와 남은 예약 가능 시간을 반영한다.
 - 선택일이 오늘이면 현재 시간 이후 남은 시간대만 busyWindows/quietWindows에 제시한다.
-- 이번 주 전망은 최근 8주 주간 총 예약 평균과 비교한다.
+- 이번 주 전망과 다음 주 전망은 최근 8주 주간 총 예약 평균과 비교한다.
 - 남은 영업일 예측은 각 요일별 최근 8주 평균을 사용한다.
 - 슬롯 상태 해석: booked는 실제 예약, closed 중 actual booking 주변 시간대는 예약으로 인한 차단 추정, manual_block_or_full은 관리자 차단 가능성으로 본다.
 - busyWindows는 수요가 높은 시간만, quietWindows는 다른 시간대 대비 예약 유입 가능성이 낮고 운영 여유가 있는 시간만 제시한다.
@@ -211,7 +211,7 @@ function createPredictionPrompt({
   "expectedAdditionalBookings": number,
   "todayOutlook": {"label":"오늘 예약 전망","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
   "weekOutlook": {"label":"이번 주 전망","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
-  "nextWeekOutlook": {"label":"다음 주 전망","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
+  "nextWeekOutlook": {"label":"다음 주 예상 총 예약","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
   "statusInsight": {"label":"평소 대비 상태","status":"BUSY|NORMAL|QUIET","headline":"string","reason":"string"},
   "weeklyOperation": {"label":"이번 주 운영 현황","status":"BUSY|NORMAL|QUIET","conditionLabel":"매우 양호|양호|보통|주의|위험","conditionTone":"excellent|good|normal|caution|danger","expectedBookings":"string","recentWeeklyAverageBookings":number,"currentBookings":number,"progressPercent":number,"remainingForecastBookings":number,"remainingExpectedBookings":"string","comparisonRate":number,"comparisonText":"string","remainingBusinessDays":["목","금"],"dailyForecasts":[{"label":"목","expectedBookings":"4~5건"}],"insight":"string"},
   "summary": "string",
@@ -354,6 +354,8 @@ function createFallbackPrediction({
   })
   const nextWeekOutlook = createNextWeekOutlook({
     cycleAverageBookings,
+    recentWeekStatuses,
+    currentProduct,
     sameWeekdayAverageBookings,
   })
   const statusInsight = createStatusInsight({
@@ -407,7 +409,7 @@ function createFallbackPrediction({
         ? '오늘은 추가 예약이 들어올 가능성이 있어 예약 대기 시간을 남겨두는 편이 좋습니다.'
         : demandLevel === 'MEDIUM'
           ? '오늘은 일부 시간대에 예약 유입 가능성이 있으므로 핵심 시간대만 대기하는 운영이 적절합니다.'
-          : '오늘은 강한 추가 예약 신호가 제한적이어서 개인 업무 시간을 확보해도 무리가 적어 보입니다.',
+          : '오늘은 강한 추가 예약 신호가 제한적이어서 비교적 여유로운 흐름으로 보입니다.',
     busyWindows,
     quietWindows,
     recommendedActions,
@@ -451,7 +453,7 @@ function mergeGeminiPrediction(
     ),
     todayOutlook: toForecastSummary(payload.todayOutlook, fallback.todayOutlook),
     weekOutlook: toForecastSummary(payload.weekOutlook, fallback.weekOutlook),
-    nextWeekOutlook: toForecastSummary(payload.nextWeekOutlook, fallback.nextWeekOutlook),
+    nextWeekOutlook: toForecastSummaryTextOnly(payload.nextWeekOutlook, fallback.nextWeekOutlook),
     statusInsight: toStatusInsight(payload.statusInsight, fallback.statusInsight),
     weeklyOperation: toWeeklyOperation(payload.weeklyOperation, fallback.weeklyOperation),
     summary: toSafeText(payload.summary, fallback.summary),
@@ -502,7 +504,7 @@ function createPredictionWindows({
       recommendation:
         tone === 'busy'
           ? '이 시간대는 예약 대기와 상담 응대를 우선하세요.'
-          : '이 시간대는 개인 업무, 정리, 콘텐츠 촬영 후보로 적합합니다.',
+          : '다른 시간대보다 예약 유입 가능성이 낮게 예상됩니다.',
     }
   })
 }
@@ -564,7 +566,7 @@ function createQuietWindowReason(
     return '집중 시간대보다 예약 가능성이 낮은 후보 시간입니다.'
   }
 
-  return '개인 업무나 정리 시간을 잡기 좋은 시간대입니다.'
+  return '예약 유입 가능성이 낮은 시간대입니다.'
 }
 
 function createTodayOutlook({
@@ -591,8 +593,8 @@ function createTodayOutlook({
       status === 'BUSY'
         ? '예약 문의와 대기 응대 시간을 남겨두세요.'
         : status === 'NORMAL'
-          ? '예약 집중 시간만 대기하고 나머지는 내부 업무로 배분하세요.'
-          : '오전이나 낮 시간대 개인 업무를 진행해도 무리가 적어 보입니다.',
+          ? '예약 집중 예상 시간과 여유 시간만 구분해 확인하세요.'
+          : '비교적 여유로운 시간대가 있는지 확인하세요.',
     description:
       status === 'BUSY'
         ? '평소보다 예약 유입 가능성이 높은 날로 보입니다.'
@@ -623,7 +625,7 @@ function createWeekOutlook({
       status === 'BUSY'
         ? '이번 주는 예약 증가 가능성이 있어 늦은 시간 문의 대응까지 열어두는 편이 좋습니다.'
         : status === 'QUIET'
-          ? '이번 주는 비교적 여유로워 정리 업무나 콘텐츠 작업을 배치하기 좋습니다.'
+          ? '이번 주는 최근 평균보다 예약 유입이 약할 가능성이 있습니다.'
           : '이번 주는 평소 수준으로 운영하되 집중 시간대만 확인하세요.',
     description:
       status === 'BUSY'
@@ -636,31 +638,47 @@ function createWeekOutlook({
 
 function createNextWeekOutlook({
   cycleAverageBookings,
+  currentProduct,
+  recentWeekStatuses,
   sameWeekdayAverageBookings,
 }: {
   cycleAverageBookings: number
+  currentProduct: PlaceBookingProduct | null
+  recentWeekStatuses: PlaceBookingStatusResponse[]
   sameWeekdayAverageBookings: number
 }): PlaceBookingPredictionResponse['nextWeekOutlook'] {
-  const comparisonRate = calculateTrendRate(cycleAverageBookings, sameWeekdayAverageBookings)
-  const status = comparisonRate >= 25 ? 'BUSY' : comparisonRate <= -25 ? 'QUIET' : 'NORMAL'
+  const recentStats = summarizeRecentEightWeeks(
+    recentWeekStatuses,
+    currentProduct?.id,
+    currentProduct?.name,
+  )
+  const recentWeeklyAverage = Math.max(1, Math.round(recentStats.weeklyAverageBookings))
+  const cycleSignalRate = calculateTrendRate(cycleAverageBookings, sameWeekdayAverageBookings)
+  const adjustmentRate = clamp(Math.round(cycleSignalRate * 0.35), -20, 20)
+  const expectedWeeklyBookings = Math.max(
+    0,
+    Math.round(recentWeeklyAverage * (1 + adjustmentRate / 100)),
+  )
+  const comparisonRate = calculateTrendRate(expectedWeeklyBookings, recentWeeklyAverage)
+  const status = comparisonRate >= 20 ? 'BUSY' : comparisonRate <= -20 ? 'QUIET' : 'NORMAL'
 
   return {
-    label: '다음 주 전망',
+    label: '다음 주 예상 총 예약',
     status,
-    expectedBookings: `${Math.max(0, Math.round(cycleAverageBookings))}건 내외`,
+    expectedBookings: `${expectedWeeklyBookings}건 내외`,
     comparisonText: formatComparisonText(comparisonRate),
     recommendation:
       status === 'BUSY'
-        ? '다음 주는 재방문 예상군이 있어 예약 문의와 핵심 시간대 대응을 우선하세요.'
+        ? '다음 주는 최근 평균보다 예약 총량이 늘 가능성이 있습니다.'
         : status === 'QUIET'
-          ? '다음 주는 재방문 예상군이 적어 내부 정비나 콘텐츠 작업 시간을 확보하기 좋습니다.'
-          : '다음 주는 평소 수준으로 보고 주요 시간대만 열어두세요.',
+          ? '다음 주는 최근 평균보다 예약 총량이 줄 가능성이 있습니다.'
+          : '다음 주는 최근 평균과 비슷한 총량으로 예상됩니다.',
     description:
       status === 'BUSY'
-        ? '4~5주 전 방문군이 다시 예약할 가능성이 상대적으로 높습니다.'
+        ? '최근 8주 주간 총 예약 평균보다 강한 흐름입니다.'
         : status === 'QUIET'
-          ? '4~5주 전 방문군 기반 재방문 신호가 약합니다.'
-          : '재방문 주기상 특별히 강하거나 약한 신호는 제한적입니다.',
+          ? '최근 8주 주간 총 예약 평균보다 약한 흐름입니다.'
+          : '최근 8주 주간 총 예약 평균 기준의 총량 전망입니다.',
   }
 }
 
@@ -834,7 +852,7 @@ function createRecommendedActions({
         ? '이번 주는 비교적 여유로운 운영이 예상됩니다.'
         : null,
     busyWindows[0] ? `${busyWindows[0].timeRange} 전후는 예약 대기 시간을 확보하세요.` : null,
-    quietWindows[0] ? `${quietWindows[0].timeRange} 전후는 개인 업무나 콘텐츠 정리에 적합합니다.` : null,
+    quietWindows[0] ? `${quietWindows[0].timeRange} 전후는 예약 유입 가능성이 낮게 예상됩니다.` : null,
     weeklyOperation.status !== 'NORMAL' ? weeklyOperation.insight : null,
     statusInsight.status !== 'NORMAL' ? statusInsight.headline : null,
   ].filter((item): item is string => Boolean(item))
@@ -1289,6 +1307,23 @@ function toForecastSummary(
     status: toOutlookStatusValue(record.status, fallback.status),
     expectedBookings: toSafeText(record.expectedBookings, fallback.expectedBookings),
     comparisonText: toSafeText(record.comparisonText, fallback.comparisonText),
+    recommendation: toSafeText(record.recommendation, fallback.recommendation),
+    description: toSafeText(record.description, fallback.description),
+  }
+}
+
+function toForecastSummaryTextOnly(
+  value: unknown,
+  fallback: PlaceBookingPredictionResponse['todayOutlook'],
+): PlaceBookingPredictionResponse['todayOutlook'] {
+  if (!value || typeof value !== 'object') {
+    return fallback
+  }
+
+  const record = value as Record<string, unknown>
+
+  return {
+    ...fallback,
     recommendation: toSafeText(record.recommendation, fallback.recommendation),
     description: toSafeText(record.description, fallback.description),
   }

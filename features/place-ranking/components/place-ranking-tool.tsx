@@ -3111,11 +3111,10 @@ function BookingPredictionModal({
                 ) : null}
               </section>
 
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-3 xl:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)_minmax(220px,0.8fr)]">
                 <ForecastDecisionCard outlook={prediction.todayOutlook} featured />
                 <WeeklyOperationCard weekly={prediction.weeklyOperation} />
                 <ForecastDecisionCard outlook={prediction.nextWeekOutlook} />
-                <StatusInsightCard insight={prediction.statusInsight} />
               </div>
 
               <div className="grid gap-3">
@@ -3125,14 +3124,14 @@ function BookingPredictionModal({
                   windows={prediction.busyWindows}
                 />
                 <PredictionWindowList
-                  title="개인 업무 추천 시간"
+                  title="비교적 여유로운 시간"
                   tone="quiet"
                   windows={prediction.quietWindows}
                 />
               </div>
 
               {prediction.recommendedActions.length ? (
-                <PredictionBulletSection title="운영 추천" items={prediction.recommendedActions} />
+                <PredictionBulletSection title="추가 참고" items={prediction.recommendedActions} collapsible />
               ) : null}
               <PredictionBulletSection title="판단 근거" items={prediction.basis} collapsible />
             </div>
@@ -3161,7 +3160,7 @@ function BookingPredictionSkeleton() {
       </section>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {['오늘 예약 전망', '이번 주 운영 현황', '다음 주 전망', '평소 대비 상태'].map((label, index) => (
+        {['오늘 예약 전망', '이번 주 운영 흐름', '다음 주 예상 총 예약'].map((label, index) => (
           <div
             key={label}
             className={`rounded-md border p-4 ${
@@ -3183,7 +3182,7 @@ function BookingPredictionSkeleton() {
 
       <div className="grid gap-3">
         <PredictionWindowSkeleton title="예약 집중 예상 시간" tone="busy" />
-        <PredictionWindowSkeleton title="개인 업무 추천 시간" tone="quiet" />
+        <PredictionWindowSkeleton title="비교적 여유로운 시간" tone="quiet" />
       </div>
 
       <PredictionBulletSkeleton title="운영 추천" rows={3} />
@@ -3520,8 +3519,8 @@ function PredictionWindowList({
       </p>
       <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-500">
         {tone === 'busy'
-          ? '예약 대기와 상담 응대가 필요한 시간만 정리했습니다.'
-          : '개인 업무나 정리 시간을 잡기 좋은 후보만 정리했습니다.'}
+          ? '예약 문의가 몰릴 가능성이 높은 시간만 정리했습니다.'
+          : '다른 시간대보다 예약 유입 가능성이 낮은 시간만 정리했습니다.'}
       </p>
       {visibleWindows.length ? (
         <div className={`mt-3 ${cardGridClass}`}>
@@ -3538,11 +3537,6 @@ function PredictionWindowList({
               <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-400">
                 {window.reason}
               </p>
-              {window.recommendation ? (
-                <p className="mt-2 break-keep rounded-md bg-white/[0.045] px-3 py-2 text-xs font-black leading-5 text-white">
-                  {window.recommendation}
-                </p>
-              ) : null}
             </div>
           ))}
         </div>
