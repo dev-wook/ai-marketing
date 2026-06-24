@@ -3159,25 +3159,10 @@ function BookingPredictionSkeleton() {
         </div>
       </section>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {['오늘 예약 전망', '이번 주 운영 흐름', '다음 주 예상 총 예약'].map((label, index) => (
-          <div
-            key={label}
-            className={`rounded-md border p-4 ${
-              index === 0
-                ? 'border-cyan-200/30 bg-cyan-200/[0.08]'
-                : 'border-white/10 bg-white/[0.045]'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-black text-white">{label}</p>
-              <SkeletonLine className="h-6 w-16 rounded-full" />
-            </div>
-            <SkeletonLine className="mt-4 h-7 w-24" />
-            <SkeletonLine className="mt-3 h-3 w-full" />
-            <SkeletonLine className="mt-2 h-3 w-9/12" />
-          </div>
-        ))}
+      <div className="grid gap-3 xl:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)_minmax(220px,0.8fr)]">
+        <ForecastDecisionSkeleton label="오늘 예약 전망" featured />
+        <WeeklyOperationSkeleton />
+        <ForecastDecisionSkeleton label="다음 주 예상 총 예약" />
       </div>
 
       <div className="grid gap-3">
@@ -3185,8 +3170,74 @@ function BookingPredictionSkeleton() {
         <PredictionWindowSkeleton title="비교적 여유로운 시간" tone="quiet" />
       </div>
 
-      <PredictionBulletSkeleton title="운영 추천" rows={3} />
       <PredictionBulletSkeleton title="판단 근거" rows={3} />
+    </div>
+  )
+}
+
+function ForecastDecisionSkeleton({
+  featured = false,
+  label,
+}: {
+  featured?: boolean
+  label: string
+}) {
+  return (
+    <div
+      className={`rounded-md border p-3 ${
+        featured
+          ? 'border-cyan-200/30 bg-cyan-200/[0.08]'
+          : 'border-white/10 bg-white/[0.045]'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-black text-white">{label}</p>
+        <SkeletonLine className="h-6 w-14 rounded-full" />
+      </div>
+      <SkeletonLine className="mt-4 h-7 w-24" />
+      <SkeletonLine className="mt-3 h-3 w-20" />
+      <SkeletonLine className="mt-4 h-3 w-full" />
+      <SkeletonLine className="mt-2 h-3 w-9/12" />
+      <SkeletonLine className="mt-4 h-9 w-full" />
+    </div>
+  )
+}
+
+function WeeklyOperationSkeleton() {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.045] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-white">이번 주 운영 흐름</p>
+          <SkeletonLine className="mt-2 h-3 w-64 max-w-full" />
+        </div>
+        <SkeletonLine className="h-6 w-20 rounded-full" />
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-4">
+        {[0, 1, 2, 3].map((item) => (
+          <div key={item} className="rounded-md border border-white/10 bg-black/15 px-3 py-3">
+            <SkeletonLine className="h-3 w-20" />
+            <SkeletonLine className="mt-2 h-6 w-16" />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 rounded-md border border-white/10 bg-black/15 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className={item === 2 ? 'basis-full md:basis-auto' : ''}>
+              <SkeletonLine className="h-3 w-20" />
+              <SkeletonLine className="mt-2 h-5 w-14" />
+            </div>
+          ))}
+        </div>
+        <SkeletonLine className="mt-3 h-2 w-full rounded-full" />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {[0, 1, 2].map((item) => (
+          <SkeletonLine key={item} className="h-6 w-16 rounded-full" />
+        ))}
+      </div>
+      <SkeletonLine className="mt-3 h-3 w-10/12" />
     </div>
   )
 }
