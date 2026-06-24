@@ -56,6 +56,67 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   tracking: '플레이스 관리',
 }
 
+type MobileNavItem = {
+  key: ViewKey
+  label: string
+  shortLabel: string
+  icon: MobileNavIcon
+}
+
+type MobileNavIcon =
+  | 'home'
+  | 'placeManage'
+  | 'rank'
+  | 'diagnosis'
+  | 'compare'
+  | 'keyword'
+  | 'blog'
+
+const mobileNavigationItems: MobileNavItem[] = [
+  {
+    key: 'home',
+    label: '홈',
+    shortLabel: '홈',
+    icon: 'home',
+  },
+  {
+    key: 'tracking',
+    label: '플레이스 관리',
+    shortLabel: '관리',
+    icon: 'placeManage',
+  },
+  {
+    key: 'place',
+    label: '플레이스 순위 조회',
+    shortLabel: '순위',
+    icon: 'rank',
+  },
+  {
+    key: 'diagnosis',
+    label: '플레이스 진단',
+    shortLabel: '진단',
+    icon: 'diagnosis',
+  },
+  {
+    key: 'competitor',
+    label: '경쟁사 비교',
+    shortLabel: '비교',
+    icon: 'compare',
+  },
+  {
+    key: 'keyword',
+    label: '키워드 분석',
+    shortLabel: '키워드',
+    icon: 'keyword',
+  },
+  {
+    key: 'blog',
+    label: '블로그 원고 작성',
+    shortLabel: '블로그',
+    icon: 'blog',
+  },
+]
+
 export function MarketingWorkspace() {
   const [view, setView] = useState<ViewKey>('home')
   const [blogInitialKeyword, setBlogInitialKeyword] = useState('')
@@ -93,6 +154,11 @@ export function MarketingWorkspace() {
   const openView = (nextView: ViewKey) => {
     setView(nextView)
     setIsMenuOpen(false)
+  }
+
+  const openViewFromNavigation = (nextView: ViewKey) => {
+    openView(nextView)
+    window.scrollTo({ top: 0 })
   }
 
   const openBlogDraftWithKeyword = (keyword: string) => {
@@ -448,7 +514,7 @@ export function MarketingWorkspace() {
           />
 
           <section
-            className="min-w-0 flex-1 pt-[96px] pb-6 lg:py-8 md:pt-6"
+            className="min-w-0 flex-1 pt-[96px] pb-[calc(102px+env(safe-area-inset-bottom))] lg:py-8 md:pt-6 md:pb-6"
           >
             {view === 'home' ? (
               <HomeView
@@ -476,9 +542,160 @@ export function MarketingWorkspace() {
             {view === 'competitor' ? <AiPlaceCompetitorComparisonTool /> : null}
             {view === 'tracking' ? <PlaceTrackingDashboard mode="manager" /> : null}
           </section>
+
+          <MobileBottomNavigation
+            activeView={view}
+            onOpenView={openViewFromNavigation}
+          />
         </div>
       </div>
     </main>
+  )
+}
+
+function MobileBottomNavigation({
+  activeView,
+  onOpenView,
+}: {
+  activeView: ViewKey
+  onOpenView: (view: ViewKey) => void
+}) {
+  return (
+    <nav
+      aria-label="주요 도구"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#070a12]/94 px-2 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_44px_rgba(0,0,0,0.34)] backdrop-blur-xl md:hidden"
+    >
+      <div className="mx-auto flex w-full max-w-md min-w-0 items-end justify-between gap-1 overflow-x-auto overscroll-x-contain rounded-[22px] border border-white/10 bg-white/[0.045] px-1.5 py-1.5 [-webkit-overflow-scrolling:touch]">
+        {mobileNavigationItems.map((item) => (
+          <MobileBottomNavigationButton
+            key={item.key}
+            active={activeView === item.key}
+            item={item}
+            onClick={() => onOpenView(item.key)}
+          />
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+function MobileBottomNavigationButton({
+  active,
+  item,
+  onClick,
+}: {
+  active: boolean
+  item: MobileNavItem
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      aria-label={item.label}
+      className={`grid min-h-[58px] min-w-[52px] flex-1 place-items-center rounded-[18px] px-1 py-1.5 text-center transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/18 ${
+        active
+          ? 'bg-cyan-200/14 text-cyan-100 shadow-[0_0_22px_rgba(103,232,249,0.13)]'
+          : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
+      }`}
+    >
+      <span className="relative grid h-7 w-7 place-items-center">
+        {active ? (
+          <span className="absolute inset-0 rounded-full bg-cyan-300/12" />
+        ) : null}
+        <MobileNavIconRenderer icon={item.icon} />
+      </span>
+      <span
+        className={`mt-0.5 max-w-full truncate text-[10px] font-black leading-3 tracking-[-0.02em] ${
+          active ? 'text-cyan-100' : 'text-slate-400'
+        }`}
+      >
+        {item.shortLabel}
+      </span>
+    </button>
+  )
+}
+
+function MobileNavIconRenderer({ icon }: { icon: MobileNavIcon }) {
+  const commonProps = {
+    className: 'relative h-5 w-5',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeWidth: 2,
+    viewBox: '0 0 24 24',
+  }
+
+  if (icon === 'home') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <path d="M4 10.8 12 4l8 6.8" />
+        <path d="M6.8 10.2V20h10.4v-9.8" />
+        <path d="M10 20v-5h4v5" />
+      </svg>
+    )
+  }
+
+  if (icon === 'placeManage') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <path d="M12 21s6-5.1 6-10a6 6 0 0 0-12 0c0 4.9 6 10 6 10Z" />
+        <circle cx="12" cy="11" r="2.3" />
+      </svg>
+    )
+  }
+
+  if (icon === 'rank') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <path d="M5 19V9" />
+        <path d="M12 19V5" />
+        <path d="M19 19v-7" />
+        <path d="M3.8 19h16.4" />
+      </svg>
+    )
+  }
+
+  if (icon === 'diagnosis') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <path d="M6 4h9l3 3v13H6z" />
+        <path d="M15 4v4h4" />
+        <path d="M8.8 14.2 11 16.4l4.2-5" />
+      </svg>
+    )
+  }
+
+  if (icon === 'compare') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <path d="M7 5h10" />
+        <path d="M7 19h10" />
+        <path d="M8 5 4 12h8z" />
+        <path d="m16 19-4-7h8z" />
+      </svg>
+    )
+  }
+
+  if (icon === 'keyword') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="5.5" />
+        <path d="m15 15 4.5 4.5" />
+        <path d="M8.5 10.5h4" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg {...commonProps} aria-hidden="true">
+      <path d="M6 4.5h10.5A1.5 1.5 0 0 1 18 6v14H7.5A1.5 1.5 0 0 1 6 18.5z" />
+      <path d="M9 8h6" />
+      <path d="M9 12h6" />
+      <path d="M9 16h4" />
+    </svg>
   )
 }
 

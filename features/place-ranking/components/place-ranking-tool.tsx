@@ -490,6 +490,7 @@ export function PlaceRankingTool() {
   const [isMounted, setIsMounted] = useState(false)
   const keywordInputRef = useRef<HTMLInputElement | null>(null)
   const resultSectionRef = useRef<HTMLElement | null>(null)
+  const rankingListStartRef = useRef<HTMLDivElement | null>(null)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   const canSubmit = useMemo(
@@ -561,7 +562,9 @@ export function PlaceRankingTool() {
     }
 
     const frame = window.requestAnimationFrame(() => {
-      resultSectionRef.current?.scrollIntoView({
+      const scrollTarget = rankingListStartRef.current ?? resultSectionRef.current
+
+      scrollTarget?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       })
@@ -1319,6 +1322,8 @@ export function PlaceRankingTool() {
               ) : null}
             </div>
           ) : null}
+
+          <div ref={rankingListStartRef} className="scroll-mt-28" />
 
           <div className="mt-5 grid gap-3">
             {filteredItems.map((item) => (

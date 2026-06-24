@@ -4,6 +4,7 @@ import { useLayoutEffect } from 'react'
 
 const scrollLockDatasetKey = 'aivaScrollLocked'
 const scrollAllowedSelector = '[data-aiva-scroll-lock-allow="true"]'
+const touchMoveIntentThreshold = 7
 
 function recoverOrphanedScrollLock() {
   const looksLikeAivaScrollLock =
@@ -89,6 +90,13 @@ export function useBodyScrollLock(active: boolean) {
         return
       }
 
+      const currentY = event.touches[0]?.clientY ?? touchStartY
+      const deltaY = currentY - touchStartY
+
+      if (Math.abs(deltaY) < touchMoveIntentThreshold) {
+        return
+      }
+
       const scrollElement = findAllowedScrollElement(event.target)
 
       if (!scrollElement) {
@@ -96,8 +104,6 @@ export function useBodyScrollLock(active: boolean) {
         return
       }
 
-      const currentY = event.touches[0]?.clientY ?? touchStartY
-      const deltaY = currentY - touchStartY
       const canScroll = scrollElement.scrollHeight > scrollElement.clientHeight
       const isAtTop = scrollElement.scrollTop <= 0
       const isAtBottom =

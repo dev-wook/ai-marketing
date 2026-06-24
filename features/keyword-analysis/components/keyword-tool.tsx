@@ -42,6 +42,7 @@ export function KeywordTool({
   const [loadingStep, setLoadingStep] = useState(0)
   const [cooldownRemaining, setCooldownRemaining] = useState(0)
   const keywordInputRef = useRef<HTMLInputElement | null>(null)
+  const resultRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setRecentKeywords(readRecentKeywords())
@@ -68,6 +69,21 @@ export function KeywordTool({
 
     return () => window.clearInterval(timer)
   }, [isLoading])
+
+  useEffect(() => {
+    if (isLoading || !result) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      resultRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isLoading, result])
 
   const canSubmit = useMemo(
     () => keyword.trim().length > 0 && !isLoading && cooldownRemaining === 0,
@@ -238,7 +254,9 @@ export function KeywordTool({
         />
       ) : null}
       {!isLoading && result ? (
-        <KeywordResult onStartBlogDraft={onStartBlogDraft} result={result} />
+        <div ref={resultRef} className="scroll-mt-28">
+          <KeywordResult onStartBlogDraft={onStartBlogDraft} result={result} />
+        </div>
       ) : null}
     </div>
   )

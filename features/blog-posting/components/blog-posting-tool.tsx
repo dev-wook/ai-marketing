@@ -40,6 +40,8 @@ export function BlogPostingTool({
   const [errorLog, setErrorLog] = useState('')
   const lastAutoAnalyzeKeyRef = useRef(0)
   const keywordInputRef = useRef<HTMLInputElement | null>(null)
+  const analysisResultRef = useRef<HTMLDivElement | null>(null)
+  const draftResultRef = useRef<HTMLDivElement | null>(null)
 
   const interviewAnswers = useMemo(() => {
     if (!analysis) {
@@ -123,6 +125,36 @@ export function BlogPostingTool({
     onAutoAnalyzeConsumed?.()
     void analyzeKeyword(initialKeyword)
   }, [autoAnalyzeKey, initialKeyword, initialKeywordKey, onAutoAnalyzeConsumed])
+
+  useEffect(() => {
+    if (isLoading || !analysis || draftResult) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      analysisResultRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [analysis, draftResult, isLoading])
+
+  useEffect(() => {
+    if (isLoading || !draftResult) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      draftResultRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [draftResult, isLoading])
 
   const submitKeyword = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -287,7 +319,7 @@ export function BlogPostingTool({
       </section>
 
       {analysis ? (
-        <>
+        <div ref={analysisResultRef} className="scroll-mt-28">
           <PatternReportPanel report={analysis.report} sources={analysis.sources} />
           <InterviewPanel
             answers={answers}
@@ -347,18 +379,20 @@ export function BlogPostingTool({
               </button>
             </div>
           </section>
-        </>
+        </div>
       ) : null}
 
       {draftResult ? (
-        <DraftPanel
-          directionSummary={draftResult.directionSummary}
-          draft={draftResult.draft}
-          feedback={feedback}
-          isLoading={isLoading}
-          onFeedbackChange={setFeedback}
-          onRevise={reviseDraft}
-        />
+        <div ref={draftResultRef} className="scroll-mt-28">
+          <DraftPanel
+            directionSummary={draftResult.directionSummary}
+            draft={draftResult.draft}
+            feedback={feedback}
+            isLoading={isLoading}
+            onFeedbackChange={setFeedback}
+            onRevise={reviseDraft}
+          />
+        </div>
       ) : null}
     </div>
   )

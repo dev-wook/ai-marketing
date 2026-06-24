@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   RecentSearchList,
@@ -98,6 +98,7 @@ export function AiPlaceDiagnosisTool() {
   const [errorMessage, setErrorMessage] = useState('')
   const [errorRetryNotice, setErrorRetryNotice] = useState('')
   const [errorLog, setErrorLog] = useState('')
+  const resultRef = useRef<HTMLDivElement | null>(null)
 
   const canSubmit = useMemo(
     () => Boolean(selectedPlace && keyword.trim() && !isLoading && !isSearching),
@@ -112,6 +113,21 @@ export function AiPlaceDiagnosisTool() {
   useEffect(() => {
     setRecentPlaceSearches(readRecentPlaceSearches())
   }, [])
+
+  useEffect(() => {
+    if (isLoading || !result) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      resultRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isLoading, result])
 
   const searchPlaces = async (query: string) => {
     const trimmedQuery = query.trim()
@@ -338,7 +354,11 @@ export function AiPlaceDiagnosisTool() {
         ) : null}
       </section>
 
-      {result ? <DiagnosisResult result={result} /> : null}
+      {result ? (
+        <div ref={resultRef} className="scroll-mt-28">
+          <DiagnosisResult result={result} />
+        </div>
+      ) : null}
 
     </div>
   )

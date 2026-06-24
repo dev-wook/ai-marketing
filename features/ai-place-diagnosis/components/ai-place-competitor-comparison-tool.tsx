@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ToolLoadingPanel } from '@/features/platform/components/tool-ui'
 import type {
@@ -108,12 +108,28 @@ export function AiPlaceCompetitorComparisonTool() {
   const [loadingStep, setLoadingStep] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
   const [errorRetryNotice, setErrorRetryNotice] = useState('')
+  const resultRef = useRef<HTMLDivElement | null>(null)
 
   const isSearching = left.isSearching || right.isSearching
   const canCompare = useMemo(
     () => Boolean(keyword.trim() && left.selected && right.selected && !isSearching && !isComparing),
     [isComparing, isSearching, keyword, left.selected, right.selected],
   )
+
+  useEffect(() => {
+    if (isComparing || !leftResult || !rightResult) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      resultRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isComparing, leftResult, rightResult])
 
   const updateSide = (side: ComparisonSide, updater: (current: PlaceSelectionState) => PlaceSelectionState) => {
     if (side === 'left') {
@@ -308,7 +324,9 @@ export function AiPlaceCompetitorComparisonTool() {
       </section>
 
       {leftResult && rightResult ? (
-        <ComparisonResult leftResult={leftResult} rightResult={rightResult} />
+        <div ref={resultRef} className="scroll-mt-28">
+          <ComparisonResult leftResult={leftResult} rightResult={rightResult} />
+        </div>
       ) : null}
     </div>
   )
