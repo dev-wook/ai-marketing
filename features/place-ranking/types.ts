@@ -321,6 +321,12 @@ export type PlaceBookingPredictionResponse = {
   productName: string
   aiAvailable: boolean
   demandLevel: PlaceBookingPredictionDemandLevel
+  demandIndex: number
+  confidence: number
+  expectedBookingsRange: {
+    min: number
+    max: number
+  }
   expectedAdditionalBookings: number
   summary: string
   busyWindows: PlaceBookingPredictionWindow[]
@@ -333,6 +339,10 @@ export type PlaceBookingPredictionResponse = {
     patternSampledDateCount: number
     cycleSampledDateCount: number
     failedDateCount: number
+    sameWeekdayAverageBookings: number
+    cycleAverageBookings: number
+    weeklyTrendRate: number
+    monthlyTrendRate: number
   }
 }
 

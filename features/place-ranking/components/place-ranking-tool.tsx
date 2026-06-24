@@ -207,7 +207,7 @@ async function requestBookingPrediction({
 
   if (!response.ok) {
     const errorBody = body as PlaceRankingErrorBody
-    const error = new Error(errorBody.message ?? 'AI 예약 예측에 실패했습니다.')
+    const error = new Error(errorBody.message ?? 'AI 예약 수요 예측에 실패했습니다.')
 
     Object.assign(error, {
       debug: errorBody.debug,
@@ -1699,7 +1699,7 @@ function BatchKeywordModal({
           </button>
         </div>
 
-        <div className="min-h-0 overflow-y-auto p-5">
+        <div className="min-h-0 overflow-y-auto p-5" data-aiva-scroll-lock-allow="true">
           <form onSubmit={onSubmit} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px]">
             <input
               value={keywordInput}
@@ -1840,7 +1840,10 @@ function BlacklistManagementModal({
           </div>
         </div>
 
-        <div className="grid min-h-0 gap-4 overflow-y-auto p-5 md:grid-cols-[18rem_minmax(0,1fr)]">
+        <div
+          className="grid min-h-0 gap-4 overflow-y-auto p-5 md:grid-cols-[18rem_minmax(0,1fr)]"
+          data-aiva-scroll-lock-allow="true"
+        >
           <div className="min-h-0">
             <div className="mb-3 flex items-center justify-between gap-2">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/65">
@@ -2368,6 +2371,7 @@ function BookingTopAllModal({
       <section
         ref={modalRef}
         className="relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-y-auto rounded-md border border-cyan-300/20 bg-[#080c17] shadow-[0_28px_80px_rgba(0,0,0,0.55)] md:overflow-hidden"
+        data-aiva-scroll-lock-allow="true"
       >
         <div className="relative flex flex-col gap-4 border-b border-white/10 p-4 pr-[5.75rem] sm:flex-row sm:items-start sm:justify-between sm:pr-4">
           <div className="min-w-0 flex-1">
@@ -2462,7 +2466,11 @@ function BookingTopAllModal({
           </button>
         </form>
 
-        <div ref={listRef} className="grid gap-2 p-4 md:overflow-y-auto">
+        <div
+          ref={listRef}
+          className="grid gap-2 p-4 md:overflow-y-auto"
+          data-aiva-scroll-lock-allow="true"
+        >
           {isLoading ? (
             <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.055] p-4">
               <div className="flex items-center justify-between gap-3">
@@ -2685,7 +2693,10 @@ function BookingStatusModal({
           </button>
         </div>
 
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
+        <div
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5"
+          data-aiva-scroll-lock-allow="true"
+        >
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_19rem] md:items-end">
             <div>
               <p className="text-lg font-black text-white">실시간 예약현황</p>
@@ -2826,9 +2837,9 @@ function BookingStatusModal({
                   <div className="grid gap-4">
                     <div className="flex flex-col gap-2 rounded-md border border-cyan-300/18 bg-cyan-300/[0.055] p-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-sm font-black text-white">AI 예약 예측</p>
+                        <p className="text-sm font-black text-white">AI 예약 수요 예측</p>
                         <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-400">
-                          최근 요일 패턴과 4~5주 재방문 주기로 수요 시간대를 예측합니다.
+                          특정 날짜의 예상 예약 건수와 혼잡도를 예측합니다.
                         </p>
                       </div>
                       <button
@@ -2836,7 +2847,7 @@ function BookingStatusModal({
                         onClick={() => setIsPredictionOpen(true)}
                         className="inline-flex min-h-10 items-center justify-center rounded-md border border-cyan-300/30 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:border-cyan-200/60 hover:bg-cyan-300/18"
                       >
-                        AI 예약 예측
+                        AI 예약 수요 예측
                       </button>
                     </div>
                     <BookingProductGrid product={selectedProduct} />
@@ -2963,7 +2974,7 @@ function BookingPredictionModal({
       setPrediction(response)
     } catch (error) {
       setPrediction(null)
-      setErrorMessage(error instanceof Error ? error.message : 'AI 예약 예측에 실패했습니다.')
+      setErrorMessage(error instanceof Error ? error.message : 'AI 예약 수요 예측에 실패했습니다.')
     } finally {
       setIsLoading(false)
     }
@@ -2978,7 +2989,7 @@ function BookingPredictionModal({
       className="fixed inset-0 z-[10000] grid overscroll-none bg-black/76 p-3 backdrop-blur-sm sm:place-items-center sm:p-5"
       role="dialog"
       aria-modal="true"
-      aria-label={`${place.name} AI 예약 예측`}
+      aria-label={`${place.name} AI 예약 수요 예측`}
       onClick={onClose}
     >
       <section
@@ -2991,7 +3002,7 @@ function BookingPredictionModal({
               AI Booking Forecast
             </p>
             <h3 className="mt-1 break-keep text-xl font-black text-white sm:text-2xl">
-              AI 예약 예측
+              AI 예약 수요 예측
             </h3>
             <p className="mt-1 break-keep text-xs font-bold leading-5 text-cyan-100/75 sm:text-sm">
               {formatCalendarDateLabel(date)} · {product.name}
@@ -3006,10 +3017,13 @@ function BookingPredictionModal({
           </button>
         </div>
 
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+        <div
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5"
+          data-aiva-scroll-lock-allow="true"
+        >
           {isLoading ? (
             <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
-              <p className="font-black text-cyan-100">AI가 예약 패턴을 예측하고 있습니다.</p>
+              <p className="font-black text-cyan-100">AI가 예약 수요를 예측하고 있습니다.</p>
               <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
                 실시간 예약현황, 최근 3개월 같은 요일, 4~5주 전 예약 흐름을 함께 분석합니다.
               </p>
@@ -3030,21 +3044,26 @@ function BookingPredictionModal({
             </div>
           ) : prediction ? (
             <div className="grid gap-4">
-              <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black text-cyan-100/80">예측 수요</p>
-                    <p className="mt-2 text-3xl font-black text-white">
-                      {formatDemandLevel(prediction.demandLevel)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-right">
-                    <p className="text-[11px] font-black text-slate-400">추가 예약 가능성</p>
-                    <p className="mt-1 text-xl font-black text-white">
-                      {prediction.expectedAdditionalBookings}건
-                    </p>
-                  </div>
+              <section className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] p-4">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <PredictionSummaryTile
+                    label="예상 예약 건수"
+                    value={`${prediction.expectedBookingsRange.min}~${prediction.expectedBookingsRange.max}건`}
+                    highlight
+                  />
+                  <PredictionSummaryTile
+                    label="예약 수요 지수"
+                    value={`${prediction.demandIndex}점`}
+                  />
+                  <PredictionSummaryTile label="예측 신뢰도" value={`${prediction.confidence}%`} />
+                  <PredictionSummaryTile
+                    label="상태"
+                    value={formatDemandLevel(prediction.demandLevel)}
+                  />
                 </div>
+
+                <DemandGauge score={prediction.demandIndex} level={prediction.demandLevel} />
+
                 <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">
                   {prediction.summary}
                 </p>
@@ -3053,36 +3072,111 @@ function BookingPredictionModal({
                     Gemini 상세 예측은 일시적으로 제한되어 기본 패턴 예측을 표시합니다.
                   </p>
                 ) : null}
-              </div>
+              </section>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <PredictionWindowList
-                  title="예약이 몰릴 가능성이 높은 시간"
+                  title="예약 집중 예상 시간"
                   tone="busy"
                   windows={prediction.busyWindows}
                 />
                 <PredictionWindowList
-                  title="비교적 여유로울 가능성이 높은 시간"
+                  title="비교적 여유로운 시간"
                   tone="quiet"
                   windows={prediction.quietWindows}
                 />
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
+              <PredictionBulletSection title="예측 근거" items={prediction.basis} />
+              <PredictionBulletSection title="운영 추천" items={prediction.recommendedActions} />
+
+              <div className="grid gap-3 md:grid-cols-4">
                 <PredictionMetric label="현재 예약됨" value={`${prediction.data.currentBookedSlots}개`} />
                 <PredictionMetric label="현재 가능" value={`${prediction.data.currentAvailableSlots}개`} />
                 <PredictionMetric
-                  label="분석 표본"
-                  value={`${prediction.data.patternSampledDateCount + prediction.data.cycleSampledDateCount}일`}
+                  label="동일 요일 평균"
+                  value={`${prediction.data.sameWeekdayAverageBookings}건`}
+                />
+                <PredictionMetric
+                  label="4~5주 전 평균"
+                  value={`${prediction.data.cycleAverageBookings}건`}
+                />
+                <PredictionMetric
+                  label="주간 흐름"
+                  value={formatTrendValue(prediction.data.weeklyTrendRate)}
+                />
+                <PredictionMetric
+                  label="월간 흐름"
+                  value={formatTrendValue(prediction.data.monthlyTrendRate)}
+                />
+                <PredictionMetric
+                  label="요일 표본"
+                  value={`${prediction.data.patternSampledDateCount}일`}
+                />
+                <PredictionMetric
+                  label="주기 표본"
+                  value={`${prediction.data.cycleSampledDateCount}일`}
                 />
               </div>
-
-              <PredictionBulletSection title="운영 추천" items={prediction.recommendedActions} />
-              <PredictionBulletSection title="예측 근거" items={prediction.basis} />
             </div>
           ) : null}
         </div>
       </section>
+    </div>
+  )
+}
+
+function PredictionSummaryTile({
+  highlight = false,
+  label,
+  value,
+}: {
+  highlight?: boolean
+  label: string
+  value: string
+}) {
+  return (
+    <div
+      className={`rounded-md border p-3 ${
+        highlight
+          ? 'border-cyan-200/30 bg-cyan-200/[0.08]'
+          : 'border-white/10 bg-white/[0.045]'
+      }`}
+    >
+      <p className="break-keep text-[11px] font-black text-slate-400">{label}</p>
+      <p className="mt-1 break-keep text-xl font-black text-white">{value}</p>
+    </div>
+  )
+}
+
+function DemandGauge({
+  level,
+  score,
+}: {
+  level: PlaceBookingPredictionResponse['demandLevel']
+  score: number
+}) {
+  const boundedScore = Math.min(100, Math.max(0, score))
+
+  return (
+    <div className="mt-4 rounded-md border border-white/10 bg-[#070b15]/55 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-black text-cyan-100/80">수요 게이지</p>
+        <p className="text-sm font-black text-white">
+          {formatDemandLevel(level)} · {boundedScore}%
+        </p>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+        <div
+          className={`h-full rounded-full ${getDemandGaugeColor(level)}`}
+          style={{ width: `${boundedScore}%` }}
+        />
+      </div>
+      <div className="mt-2 flex justify-between text-[11px] font-black text-slate-500">
+        <span>여유</span>
+        <span>보통</span>
+        <span>혼잡</span>
+      </div>
     </div>
   )
 }
@@ -3113,13 +3207,15 @@ function PredictionWindowList({
       </p>
       {windows.length ? (
         <div className="mt-3 grid gap-2">
-          {windows.map((window) => (
+          {windows.slice(0, 3).map((window, index) => (
             <div
               key={`${title}-${window.timeRange}-${window.reason}`}
               className="rounded-md border border-white/10 bg-white/[0.045] p-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-base font-black text-white">{window.timeRange}</p>
+                <p className="text-base font-black text-white">
+                  {index + 1}위 · {window.timeRange}
+                </p>
                 <span className="rounded-full bg-white/[0.08] px-2 py-1 text-[11px] font-black text-slate-300">
                   신뢰 {window.confidence}%
                 </span>
@@ -3166,14 +3262,34 @@ function PredictionBulletSection({ items, title }: { items: string[]; title: str
 
 function formatDemandLevel(level: PlaceBookingPredictionResponse['demandLevel']) {
   if (level === 'HIGH') {
-    return '높음'
+    return '혼잡 가능성 높음'
   }
 
   if (level === 'MEDIUM') {
-    return '보통'
+    return '보통 수요'
   }
 
-  return '낮음'
+  return '여유 가능성'
+}
+
+function getDemandGaugeColor(level: PlaceBookingPredictionResponse['demandLevel']) {
+  if (level === 'HIGH') {
+    return 'bg-gradient-to-r from-orange-300 to-rose-300'
+  }
+
+  if (level === 'MEDIUM') {
+    return 'bg-gradient-to-r from-cyan-300 to-amber-300'
+  }
+
+  return 'bg-gradient-to-r from-emerald-300 to-cyan-300'
+}
+
+function formatTrendValue(value: number) {
+  if (!Number.isFinite(value) || Math.abs(value) < 0.1) {
+    return '변동 없음'
+  }
+
+  return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
 }
 
 type PlaceHistoryModalProps = {
@@ -3215,7 +3331,10 @@ function PlaceHistoryModal({ place, rows, isLoading, onClose }: PlaceHistoryModa
           </button>
         </div>
 
-        <div className="max-h-[calc(82vh-7rem)] overflow-y-auto p-5">
+        <div
+          className="max-h-[calc(82vh-7rem)] overflow-y-auto p-5"
+          data-aiva-scroll-lock-allow="true"
+        >
           {isOutsideStoredRange ? (
             <div className="mb-4 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4 text-sm font-black text-cyan-100">
               현재 조회 결과는 100위권 밖입니다. 순위 기록은 100위까지 저장됩니다.
@@ -3295,7 +3414,10 @@ function ReviewBottomSheet({ place, onClose }: ReviewBottomSheetProps) {
           </button>
         </div>
 
-        <div className="max-h-[calc(72vh-5.5rem)] overflow-y-auto px-4 py-4">
+        <div
+          className="max-h-[calc(72vh-5.5rem)] overflow-y-auto px-4 py-4"
+          data-aiva-scroll-lock-allow="true"
+        >
           <div className="grid gap-3">
             {reviews.map((review, index) => (
               <article

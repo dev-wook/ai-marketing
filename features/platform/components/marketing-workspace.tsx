@@ -681,7 +681,10 @@ function WorkStatusPanel({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]">
+        <div
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]"
+          data-aiva-scroll-lock-allow="true"
+        >
           {isLoading && !hasJobs ? (
             <div className="rounded-md border border-cyan-300/15 bg-cyan-300/[0.06] p-4">
               <span className="block h-2 overflow-hidden rounded-full bg-white/10">
@@ -1418,7 +1421,10 @@ function SideMenu({
           </button>
         </div>
 
-        <nav className="grid min-h-0 gap-3 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]">
+        <nav
+          className="grid min-h-0 gap-3 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]"
+          data-aiva-scroll-lock-allow="true"
+        >
           <MenuButton
             active={activeView === 'tracking'}
             label="플레이스 관리"

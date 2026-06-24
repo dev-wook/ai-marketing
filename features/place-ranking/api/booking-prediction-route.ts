@@ -17,6 +17,9 @@ type GeminiBookingPredictionPayload = Partial<
   Pick<
     PlaceBookingPredictionResponse,
     | 'demandLevel'
+    | 'demandIndex'
+    | 'confidence'
+    | 'expectedBookingsRange'
     | 'expectedAdditionalBookings'
     | 'summary'
     | 'busyWindows'
@@ -119,7 +122,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        message: 'AI 예약 예측을 생성하는 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.',
+        message: 'AI 예약 수요 예측을 생성하는 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.',
         debug:
           error instanceof Error
             ? {
@@ -162,12 +165,17 @@ function createPredictionPrompt({
 - 4~5주 재방문 주기: 대상일 기준 26~37일 전 예약 시간대가 이번 주 수요로 이어질 가능성을 본다.
 - 시간대 선호: 과거 11:00 예약은 보통 10:00~12:00 근처 선호로 해석한다.
 - 같은 요일 패턴: 최근 3개월 같은 요일 예약 카운트를 함께 본다.
+- 주간 트렌드: 현재 예약 강도와 최근 같은 요일 평균을 비교해 이번 주 수요 방향을 본다.
+- 월간 트렌드: 최근 3개월 동일 요일 평균과 4~5주 전 주기 신호를 비교해 최근 수요 방향을 본다.
 - 현재 예약현황: 대상일에 이미 잡힌 예약 수와 남은 예약 가능 시간을 반영한다.
 - 고객명이나 개인 식별 정보는 없으므로 개인별 확정 예측처럼 말하지 않는다.
 
 응답 스키마:
 {
   "demandLevel": "HIGH" | "MEDIUM" | "LOW",
+  "demandIndex": number,
+  "confidence": number,
+  "expectedBookingsRange": {"min": number, "max": number},
   "expectedAdditionalBookings": number,
   "summary": "string",
   "busyWindows": [{"timeRange":"10:00-12:00","reason":"string","confidence":0-100}],
@@ -230,16 +238,44 @@ function createFallbackPrediction({
   const currentAvailableSlots = currentProduct?.summary.availableSlots ?? 0
   const busyWindows = createPredictionWindows(patternProduct?.busiestTimes ?? [], cycleProduct)
   const quietWindows = createPredictionWindows(patternProduct?.quietTimes ?? [], cycleProduct)
+  const patternBookedCount =
+    patternProduct?.buckets.reduce((sum, bucket) => sum + bucket.bookedCount, 0) ?? 0
   const cycleBookedCount =
     cycleProduct?.buckets.reduce((sum, bucket) => sum + bucket.bookedCount, 0) ?? 0
-  const expectedAdditionalBookings = Math.max(
-    0,
-    Math.round((cycleBookedCount / Math.max(cycleSampledDateCount, 1)) - currentBookedSlots),
+  const sameWeekdayAverageBookings = roundToOne(
+    patternBookedCount / Math.max(patternSampledDateCount, 1),
   )
+  const cycleAverageBookings = roundToOne(cycleBookedCount / Math.max(cycleSampledDateCount, 1))
+  const weeklyTrendRate = calculateTrendRate(currentBookedSlots, sameWeekdayAverageBookings)
+  const monthlyTrendRate = calculateTrendRate(sameWeekdayAverageBookings, cycleAverageBookings)
+  const weightedEstimate =
+    sameWeekdayAverageBookings * 0.4 +
+    cycleAverageBookings * 0.35 +
+    Math.max(0, sameWeekdayAverageBookings * (1 + weeklyTrendRate / 100)) * 0.15 +
+    Math.max(0, sameWeekdayAverageBookings * (1 + monthlyTrendRate / 100)) * 0.1
+  const expectedCenter = Math.max(currentBookedSlots, Math.round(weightedEstimate))
+  const expectedBookingsRange = {
+    min: Math.max(currentBookedSlots, expectedCenter - 1),
+    max: Math.max(currentBookedSlots, expectedCenter + 1),
+  }
+  const expectedAdditionalBookings = Math.max(0, expectedBookingsRange.min - currentBookedSlots)
+  const demandIndex = calculateDemandIndex({
+    currentAvailableSlots,
+    currentBookedSlots,
+    cycleAverageBookings,
+    monthlyTrendRate,
+    sameWeekdayAverageBookings,
+    weeklyTrendRate,
+  })
+  const confidence = calculateConfidence({
+    cycleSampledDateCount,
+    failedDateCount,
+    patternSampledDateCount,
+  })
   const demandLevel =
-    expectedAdditionalBookings >= 2 || busyWindows.length >= 2
+    demandIndex >= 75
       ? 'HIGH'
-      : expectedAdditionalBookings >= 1 || busyWindows.length >= 1
+      : demandIndex >= 45
         ? 'MEDIUM'
         : 'LOW'
 
@@ -250,13 +286,16 @@ function createFallbackPrediction({
     productName: currentProduct?.name ?? '예약상품',
     aiAvailable: true,
     demandLevel,
+    demandIndex,
+    confidence,
+    expectedBookingsRange,
     expectedAdditionalBookings,
     summary:
       demandLevel === 'HIGH'
-        ? '최근 요일 패턴과 4~5주 전 예약 흐름상 추가 예약 가능성이 높은 편입니다.'
+        ? '최근 요일 패턴과 4~5주 전 재방문 주기상 해당 날짜의 예약 수요가 높은 편입니다.'
         : demandLevel === 'MEDIUM'
-          ? '일부 시간대에서 추가 예약 가능성이 확인됩니다.'
-          : '현재 데이터 기준으로 강한 추가 예약 신호는 제한적입니다.',
+          ? '일부 시간대와 재방문 주기에서 예약 수요 신호가 확인됩니다.'
+          : '현재 데이터 기준으로 강한 예약 수요 신호는 제한적입니다.',
     busyWindows,
     quietWindows,
     recommendedActions: [
@@ -267,6 +306,8 @@ function createFallbackPrediction({
     basis: [
       `최근 3개월 ${weekdayLabel}요일 표본 ${patternSampledDateCount}일을 확인했습니다.`,
       `4~5주 전 주기 표본 ${cycleSampledDateCount}일을 함께 반영했습니다.`,
+      `동일 요일 평균 예약 ${sameWeekdayAverageBookings}건, 4~5주 전 평균 예약 ${cycleAverageBookings}건입니다.`,
+      `주간 흐름 ${formatSignedRate(weeklyTrendRate)}, 월간 흐름 ${formatSignedRate(monthlyTrendRate)}로 계산했습니다.`,
       `현재 선택일 예약됨 ${currentBookedSlots}개, 가능 ${currentAvailableSlots}개입니다.`,
     ],
     data: {
@@ -275,6 +316,10 @@ function createFallbackPrediction({
       patternSampledDateCount,
       cycleSampledDateCount,
       failedDateCount,
+      sameWeekdayAverageBookings,
+      cycleAverageBookings,
+      weeklyTrendRate,
+      monthlyTrendRate,
     },
   }
 }
@@ -286,6 +331,13 @@ function mergeGeminiPrediction(
   return {
     ...fallback,
     demandLevel: toDemandLevel(payload.demandLevel, fallback.demandLevel),
+    demandIndex: toSafeInteger(payload.demandIndex, fallback.demandIndex, 0, 100),
+    confidence: toSafeInteger(payload.confidence, fallback.confidence, 0, 100),
+    expectedBookingsRange: toExpectedRange(
+      payload.expectedBookingsRange,
+      fallback.expectedBookingsRange,
+      fallback.data.currentBookedSlots,
+    ),
     expectedAdditionalBookings: toSafeInteger(
       payload.expectedAdditionalBookings,
       fallback.expectedAdditionalBookings,
@@ -317,6 +369,71 @@ function createPredictionWindows(
       confidence,
     }
   })
+}
+
+function calculateDemandIndex({
+  currentAvailableSlots,
+  currentBookedSlots,
+  cycleAverageBookings,
+  monthlyTrendRate,
+  sameWeekdayAverageBookings,
+  weeklyTrendRate,
+}: {
+  currentAvailableSlots: number
+  currentBookedSlots: number
+  cycleAverageBookings: number
+  monthlyTrendRate: number
+  sameWeekdayAverageBookings: number
+  weeklyTrendRate: number
+}) {
+  const sameWeekdayScore = clamp((sameWeekdayAverageBookings / 8) * 40, 0, 40)
+  const cycleScore = clamp((cycleAverageBookings / 8) * 35, 0, 35)
+  const weeklyScore = clamp(7.5 + weeklyTrendRate * 0.08, 0, 15)
+  const monthlyScore = clamp(5 + monthlyTrendRate * 0.05, 0, 10)
+  const currentPressureBonus = currentAvailableSlots === 0 && currentBookedSlots > 0 ? 6 : 0
+
+  return Math.round(
+    clamp(sameWeekdayScore + cycleScore + weeklyScore + monthlyScore + currentPressureBonus, 0, 100),
+  )
+}
+
+function calculateConfidence({
+  cycleSampledDateCount,
+  failedDateCount,
+  patternSampledDateCount,
+}: {
+  cycleSampledDateCount: number
+  failedDateCount: number
+  patternSampledDateCount: number
+}) {
+  const sampleScore = Math.min(70, patternSampledDateCount * 6 + cycleSampledDateCount * 8)
+  const penalty = failedDateCount * 6
+
+  return Math.round(clamp(20 + sampleScore - penalty, 25, 92))
+}
+
+function calculateTrendRate(current: number, baseline: number) {
+  if (baseline <= 0) {
+    return current > 0 ? 100 : 0
+  }
+
+  return Math.round(((current - baseline) / baseline) * 100)
+}
+
+function roundToOne(value: number) {
+  return Math.round(value * 10) / 10
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function formatSignedRate(value: number) {
+  if (value > 0) {
+    return `+${value}%`
+  }
+
+  return `${value}%`
 }
 
 function selectPatternProduct(
@@ -396,6 +513,22 @@ function toStringArray(value: unknown, fallback: string[]) {
     .slice(0, 5)
 
   return items.length ? items : fallback
+}
+
+function toExpectedRange(
+  value: unknown,
+  fallback: PlaceBookingPredictionResponse['expectedBookingsRange'],
+  currentBookedSlots: number,
+) {
+  if (!value || typeof value !== 'object') {
+    return fallback
+  }
+
+  const record = value as Record<string, unknown>
+  const min = toSafeInteger(record.min, fallback.min, currentBookedSlots, 30)
+  const max = toSafeInteger(record.max, fallback.max, min, 30)
+
+  return { min, max }
 }
 
 function toSafeText(value: unknown, fallback: string) {
