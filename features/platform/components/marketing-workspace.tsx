@@ -45,12 +45,8 @@ type AiDiagnosisDataRefreshStatus = {
   }>
 }
 
-const refreshViewStorageKey = 'aiva-refresh-view'
 const backgroundWorkNotificationReadStorageKey = 'aiva-background-work-notification-read-ids'
 const terminalWorkNotificationRetentionMs = 24 * 60 * 60 * 1000
-const pullRefreshThreshold = 84
-const pullRefreshMaxDistance = 118
-const mobileHeaderHeight = 72
 const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   keyword: '키워드 분석',
   blog: '블로그 원고 작성',
@@ -76,14 +72,10 @@ export function MarketingWorkspace() {
   const [placeRankingBatchKeywords, setPlaceRankingBatchKeywords] = useState<PlaceRankingBatchKeyword[]>([])
   const [readBackgroundWorkNotificationIds, setReadBackgroundWorkNotificationIds] = useState<string[]>([])
   const [isAiDiagnosisDataStatusLoading, setIsAiDiagnosisDataStatusLoading] = useState(false)
-  const [pullDistance, setPullDistance] = useState(0)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const hasLoadedWorkStatusRef = useRef(false)
   const isWorkStatusPollingRef = useRef(false)
   const aiDiagnosisStatusSnapshotRef = useRef('')
   const placeRankingBatchSnapshotRef = useRef('')
-  const touchStartYRef = useRef(0)
-  const isPullingRef = useRef(false)
 
   useEffect(() => {
     try {
@@ -242,110 +234,8 @@ export function MarketingWorkspace() {
     }
   }
 
-  useEffect(() => {
-    const savedView = window.sessionStorage.getItem(refreshViewStorageKey)
-
-    if (
-      savedView === 'keyword'
-      || savedView === 'blog'
-      || savedView === 'place'
-      || savedView === 'diagnosis'
-      || savedView === 'competitor'
-      || savedView === 'tracking'
-    ) {
-      setView(savedView)
-      window.sessionStorage.removeItem(refreshViewStorageKey)
-    }
-  }, [])
-
-  useEffect(() => {
-    const isMobileViewport = () => window.matchMedia('(max-width: 767px)').matches
-
-    const handleTouchStart = (event: TouchEvent) => {
-      if (
-        !isMobileViewport() ||
-        isRefreshing ||
-        isWorkStatusOpen ||
-        isAiDiagnosisDataManagerOpen ||
-        isMenuOpen ||
-        window.scrollY > 0
-      ) {
-        isPullingRef.current = false
-        return
-      }
-
-      touchStartYRef.current = event.touches[0]?.clientY ?? 0
-      isPullingRef.current = true
-    }
-
-    const handleTouchMove = (event: TouchEvent) => {
-      if (
-        !isPullingRef.current ||
-        !isMobileViewport() ||
-        isRefreshing ||
-        isWorkStatusOpen ||
-        isAiDiagnosisDataManagerOpen ||
-        isMenuOpen
-      ) {
-        return
-      }
-
-      const currentY = event.touches[0]?.clientY ?? 0
-      const distance = currentY - touchStartYRef.current
-
-      if (window.scrollY > 0 || distance <= 0) {
-        setPullDistance(0)
-        return
-      }
-
-      const dampedDistance = Math.min(distance * 0.62, pullRefreshMaxDistance)
-
-      if (dampedDistance > 2) {
-        event.preventDefault()
-      }
-
-      setPullDistance(dampedDistance)
-    }
-
-    const handleTouchEnd = () => {
-      if (!isPullingRef.current) {
-        return
-      }
-
-      isPullingRef.current = false
-
-      setPullDistance((current) => {
-        if (current >= pullRefreshThreshold) {
-          setIsRefreshing(true)
-          window.sessionStorage.setItem(refreshViewStorageKey, view)
-          window.setTimeout(() => window.location.reload(), 280)
-
-          return pullRefreshThreshold
-        }
-
-        return 0
-      })
-    }
-
-    window.addEventListener('touchstart', handleTouchStart, { passive: true })
-    window.addEventListener('touchmove', handleTouchMove, { passive: false })
-    window.addEventListener('touchend', handleTouchEnd)
-    window.addEventListener('touchcancel', handleTouchEnd)
-
-    return () => {
-      window.removeEventListener('touchstart', handleTouchStart)
-      window.removeEventListener('touchmove', handleTouchMove)
-      window.removeEventListener('touchend', handleTouchEnd)
-      window.removeEventListener('touchcancel', handleTouchEnd)
-    }
-  }, [isAiDiagnosisDataManagerOpen, isMenuOpen, isRefreshing, isWorkStatusOpen, view])
-
   useBodyScrollLock(isWorkStatusOpen || isMenuOpen || isAiDiagnosisDataManagerOpen)
 
-  const pullProgress = Math.min(pullDistance / pullRefreshThreshold, 1)
-  const shouldShowPullRefresh = pullDistance > 0 || isRefreshing
-  const pullIndicatorHeight = Math.min(pullDistance, pullRefreshMaxDistance)
-  const activePullDistance = isRefreshing ? pullRefreshThreshold : pullIndicatorHeight
   const isHomeView = view === 'home'
   const backgroundWorkJobs = createBackgroundWorkJobCards({
     aiDiagnosisStatus: aiDiagnosisDataStatus,
@@ -400,36 +290,6 @@ export function MarketingWorkspace() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#070a12] text-white">
-      <div
-        aria-hidden={!shouldShowPullRefresh}
-        className={`fixed inset-x-0 z-40 overflow-hidden border-b border-cyan-300/10 bg-[linear-gradient(180deg,rgba(7,10,18,0.98),rgba(10,16,32,0.88))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] transition-opacity duration-150 md:hidden ${
-          shouldShowPullRefresh ? 'opacity-100' : 'pointer-events-none opacity-0'
-        }`}
-        style={{
-          top: `${mobileHeaderHeight}px`,
-          height: `${activePullDistance}px`,
-        }}
-      >
-        <div className="flex h-full min-h-16 flex-col items-center justify-end gap-1 pb-3 text-cyan-100">
-          <span
-            className="grid h-9 w-9 place-items-center rounded-full border border-cyan-300/35 bg-cyan-300/10 shadow-[0_0_30px_rgba(34,211,238,0.18)]"
-          >
-            <span
-              className="grid h-5 w-5 place-items-center transition-transform duration-150"
-              style={{ transform: `scale(${Math.max(0.72, pullProgress)})` }}
-            >
-              <span className="block h-5 w-5 animate-spin rounded-full border-2 border-cyan-100/30 border-t-cyan-100" />
-            </span>
-          </span>
-          <span className="text-[11px] font-black tracking-[0.12em] text-cyan-100/80">
-            {isRefreshing
-              ? '새로고침 중'
-              : pullProgress >= 1
-                ? '놓으면 새로고침'
-                : '아래로 당겨 새로고침'}
-          </span>
-        </div>
-      </div>
       <div className="min-h-screen bg-[linear-gradient(135deg,#07111d_0%,#0b1020_52%,#120a1e_100%)]">
         <div className="mx-auto flex min-h-screen w-full max-w-7xl min-w-0 flex-col px-5 py-0 md:px-8 md:py-5">
           <header
@@ -588,10 +448,7 @@ export function MarketingWorkspace() {
           />
 
           <section
-            className="min-w-0 flex-1 pt-[96px] pb-6 transition-transform duration-150 ease-out lg:py-8 md:pt-6 md:translate-y-0"
-            style={{
-              transform: `translateY(${activePullDistance}px)`,
-            }}
+            className="min-w-0 flex-1 pt-[96px] pb-6 lg:py-8 md:pt-6"
           >
             {view === 'home' ? (
               <HomeView

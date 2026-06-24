@@ -98,6 +98,7 @@ export type AiPlaceDiagnosisBookingProduct = {
   id: string
   name: string
   description: string
+  detailUrl?: string
   price: number | null
   minPrice: number | null
   maxPrice: number | null
@@ -114,6 +115,28 @@ export type AiPlaceDiagnosisBookingProduct = {
   precautions: string[]
   extraDescriptions: string[]
   imageUrls: string[]
+  treatmentMenuCategories: AiPlaceDiagnosisTreatmentMenuCategory[]
+}
+
+export type AiPlaceDiagnosisTreatmentMenuCategory = {
+  id: string
+  name: string
+  categoryTypeCode: string
+  selectionTypeCode: string
+  menus: AiPlaceDiagnosisTreatmentMenu[]
+}
+
+export type AiPlaceDiagnosisTreatmentMenu = {
+  id: string
+  name: string
+  description: string
+  normalPrice: number | null
+  price: number | null
+  priceDescription: string
+  discountRate: number | null
+  serviceDurationMinutes: number | null
+  isSoldOut: boolean
+  isFree: boolean
 }
 
 export type AiPlaceFieldStatus = 'PRESENT' | 'ABSENT' | 'UNAVAILABLE' | 'ERROR'

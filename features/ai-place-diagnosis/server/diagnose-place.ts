@@ -734,6 +734,7 @@ function createManualBookingProducts(menuItemsText?: string) {
       precautions: [],
       extraDescriptions: [],
       imageUrls: [],
+      treatmentMenuCategories: [],
     },
   ]
 }
@@ -1036,8 +1037,14 @@ function createBenchmarkPlaceSnapshot({
 }) {
   const imageUrls = [place.images.mainImageUrl, ...place.images.imageUrls, ...profile.imageUrls]
     .filter(Boolean)
+  const treatmentMenus = products.flatMap((product) =>
+    (product.treatmentMenuCategories ?? []).flatMap((category) => category.menus),
+  )
   const productDescriptions = products
     .map((product) => product.description)
+    .filter(Boolean)
+  const treatmentMenuDescriptions = treatmentMenus
+    .map((menu) => menu.description)
     .filter(Boolean)
   const extraDescriptions = products.flatMap((product) => product.extraDescriptions)
   const precautions = products.flatMap((product) => product.precautions)
@@ -1093,24 +1100,31 @@ function createBenchmarkPlaceSnapshot({
       promotionLength: profile.promotion.length,
       locationGuideLength: profile.locationGuide.length,
       amenityCount: profile.amenities.length,
-      productNameSamples: products.slice(0, 5).map((product) => product.name),
-      productDescriptionCount: productDescriptions.length,
+      productNameSamples: [
+        ...products.slice(0, 3).map((product) => product.name),
+        ...treatmentMenus.slice(0, 5).map((menu) => menu.name),
+      ],
+      productDescriptionCount: productDescriptions.length + treatmentMenuDescriptions.length,
       productDescriptionAverageLength: roundAverage(
-        productDescriptions.map((description) => description.length),
-        Math.max(productDescriptions.length, 1),
+        [...productDescriptions, ...treatmentMenuDescriptions].map((description) => description.length),
+        Math.max(productDescriptions.length + treatmentMenuDescriptions.length, 1),
       ),
       extraDescriptionCount: extraDescriptions.length,
       precautionCount: precautions.length,
-      priceRegisteredCount: products.filter(
-        (product) =>
-          product.price !== null || product.minPrice !== null || product.maxPrice !== null,
-      ).length,
-      durationRegisteredCount: products.filter(
-        (product) =>
-          product.inferredDurationMinutes !== null ||
-          product.minBookingTime !== null ||
-          product.maxBookingTime !== null,
-      ).length,
+      priceRegisteredCount:
+        products.filter(
+          (product) =>
+            product.price !== null || product.minPrice !== null || product.maxPrice !== null,
+        ).length + treatmentMenus.filter((menu) => menu.price !== null || menu.normalPrice !== null).length,
+      durationRegisteredCount:
+        products.filter(
+          (product) =>
+            product.inferredDurationMinutes !== null ||
+            product.minBookingTime !== null ||
+            product.maxBookingTime !== null,
+        ).length +
+        treatmentMenus.filter((menu) => menu.serviceDurationMinutes !== null || menu.description.includes('시술 시간'))
+          .length,
     },
     localSignals: {
       commonAddress: place.location.commonAddress,

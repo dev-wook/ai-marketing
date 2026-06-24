@@ -25,6 +25,13 @@ type BookingProductDetailGraphQlResponse = {
   errors?: Array<{ message?: string }>
 }
 
+type BookingOptionGraphQlResponse = {
+  data?: {
+    option?: RawBookingOptionCategory[]
+  }
+  errors?: Array<{ message?: string }>
+}
+
 type RawBookingBusiness = {
   businessId?: string
   placeId?: string
@@ -82,6 +89,36 @@ type RawBookingProductDetail = {
   resources?: Array<{
     resourceUrl?: string
   }>
+}
+
+type RawBookingOptionCategory = {
+  id?: string
+  categoryId?: string
+  name?: string
+  categoryTypeCode?: string
+  selectionTypeCode?: string
+  isImp?: boolean
+  options?: RawBookingTreatmentMenu[]
+}
+
+type RawBookingTreatmentMenu = {
+  id?: string
+  optionId?: string
+  desc?: string
+  discountRate?: number | null
+  isFree?: boolean
+  isSoldOut?: boolean
+  categoryId?: string
+  categoryName?: string
+  categoryTypeCode?: string
+  minBookingCount?: number
+  maxBookingCount?: number
+  name?: string
+  normalPrice?: number | null
+  price?: number | null
+  priceDesc?: string | null
+  serviceDuration?: number | null
+  titleImageUrl?: string | null
 }
 
 export type NaverBookingEnrichment = {
@@ -147,6 +184,38 @@ const bookingProductDetailQuery = `
   }
 `
 
+const bookingOptionQuery = `
+  query option($input: OptionParams) {
+    option(input: $input) {
+      id
+      categoryId
+      name
+      categoryTypeCode
+      selectionTypeCode
+      isImp
+      options {
+        id
+        optionId
+        desc
+        discountRate
+        isFree
+        isSoldOut
+        categoryId
+        categoryName
+        categoryTypeCode
+        minBookingCount
+        maxBookingCount
+        name
+        normalPrice
+        price
+        priceDesc
+        serviceDuration
+        titleImageUrl
+      }
+    }
+  }
+`
+
 const emptyProfile: AiPlaceDiagnosisPlaceProfile = {
   introduction: '',
   promotion: '',
@@ -169,8 +238,18 @@ export async function collectNaverBookingEnrichment({
     bookingBusinessId: identity.businessId,
   })
   const profile = await collectBusinessProfile(identity, dataSources)
-  const details = await Promise.all(
-    status.products.map((product) => collectProductDetail(identity, product.id, dataSources)),
+  const productDetails = await Promise.all(
+    status.products.map(async (product) => ({
+      productId: product.id,
+      detail: await collectProductDetail(identity, product.id, dataSources),
+      treatmentMenuCategories: await collectProductTreatmentMenus(identity, product.id, dataSources),
+    })),
+  )
+  const treatmentMenuCount = productDetails.reduce(
+    (sum, item) =>
+      sum +
+      item.treatmentMenuCategories.reduce((categorySum, category) => categorySum + category.menus.length, 0),
+    0,
   )
 
   dataSources.push({
@@ -182,11 +261,21 @@ export async function collectNaverBookingEnrichment({
       ? `예약상품 ${status.products.length}개를 자동 수집했습니다.`
       : '예약상품을 찾지 못했습니다.',
   })
+  dataSources.push({
+    key: 'bookingTreatmentMenus',
+    label: '시술 메뉴',
+    status: treatmentMenuCount ? 'collected' : status.products.length ? 'partial' : 'missing',
+    count: treatmentMenuCount,
+    message: treatmentMenuCount
+      ? `예약상품 상세에서 시술 메뉴 ${treatmentMenuCount}개를 자동 수집했습니다.`
+      : '예약상품 상세에서 시술 메뉴를 찾지 못했습니다.',
+  })
 
   return {
     profile,
     products: status.products.map((product) => {
-      const detail = details.find((item) => item?.id === product.id) ?? null
+      const productDetail = productDetails.find((item) => item.productId === product.id)
+      const detail = productDetail?.detail ?? null
       const durations = product.slots
         .map((slot) => slot.duration)
         .filter((duration) => duration > 0)
@@ -196,6 +285,7 @@ export async function collectNaverBookingEnrichment({
         id: product.id,
         name: detail?.name || product.name,
         description: detail?.description || product.description,
+        detailUrl: createProductDetailUrl(identity, product.id),
         price: detail?.price ?? null,
         minPrice: detail?.minPrice ?? null,
         maxPrice: detail?.maxPrice ?? null,
@@ -212,6 +302,7 @@ export async function collectNaverBookingEnrichment({
         precautions: detail?.precautions ?? [],
         extraDescriptions: detail?.extraDescriptions ?? [],
         imageUrls: detail?.imageUrls ?? [],
+        treatmentMenuCategories: productDetail?.treatmentMenuCategories ?? [],
       }
     }),
     dataSources,
@@ -295,6 +386,42 @@ async function collectProductDetail(
     })
 
     return null
+  }
+}
+
+async function collectProductTreatmentMenus(
+  identity: BookingIdentity,
+  productId: string,
+  dataSources: AiPlaceDiagnosisDataSource[],
+) {
+  try {
+    const body = await requestBookingGraphQl<BookingOptionGraphQlResponse>({
+      operationName: 'option',
+      query: bookingOptionQuery,
+      variables: {
+        input: {
+          businessId: identity.businessId,
+          bizItemId: productId,
+          startDate: getTodayInKorea(),
+          lang: 'ko',
+        },
+      },
+      referer: createProductDetailUrl(identity, productId),
+    })
+
+    return mapTreatmentMenuCategories(body.data?.option)
+  } catch (error) {
+    dataSources.push({
+      key: `bookingTreatmentMenus:${productId}`,
+      label: '시술 메뉴',
+      status: 'failed',
+      message:
+        error instanceof Error
+          ? `${productId} 시술 메뉴 수집 실패: ${error.message}`
+          : `${productId} 시술 메뉴 수집에 실패했습니다.`,
+    })
+
+    return []
   }
 }
 
@@ -385,6 +512,45 @@ function mapProductDetail(detail?: RawBookingProductDetail | null) {
       .map((resource) => asString(resource.resourceUrl))
       .filter(Boolean),
   }
+}
+
+function mapTreatmentMenuCategories(categories?: RawBookingOptionCategory[] | null) {
+  return (categories ?? [])
+    .filter((category) => asString(category.categoryTypeCode) !== 'REQUIRED')
+    .map((category) => ({
+      id: asString(category.categoryId || category.id),
+      name: asString(category.name),
+      categoryTypeCode: asString(category.categoryTypeCode),
+      selectionTypeCode: asString(category.selectionTypeCode),
+      menus: (category.options ?? [])
+        .map((menu) => ({
+          id: asString(menu.optionId || menu.id),
+          name: asString(menu.name),
+          description: asString(menu.desc),
+          normalPrice: toNullableNumber(menu.normalPrice),
+          price: toNullableNumber(menu.price),
+          priceDescription: asString(menu.priceDesc),
+          discountRate: toNullableNumber(menu.discountRate),
+          serviceDurationMinutes: toNullableNumber(menu.serviceDuration),
+          isSoldOut: Boolean(menu.isSoldOut),
+          isFree: Boolean(menu.isFree),
+        }))
+        .filter((menu) => menu.id && menu.name),
+    }))
+    .filter((category) => category.id && category.name && category.menus.length)
+}
+
+function createProductDetailUrl(identity: BookingIdentity, productId: string) {
+  return `${identity.referer.replace(/\/$/, '')}/items/${productId}`
+}
+
+function getTodayInKorea() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
 }
 
 function resolveBookingIdentity({

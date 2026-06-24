@@ -52,6 +52,15 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PlaceBookingPredictionRequest
     const targetDate = normalizeDate(body.targetDate)
+    const today = getTodayKstDate()
+
+    if (targetDate < today) {
+      return NextResponse.json(
+        { message: '예약 수요 예측은 오늘 이후 날짜에서만 사용할 수 있습니다.' },
+        { status: 400 },
+      )
+    }
+
     const [currentStatus, pattern, cycle, weekStatuses, recentWeekStatuses] = await Promise.all([
       collectNaverBookingStatus({
         bookingUrl: body.bookingUrl,
@@ -191,9 +200,10 @@ function createPredictionPrompt({
 - 주간 트렌드: 현재 예약 강도와 최근 같은 요일 평균을 비교해 이번 주 수요 방향을 본다.
 - 월간 트렌드: 최근 3개월 동일 요일 평균과 4~5주 전 주기 신호를 비교해 최근 수요 방향을 본다.
 - 현재 예약현황: 대상일에 이미 잡힌 예약 수와 남은 예약 가능 시간을 반영한다.
-- 선택일이 오늘이면 현재 시간 이후 남은 시간대만 busyWindows/quietWindows에 제시한다.
+- 선택일이 오늘이면 현재 시간, 예약 마감 가능 시간, 실제 남은 예약 가능 슬롯을 고려해 받을 수 있는 남은 시간대만 busyWindows/quietWindows에 제시한다.
 - 이번 주 전망과 다음 주 전망은 최근 8주 주간 총 예약 평균과 비교한다.
 - 남은 영업일 예측은 각 요일별 최근 8주 평균을 사용한다.
+- 영업하지 않는 요일 또는 최근 8주간 예약/운영 신호가 없는 요일은 남은 영업일 예측에서 제외한다.
 - 슬롯 상태 해석: booked는 실제 예약, closed 중 actual booking 주변 시간대는 예약으로 인한 차단 추정, manual_block_or_full은 관리자 차단 가능성으로 본다.
 - busyWindows는 수요가 높은 시간만, quietWindows는 다른 시간대 대비 예약 유입 가능성이 낮고 운영 여유가 있는 시간만 제시한다.
 - 고객명이나 개인 식별 정보는 없으므로 개인별 확정 예측처럼 말하지 않는다.
@@ -209,7 +219,7 @@ function createPredictionPrompt({
   "confidence": number,
   "expectedBookingsRange": {"min": number, "max": number},
   "expectedAdditionalBookings": number,
-  "todayOutlook": {"label":"오늘 예약 전망","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
+  "todayOutlook": {"label":"오늘 예약 전망 또는 YYYY-MM-DD 예약 전망","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
   "weekOutlook": {"label":"이번 주 전망","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
   "nextWeekOutlook": {"label":"다음 주 예상 총 예약","status":"BUSY|NORMAL|QUIET","expectedBookings":"string","comparisonText":"string","recommendation":"string","description":"string"},
   "statusInsight": {"label":"평소 대비 상태","status":"BUSY|NORMAL|QUIET","headline":"string","reason":"string"},
@@ -283,10 +293,12 @@ function createFallbackPrediction({
   weekdayLabel: string
 }): PlaceBookingPredictionResponse {
   const isToday = targetDate === getTodayKstDate()
+  const targetDateLabel = isToday ? '오늘' : targetDate
   const currentMinute = isToday ? getCurrentKstMinute() : null
   const currentBookedSlots = currentProduct?.summary.bookedSlots ?? 0
-  const currentAvailableSlots = countAvailableSlotsAfterMinute(currentProduct, currentMinute)
   const futureBookedSlots = countBookedSlotsAfterMinute(currentProduct, currentMinute)
+  const currentAvailableSlots = countReservableSlotsAfterMinute(currentProduct, currentMinute)
+  const outlookBookedBaseline = isToday ? futureBookedSlots : currentBookedSlots
   const busyWindows = createPredictionWindows({
     cycleProduct,
     minMinute: currentMinute,
@@ -316,12 +328,24 @@ function createFallbackPrediction({
     cycleAverageBookings * 0.35 +
     Math.max(0, sameWeekdayAverageBookings * (1 + weeklyTrendRate / 100)) * 0.15 +
     Math.max(0, sameWeekdayAverageBookings * (1 + monthlyTrendRate / 100)) * 0.1
-  const expectedCenter = Math.max(currentBookedSlots, Math.round(weightedEstimate))
+  const expectedCenter = isToday
+    ? calculateSameDayExpectedCenter({
+        availableSlots: currentAvailableSlots,
+        currentBookedSlots,
+        futureBookedSlots,
+        weightedEstimate,
+      })
+    : Math.max(currentBookedSlots, Math.round(weightedEstimate))
   const expectedBookingsRange = {
-    min: Math.max(currentBookedSlots, expectedCenter - 1),
-    max: Math.max(currentBookedSlots, expectedCenter + 1),
+    min: Math.max(outlookBookedBaseline, expectedCenter - 1),
+    max: isToday
+      ? Math.max(
+          outlookBookedBaseline,
+          Math.min(outlookBookedBaseline + currentAvailableSlots, expectedCenter + 1),
+        )
+      : Math.max(currentBookedSlots, expectedCenter + 1),
   }
-  const expectedAdditionalBookings = Math.max(0, expectedBookingsRange.min - currentBookedSlots)
+  const expectedAdditionalBookings = Math.max(0, expectedBookingsRange.min - outlookBookedBaseline)
   const demandIndex = calculateDemandIndex({
     currentAvailableSlots,
     currentBookedSlots,
@@ -344,7 +368,9 @@ function createFallbackPrediction({
   const todayOutlook = createTodayOutlook({
     demandLevel,
     expectedBookingsRange,
+    isToday,
     sameWeekdayAverageBookings,
+    targetDate,
     weeklyTrendRate,
   })
   const weekOutlook = createWeekOutlook({
@@ -406,10 +432,10 @@ function createFallbackPrediction({
     weeklyOperation,
     summary:
       demandLevel === 'HIGH'
-        ? '오늘은 추가 예약이 들어올 가능성이 있어 예약 대기 시간을 남겨두는 편이 좋습니다.'
+        ? `${targetDateLabel}은 추가 예약이 들어올 가능성이 있어 예약 대기 시간을 남겨두는 편이 좋습니다.`
         : demandLevel === 'MEDIUM'
-          ? '오늘은 일부 시간대에 예약 유입 가능성이 있으므로 핵심 시간대만 대기하는 운영이 적절합니다.'
-          : '오늘은 강한 추가 예약 신호가 제한적이어서 비교적 여유로운 흐름으로 보입니다.',
+          ? `${targetDateLabel}은 일부 시간대에 예약 유입 가능성이 있으므로 핵심 시간대만 대기하는 운영이 적절합니다.`
+          : `${targetDateLabel}은 강한 추가 예약 신호가 제한적이어서 비교적 여유로운 흐름으로 보입니다.`,
     busyWindows,
     quietWindows,
     recommendedActions,
@@ -437,22 +463,13 @@ function mergeGeminiPrediction(
 
   return {
     ...fallback,
-    demandLevel: toDemandLevel(payload.demandLevel, fallback.demandLevel),
-    demandIndex: toSafeInteger(payload.demandIndex, fallback.demandIndex, 0, 100),
-    confidence: toSafeInteger(payload.confidence, fallback.confidence, 0, 100),
-    expectedBookingsRange: toExpectedRange(
-      payload.expectedBookingsRange,
-      fallback.expectedBookingsRange,
-      fallback.data.currentBookedSlots,
-    ),
-    expectedAdditionalBookings: toSafeInteger(
-      payload.expectedAdditionalBookings,
-      fallback.expectedAdditionalBookings,
-      0,
-      20,
-    ),
-    todayOutlook: toForecastSummary(payload.todayOutlook, fallback.todayOutlook),
-    weekOutlook: toForecastSummary(payload.weekOutlook, fallback.weekOutlook),
+    demandLevel: fallback.demandLevel,
+    demandIndex: fallback.demandIndex,
+    confidence: fallback.confidence,
+    expectedBookingsRange: fallback.expectedBookingsRange,
+    expectedAdditionalBookings: fallback.expectedAdditionalBookings,
+    todayOutlook: toForecastSummaryTextOnly(payload.todayOutlook, fallback.todayOutlook),
+    weekOutlook: toForecastSummaryTextOnly(payload.weekOutlook, fallback.weekOutlook),
     nextWeekOutlook: toForecastSummaryTextOnly(payload.nextWeekOutlook, fallback.nextWeekOutlook),
     statusInsight: toStatusInsight(payload.statusInsight, fallback.statusInsight),
     weeklyOperation: toWeeklyOperation(payload.weeklyOperation, fallback.weeklyOperation),
@@ -572,22 +589,27 @@ function createQuietWindowReason(
 function createTodayOutlook({
   demandLevel,
   expectedBookingsRange,
+  isToday,
   sameWeekdayAverageBookings,
+  targetDate,
   weeklyTrendRate,
 }: {
   demandLevel: PlaceBookingPredictionResponse['demandLevel']
   expectedBookingsRange: PlaceBookingPredictionResponse['expectedBookingsRange']
+  isToday: boolean
   sameWeekdayAverageBookings: number
+  targetDate: string
   weeklyTrendRate: number
 }): PlaceBookingPredictionResponse['todayOutlook'] {
   const midpoint = (expectedBookingsRange.min + expectedBookingsRange.max) / 2
   const comparisonRate = calculateTrendRate(midpoint, sameWeekdayAverageBookings)
   const status = toOutlookStatus(demandLevel)
+  const targetDateLabel = isToday ? '오늘' : targetDate
 
   return {
-    label: '오늘 예약 전망',
+    label: `${targetDateLabel} 예약 전망`,
     status,
-    expectedBookings: `${expectedBookingsRange.min}~${expectedBookingsRange.max}건`,
+    expectedBookings: formatBookingRange(expectedBookingsRange.min, expectedBookingsRange.max),
     comparisonText: formatComparisonText(comparisonRate),
     recommendation:
       status === 'BUSY'
@@ -691,12 +713,14 @@ function createStatusInsight({
   todayOutlook: PlaceBookingPredictionResponse['todayOutlook']
   weekOutlook: PlaceBookingPredictionResponse['weekOutlook']
 }): PlaceBookingPredictionResponse['statusInsight'] {
+  const selectedDayLabel = getForecastTargetLabel(todayOutlook.label)
+
   if (todayOutlook.status === 'BUSY' || weekOutlook.status === 'BUSY' || nextWeekOutlook.status === 'BUSY') {
     return {
       label: '평소 대비 상태',
       status: 'BUSY',
       headline: '최근 평균보다 예약 흐름이 강한 구간입니다.',
-      reason: '오늘, 이번 주, 다음 주 중 하나 이상에서 평균 대비 증가 또는 재방문 예상군 증가 신호가 확인됩니다.',
+      reason: `${selectedDayLabel}, 이번 주, 다음 주 중 하나 이상에서 평균 대비 증가 또는 재방문 예상군 증가 신호가 확인됩니다.`,
     }
   }
 
@@ -705,7 +729,7 @@ function createStatusInsight({
       label: '평소 대비 상태',
       status: 'QUIET',
       headline: '최근 평균보다 예약 흐름이 약한 구간입니다.',
-      reason: '오늘 전망과 주간 흐름, 재방문 예상군이 모두 평소보다 낮게 나타나 노출이나 재방문 흐름 점검이 필요할 수 있습니다.',
+      reason: `${selectedDayLabel} 전망과 주간 흐름, 재방문 예상군이 모두 평소보다 낮게 나타나 노출이나 재방문 흐름 점검이 필요할 수 있습니다.`,
     }
   }
 
@@ -739,7 +763,7 @@ function createWeeklyOperation({
   const currentBookings = weekProducts
     .filter((item) => item.date <= targetDate)
     .reduce((sum, item) => sum + item.bookedSlots, 0)
-  const remainingBusinessDays = getRemainingBusinessDayLabels(targetDate, weekProducts)
+  const remainingBusinessDays = getRemainingBusinessDayLabels(targetDate, weekProducts, recentStats)
   const dailyForecasts = createRemainingDailyForecasts({
     recentStats,
     remainingBusinessDays,
@@ -842,9 +866,10 @@ function createRecommendedActions({
   weeklyOperation: PlaceBookingPredictionResponse['weeklyOperation']
   weekOutlook: PlaceBookingPredictionResponse['weekOutlook']
 }) {
+  const selectedDayLabel = getForecastTargetLabel(todayOutlook.label)
   const actions = [
     todayOutlook.status === 'BUSY'
-      ? '오늘은 예약 문의 대응 시간을 남겨두는 편이 좋습니다.'
+      ? `${selectedDayLabel}은 예약 문의 대응 시간을 남겨두는 편이 좋습니다.`
       : null,
     weekOutlook.status === 'BUSY'
       ? '이번 주 예약 흐름은 평소보다 강한 편입니다.'
@@ -1033,6 +1058,7 @@ function summarizeWeekStatuses(
         null
 
       return {
+        activeSlots: product?.slots.filter((slot) => slot.statusReason !== 'off_hours').length ?? 0,
         availableSlots: product?.summary.availableSlots ?? 0,
         bookedSlots: product?.summary.bookedSlots ?? 0,
         date: status.date,
@@ -1051,6 +1077,7 @@ function summarizeRecentEightWeeks(
   const rows = summarizeWeekStatuses(statuses, productId, productName)
   const weeklyTotals = new Map<string, number>()
   const weekdayTotals = new Map<number, number[]>()
+  const weekdayActiveTotals = new Map<number, number[]>()
 
   rows.forEach((row) => {
     const weekKey = getWeekStartDate(row.date)
@@ -1061,6 +1088,10 @@ function summarizeRecentEightWeeks(
     const values = weekdayTotals.get(weekday) ?? []
     values.push(row.bookedSlots)
     weekdayTotals.set(weekday, values)
+
+    const activeValues = weekdayActiveTotals.get(weekday) ?? []
+    activeValues.push(row.activeSlots)
+    weekdayActiveTotals.set(weekday, activeValues)
   })
 
   const weeklyValues = Array.from(weeklyTotals.values())
@@ -1081,6 +1112,16 @@ function summarizeRecentEightWeeks(
       weeklyValues.reduce((sum, value) => sum + value, 0) / Math.max(weeklyValues.length, 1),
     ),
     weekdayAverages,
+    weekdayActiveAverages: Array.from(weekdayActiveTotals.entries()).reduce<Record<string, number>>(
+      (accumulator, [weekday, values]) => {
+        accumulator[String(weekday)] = roundToOne(
+          values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1),
+        )
+
+        return accumulator
+      },
+      {},
+    ),
     weeklyTotals: Array.from(weeklyTotals.entries()).map(([weekStart, bookedSlots]) => ({
       bookedSlots,
       weekStart,
@@ -1129,13 +1170,37 @@ function createRemainingDailyForecasts({
 
 function getRemainingBusinessDayLabels(
   targetDate: string,
-  weekProducts: Array<{ availableSlots: number; bookedSlots: number; date: string; label: string; totalSlots: number }>,
+  weekProducts: Array<{
+    activeSlots: number
+    availableSlots: number
+    bookedSlots: number
+    date: string
+    label: string
+    totalSlots: number
+  }>,
+  recentStats?: ReturnType<typeof summarizeRecentEightWeeks>,
 ) {
   const today = getTodayKstDate()
   const minDate = targetDate === today ? today : targetDate
 
   return weekProducts
-    .filter((item) => item.date > minDate && (item.totalSlots > 0 || item.availableSlots > 0 || item.bookedSlots > 0))
+    .filter((item) => {
+      if (item.date <= minDate) {
+        return false
+      }
+
+      const weekday = createLocalDate(item.date).getDay()
+      const recentWeekdayAverage = recentStats?.weekdayAverages[String(weekday)] ?? 0
+      const recentActiveAverage = recentStats?.weekdayActiveAverages[String(weekday)] ?? 0
+
+      return (
+        item.bookedSlots > 0 ||
+        item.availableSlots > 0 ||
+        item.activeSlots > 0 ||
+        recentWeekdayAverage > 0 ||
+        recentActiveAverage > 0
+      )
+    })
     .map((item) => item.label)
 }
 
@@ -1406,6 +1471,14 @@ function formatComparisonText(value: number) {
   return `평균 대비 ${formatSignedRate(value)}`
 }
 
+function formatBookingRange(min: number, max: number) {
+  return min === max ? `${max}건` : `${min}~${max}건`
+}
+
+function getForecastTargetLabel(label: string) {
+  return label.replace(/\s*예약 전망$/, '') || '선택 날짜'
+}
+
 function toSafeText(value: unknown, fallback: string) {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
@@ -1432,12 +1505,89 @@ function createTimeRange(time: string) {
   ).padStart(2, '0')}:00`
 }
 
-function countAvailableSlotsAfterMinute(product: PlaceBookingProduct | null, minMinute: number | null) {
-  return product?.slots.filter((slot) => slot.status === 'available' && isTimeAfterMinute(slot.time, minMinute)).length ?? 0
+function calculateSameDayExpectedCenter({
+  availableSlots,
+  currentBookedSlots,
+  futureBookedSlots,
+  weightedEstimate,
+}: {
+  availableSlots: number
+  currentBookedSlots: number
+  futureBookedSlots: number
+  weightedEstimate: number
+}) {
+  const additionalDemandEstimate = Math.max(0, Math.round(weightedEstimate) - currentBookedSlots)
+  const realisticAdditionalBookings = Math.min(availableSlots, additionalDemandEstimate)
+
+  return Math.max(futureBookedSlots, futureBookedSlots + realisticAdditionalBookings)
+}
+
+function countReservableSlotsAfterMinute(product: PlaceBookingProduct | null, minMinute: number | null) {
+  if (!product) {
+    return 0
+  }
+
+  const closeMinute = inferOperatingCloseMinute(product)
+
+  return product.slots.filter((slot) => {
+    if (slot.status !== 'available') {
+      return false
+    }
+
+    const startMinute = parseTimeToMinute(slot.time)
+
+    if (startMinute === null) {
+      return false
+    }
+
+    if (!isRealisticallyBookableAfterMinute(startMinute, minMinute)) {
+      return false
+    }
+
+    if (closeMinute === null || !slot.duration) {
+      return true
+    }
+
+    return startMinute + slot.duration <= closeMinute
+  }).length
 }
 
 function countBookedSlotsAfterMinute(product: PlaceBookingProduct | null, minMinute: number | null) {
   return product?.slots.filter((slot) => slot.status === 'booked' && isTimeAfterMinute(slot.time, minMinute)).length ?? 0
+}
+
+function inferOperatingCloseMinute(product: PlaceBookingProduct) {
+  const activeEndMinutes = product.slots
+    .map((slot) => {
+      if (slot.statusReason === 'off_hours') {
+        return null
+      }
+
+      const startMinute = parseTimeToMinute(slot.time)
+
+      if (startMinute === null) {
+        return null
+      }
+
+      return startMinute + Math.max(slot.duration || 0, 30)
+    })
+    .filter((minute): minute is number => minute !== null)
+
+  if (!activeEndMinutes.length) {
+    return null
+  }
+
+  return Math.max(...activeEndMinutes)
+}
+
+function isRealisticallyBookableAfterMinute(startMinute: number, minMinute: number | null) {
+  if (minMinute === null) {
+    return true
+  }
+
+  const sameDayMinimumLeadTimeMinutes = 60
+
+  return startMinute >= minMinute + sameDayMinimumLeadTimeMinutes
 }
 
 function isTimeAfterMinute(time: string, minMinute: number | null) {

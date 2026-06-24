@@ -86,8 +86,15 @@ export function extractAiPlaceFeatures({
   normalized: AiPlaceNormalizedSnapshot
 }): AiPlaceFeatureSet {
   const products = normalized.bookingProducts
-  const productDescriptions = products.map((product) => product.description.trim()).filter(Boolean)
+  const treatmentMenus = products.flatMap((product) =>
+    (product.treatmentMenuCategories ?? []).flatMap((category) => category.menus),
+  )
+  const productDescriptions = [
+    ...products.map((product) => product.description.trim()),
+    ...treatmentMenus.map((menu) => menu.description.trim()),
+  ].filter(Boolean)
   const productCount = products.length
+  const serviceItemCount = Math.max(productCount, treatmentMenus.length)
   const reviewSnippetTexts = normalized.reviewSnippets
   const lowerKeyword = keyword.toLowerCase()
   const reviewSnippetKeywordMentions = reviewSnippetTexts.filter((text) =>
@@ -111,21 +118,32 @@ export function extractAiPlaceFeatures({
       hasPromotion: Boolean(normalized.profile.promotion),
       promotionLength: normalized.profile.promotion.length,
       bookingProductCount: productCount,
-      productDescriptionCoverage: productCount ? productDescriptions.length / productCount : 0,
+      productDescriptionCoverage: serviceItemCount ? Math.min(1, productDescriptions.length / serviceItemCount) : 0,
       productAverageDescriptionLength: productDescriptions.length
         ? average(productDescriptions.map((description) => description.length))
         : 0,
-      priceCoverage: productCount
-        ? products.filter((product) => product.price !== null || product.minPrice !== null || product.maxPrice !== null)
-            .length / productCount
+      priceCoverage: serviceItemCount
+        ? Math.min(
+            1,
+            (products.filter((product) => product.price !== null || product.minPrice !== null || product.maxPrice !== null)
+              .length +
+              treatmentMenus.filter((menu) => menu.price !== null || menu.normalPrice !== null).length) /
+              serviceItemCount,
+          )
         : 0,
-      durationCoverage: productCount
-        ? products.filter(
-            (product) =>
-              product.inferredDurationMinutes !== null ||
-              product.minBookingTime !== null ||
-              product.maxBookingTime !== null,
-          ).length / productCount
+      durationCoverage: serviceItemCount
+        ? Math.min(
+            1,
+            (products.filter(
+              (product) =>
+                product.inferredDurationMinutes !== null ||
+                product.minBookingTime !== null ||
+                product.maxBookingTime !== null,
+            ).length +
+              treatmentMenus.filter((menu) => menu.serviceDurationMinutes !== null || menu.description.includes('시술 시간'))
+                .length) /
+              serviceItemCount,
+          )
         : 0,
       precautionCoverage: productCount
         ? products.filter((product) => product.precautions.length > 0).length / productCount

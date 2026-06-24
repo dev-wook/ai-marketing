@@ -882,14 +882,14 @@ function createMetricComparisonRows(
       winner: toWinner(left.metrics.imageCount, right.metrics.imageCount),
     },
     {
-      label: '예약상품',
-      leftScore: left.bookingProducts.length,
-      rightScore: right.bookingProducts.length,
-      leftValue: `${left.bookingProducts.length}개`,
-      rightValue: `${right.bookingProducts.length}개`,
+      label: '예약/시술 메뉴',
+      leftScore: countServiceMenus(leftResult),
+      rightScore: countServiceMenus(rightResult),
+      leftValue: formatServiceMenuValue(leftResult),
+      rightValue: formatServiceMenuValue(rightResult),
       leftDetail: createBookingProductRationale(leftResult, rightResult),
       rightDetail: createBookingProductRationale(rightResult, leftResult),
-      winner: toWinner(left.bookingProducts.length, right.bookingProducts.length),
+      winner: toWinner(countServiceMenus(leftResult), countServiceMenus(rightResult)),
     },
   ] satisfies ComparisonRowModel[]
 }
@@ -926,9 +926,9 @@ function createCategorySignalSummary(
 
   switch (key) {
     case 'intentAndService':
-      return `카테고리는 ${result.target.category || '미확인'}이며 예약상품은 ${result.target.bookingProducts.length}개입니다.`
+      return `카테고리는 ${result.target.category || '미확인'}이며 예약상품 ${result.target.bookingProducts.length}개, 시술 메뉴 ${countTreatmentMenus(result)}개가 확인됩니다.`
     case 'serviceInformation':
-      return `소개글은 ${profile.introduction ? '확인됨' : '부족'}이고 예약상품 설명은 ${countDescribedProducts(result)}개 상품에서 확인됩니다.`
+      return `소개글은 ${profile.introduction ? '확인됨' : '부족'}이고 예약/시술 설명은 ${countDescribedProducts(result)}개 항목에서 확인됩니다.`
     case 'localEntity':
       return `주소는 ${result.target.address || '미확인'}이며 오시는 길 정보는 ${profile.locationGuide ? '확인됨' : '부족'}입니다.`
     case 'reviewTrust':
@@ -945,7 +945,39 @@ function createCategorySignalSummary(
 }
 
 function countDescribedProducts(result: AiPlaceDiagnosisResponse) {
-  return result.target.bookingProducts.filter((product) => product.description.trim().length > 0).length
+  return (
+    result.target.bookingProducts.filter((product) => product.description.trim().length > 0).length +
+    result.target.bookingProducts
+      .flatMap((product) => product.treatmentMenuCategories ?? [])
+      .flatMap((category) => category.menus)
+      .filter((menu) => menu.description.trim().length > 0).length
+  )
+}
+
+function countTreatmentMenus(result: AiPlaceDiagnosisResponse) {
+  return result.target.bookingProducts
+    .flatMap((product) => product.treatmentMenuCategories ?? [])
+    .flatMap((category) => category.menus).length
+}
+
+function countServiceMenus(result: AiPlaceDiagnosisResponse) {
+  return result.target.bookingProducts.length + countTreatmentMenus(result)
+}
+
+function countPricedTreatmentMenus(result: AiPlaceDiagnosisResponse) {
+  return result.target.bookingProducts
+    .flatMap((product) => product.treatmentMenuCategories ?? [])
+    .flatMap((category) => category.menus)
+    .filter((menu) => menu.price !== null || menu.normalPrice !== null).length
+}
+
+function formatServiceMenuValue(result: AiPlaceDiagnosisResponse) {
+  const productCount = result.target.bookingProducts.length
+  const treatmentMenuCount = countTreatmentMenus(result)
+
+  return treatmentMenuCount
+    ? `상품 ${productCount}개 · 시술 ${treatmentMenuCount}개`
+    : `상품 ${productCount}개`
 }
 
 function createRankRationale(name: string, rank: number, peerName: string, peerRank: number) {
@@ -993,8 +1025,16 @@ function createBookingProductRationale(
 ) {
   const productCount = result.target.bookingProducts.length
   const describedCount = countDescribedProducts(result)
+  const treatmentMenuCount = countTreatmentMenus(result)
+  const pricedMenuCount = countPricedTreatmentMenus(result)
+  const categoryNames = result.target.bookingProducts
+    .flatMap((product) => product.treatmentMenuCategories ?? [])
+    .map((category) => category.name)
+    .filter(Boolean)
+    .slice(0, 4)
   const peerProductCount = peerResult.target.bookingProducts.length
-  const diff = productCount - peerProductCount
+  const peerServiceMenuCount = countServiceMenus(peerResult)
+  const diff = countServiceMenus(result) - peerServiceMenuCount
   const comparison =
     diff === 0
       ? `${peerResult.target.name}과 같은 수준`
@@ -1002,7 +1042,7 @@ function createBookingProductRationale(
         ? `${peerResult.target.name}보다 ${diff}개 많음`
         : `${peerResult.target.name}보다 ${Math.abs(diff)}개 적음`
 
-  return `${result.target.name}은 예약상품 ${productCount}개가 확인되어 ${comparison}입니다. 이 중 설명이 있는 상품은 ${describedCount}개라서 상품명뿐 아니라 대상, 결과 특징, 소요시간 설명까지 보강됐는지가 점수 근거가 됩니다.`
+  return `${result.target.name}은 예약상품 ${productCount}개와 시술 메뉴 ${treatmentMenuCount}개가 확인되어 ${comparison}입니다. 가격이 확인된 시술은 ${pricedMenuCount}개, 설명이 있는 예약/시술 항목은 ${describedCount}개입니다.${categoryNames.length ? ` 카테고리는 ${categoryNames.join(', ')} 중심입니다.` : ''} 상품명뿐 아니라 대상, 결과 특징, 가격, 시술시간 설명까지 보강됐는지가 점수 근거가 됩니다.`
 }
 
 function createDiagnosisDataNotice(

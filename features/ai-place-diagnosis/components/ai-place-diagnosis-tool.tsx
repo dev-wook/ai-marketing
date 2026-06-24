@@ -511,26 +511,11 @@ function DiagnosisResult({ result }: { result: AiPlaceDiagnosisResponse }) {
           <div className="grid gap-3">
             {result.target.bookingProducts.map((product) => (
               <div key={product.id} className="rounded-md border border-white/10 bg-white/[0.035] p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-black text-white">{product.name}</p>
-                  <span className="rounded-md border border-cyan-200/20 bg-cyan-300/10 px-2 py-1 text-[11px] font-black text-cyan-100">
-                    {formatProductPrice(product)}
-                  </span>
-                </div>
+                <p className="text-sm font-black text-white">{product.name}</p>
                 <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">
                   {product.description || '상품 설명 없음'}
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <SmallBadge label={`예약 ${product.minBookingCount}-${product.maxBookingCount}명`} />
-                  <SmallBadge
-                    label={
-                      product.inferredDurationMinutes
-                        ? `소요 ${product.inferredDurationMinutes}분 추정`
-                        : '소요시간 미등록'
-                    }
-                  />
-                  <SmallBadge label={`주의사항 ${product.precautions.length}개`} />
-                </div>
+                <TreatmentMenuPreview product={product} />
               </div>
             ))}
           </div>
@@ -652,12 +637,64 @@ function SignalRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SmallBadge({ label }: { label: string }) {
+function TreatmentMenuPreview({
+  product,
+}: {
+  product: AiPlaceDiagnosisResponse['target']['bookingProducts'][number]
+}) {
+  const categories = (product.treatmentMenuCategories ?? [])
+    .filter((category) => category.categoryTypeCode !== 'REQUIRED' && category.menus.length > 0)
+    .slice(0, 3)
+
+  if (!categories.length) {
+    return null
+  }
+
   return (
-    <span className="rounded-md border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-black text-slate-300">
-      {label}
-    </span>
+    <div className="mt-4 grid gap-3 border-t border-white/10 pt-4">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100/75">
+        수집된 시술 메뉴
+      </p>
+      {categories.map((category) => (
+        <div key={category.id} className="grid gap-2">
+          <p className="text-sm font-black text-cyan-50">{category.name}</p>
+          <div className="grid gap-2 md:grid-cols-2">
+            {category.menus.slice(0, 4).map((menu) => (
+              <div key={menu.id} className="rounded-md border border-white/8 bg-black/15 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="break-keep text-sm font-black leading-5 text-white">{menu.name}</p>
+                  {formatTreatmentMenuPrice(menu) ? (
+                    <span className="shrink-0 text-xs font-black text-cyan-100">
+                      {formatTreatmentMenuPrice(menu)}
+                    </span>
+                  ) : null}
+                </div>
+                {menu.description ? (
+                  <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-400">
+                    {menu.description}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   )
+}
+
+function formatTreatmentMenuPrice(
+  menu: AiPlaceDiagnosisResponse['target']['bookingProducts'][number]['treatmentMenuCategories'][number]['menus'][number],
+) {
+  if (menu.price !== null) {
+    return `${menu.price.toLocaleString()}원`
+  }
+
+  if (menu.normalPrice !== null) {
+    return `${menu.normalPrice.toLocaleString()}원`
+  }
+
+  return ''
 }
 
 function NumberedList({ items }: { items: string[] }) {
@@ -789,18 +826,6 @@ function formatAvailableAt(value: string) {
   } catch {
     return date.toLocaleTimeString('ko-KR')
   }
-}
-
-function formatProductPrice(product: AiPlaceDiagnosisResponse['target']['bookingProducts'][number]) {
-  if (product.price !== null) {
-    return `${product.price.toLocaleString()}원`
-  }
-
-  if (product.minPrice !== null || product.maxPrice !== null) {
-    return `${product.minPrice?.toLocaleString() ?? '?'}-${product.maxPrice?.toLocaleString() ?? '?'}원`
-  }
-
-  return '가격 미등록'
 }
 
 function toSourceStatusLabel(status: AiPlaceDiagnosisResponse['target']['dataSources'][number]['status']) {

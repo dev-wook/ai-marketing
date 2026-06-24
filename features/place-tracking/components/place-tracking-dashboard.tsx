@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   PlacePreview,
   TrackingDashboardPlace,
@@ -17,7 +17,13 @@ type PlaceTrackingDashboardProps = {
   onOpenManagerPage?: () => void
 }
 
-const dashboardAutoRefreshIntervalMs = 180_000
+const dashboardAutoRefreshIntervalMs = 300_000
+const dashboardCacheStorageKey = 'aiva-place-tracking-dashboard-cache:v1'
+
+type DashboardCacheEntry = {
+  cachedAt: number
+  data: TrackingDashboardResponse
+}
 
 export function PlaceTrackingDashboard({
   mode = 'dashboard',
@@ -45,7 +51,7 @@ export function PlaceTrackingDashboard({
     setIsManagerOpen(true)
   }
 
-  const refreshPlaces = async () => {
+  const refreshPlaces = useCallback(async () => {
     setIsLoadingPlaces(true)
 
     try {
@@ -62,15 +68,24 @@ export function PlaceTrackingDashboard({
     } finally {
       setIsLoadingPlaces(false)
     }
-  }
+  }, [])
 
-  const refreshDashboard = async (
+  const refreshDashboard = useCallback(async (
     force = false,
     { silent = false }: { silent?: boolean } = {},
   ) => {
     if (!force && !hasTrackedKeywords) {
       setDashboard(null)
       return
+    }
+
+    if (!force) {
+      const cachedDashboard = readDashboardCache()
+
+      if (cachedDashboard && isFreshDashboardCache(cachedDashboard, places)) {
+        setDashboard(cachedDashboard.data)
+        return
+      }
     }
 
     if (!silent) {
@@ -89,6 +104,7 @@ export function PlaceTrackingDashboard({
       }
 
       setDashboard(data)
+      writeDashboardCache(data)
     } catch (error) {
       if (!silent) {
         setErrorMessage(
@@ -102,7 +118,7 @@ export function PlaceTrackingDashboard({
         setIsLoadingDashboard(false)
       }
     }
-  }
+  }, [hasTrackedKeywords, places])
 
   const refreshPlaceDashboard = async (placeId: number) => {
     setRefreshingPlaceId(placeId)
@@ -120,17 +136,19 @@ export function PlaceTrackingDashboard({
       }
 
       setDashboard((current) => {
-        if (!current) {
-          return data
-        }
+        const nextDashboard = current
+          ? {
+              ...current,
+              updatedAt: data.updatedAt,
+              places: current.places.map((place) =>
+                place.id === refreshedPlace.id ? refreshedPlace : place,
+              ),
+            }
+          : data
 
-        return {
-          ...current,
-          updatedAt: data.updatedAt,
-          places: current.places.map((place) =>
-            place.id === refreshedPlace.id ? refreshedPlace : place,
-          ),
-        }
+        writeDashboardCache(nextDashboard)
+
+        return nextDashboard
       })
     } catch (error) {
       setErrorMessage(
@@ -147,7 +165,7 @@ export function PlaceTrackingDashboard({
     refreshPlaces().catch(() => {
       setErrorMessage('플레이스 목록을 불러오지 못했습니다.')
     })
-  }, [])
+  }, [refreshPlaces])
 
   useEffect(() => {
     if (mode === 'manager') {
@@ -157,21 +175,33 @@ export function PlaceTrackingDashboard({
     refreshDashboard().catch(() => {
       setErrorMessage('플레이스 추적 현황 조회 중 문제가 발생했습니다.')
     })
-  }, [hasTrackedKeywords, mode])
+  }, [hasTrackedKeywords, mode, refreshDashboard])
 
   useEffect(() => {
-    if (mode === 'manager' || !hasTrackedKeywords) {
+    if (mode === 'manager' || !hasTrackedKeywords || !dashboard) {
       return
     }
 
-    const intervalId = window.setInterval(() => {
-      refreshDashboard(false, { silent: true }).catch(() => undefined)
-    }, dashboardAutoRefreshIntervalMs)
+    let timeoutId: number | null = null
+
+    const scheduleNextRefresh = () => {
+      const cachedDashboard = readDashboardCache()
+      const cacheAge = cachedDashboard ? Date.now() - cachedDashboard.cachedAt : dashboardAutoRefreshIntervalMs
+      const delay = Math.max(0, dashboardAutoRefreshIntervalMs - cacheAge)
+
+      timeoutId = window.setTimeout(() => {
+        refreshDashboard(true, { silent: true }).catch(() => undefined)
+      }, delay)
+    }
+
+    scheduleNextRefresh()
 
     return () => {
-      window.clearInterval(intervalId)
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
     }
-  }, [hasTrackedKeywords, mode])
+  }, [dashboard, hasTrackedKeywords, mode, refreshDashboard])
 
   if (mode === 'manager') {
     return (
@@ -285,6 +315,83 @@ function EmptyTrackingState({ onOpenManager }: { onOpenManager: () => void }) {
   )
 }
 
+function readDashboardCache(): DashboardCacheEntry | null {
+  try {
+    const rawValue = window.localStorage.getItem(dashboardCacheStorageKey)
+    const parsedValue = rawValue ? JSON.parse(rawValue) : null
+
+    if (
+      !parsedValue ||
+      typeof parsedValue !== 'object' ||
+      typeof parsedValue.cachedAt !== 'number' ||
+      !parsedValue.data
+    ) {
+      return null
+    }
+
+    return parsedValue as DashboardCacheEntry
+  } catch {
+    return null
+  }
+}
+
+function writeDashboardCache(data: TrackingDashboardResponse) {
+  try {
+    window.localStorage.setItem(
+      dashboardCacheStorageKey,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        data,
+      } satisfies DashboardCacheEntry),
+    )
+  } catch {
+    // 캐시 저장 실패는 화면 동작에 영향을 주지 않는다.
+  }
+}
+
+function isFreshDashboardCache(entry: DashboardCacheEntry, places: TrackedPlace[]) {
+  if (Date.now() - entry.cachedAt >= dashboardAutoRefreshIntervalMs) {
+    return false
+  }
+
+  return isDashboardCacheForCurrentTargets(entry.data, places)
+}
+
+function isDashboardCacheForCurrentTargets(data: TrackingDashboardResponse, places: TrackedPlace[]) {
+  const currentTargets = createTrackingTargetSignatureFromPlaces(places)
+  const cachedTargets = createTrackingTargetSignatureFromDashboard(data)
+
+  return currentTargets === cachedTargets
+}
+
+function createTrackingTargetSignatureFromPlaces(places: TrackedPlace[]) {
+  return places
+    .map((place) => {
+      const keywordIds = place.keywords
+        .map((keyword) => keyword.id)
+        .sort((left, right) => left - right)
+        .join(',')
+
+      return `${place.id}:${keywordIds}`
+    })
+    .sort()
+    .join('|')
+}
+
+function createTrackingTargetSignatureFromDashboard(data: TrackingDashboardResponse) {
+  return data.places
+    .map((place) => {
+      const keywordIds = place.keywords
+        .map((keyword) => keyword.keywordId)
+        .sort((left, right) => left - right)
+        .join(',')
+
+      return `${place.id}:${keywordIds}`
+    })
+    .sort()
+    .join('|')
+}
+
 function TrackedPlaceCard({
   isRefreshing,
   onOpenManager,
@@ -322,14 +429,14 @@ function TrackedPlaceCard({
           onClick={onRefresh}
           disabled={isRefreshing}
           aria-label={`${place.placeName} 순위 새로고침`}
-          className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md border border-cyan-300/22 bg-cyan-300/8 text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-300/14 disabled:cursor-not-allowed disabled:opacity-60 md:static md:h-10 md:w-10"
+          className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-white transition hover:border-cyan-300/45 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60 md:static md:h-10 md:w-10"
         >
           {isRefreshing ? (
             <span className="block h-4 w-4 animate-spin rounded-full border-2 border-cyan-100/30 border-t-cyan-100" />
           ) : (
             <svg
               aria-hidden="true"
-              className="h-4 w-4"
+              className="h-5 w-5"
               fill="none"
               stroke="currentColor"
               strokeLinecap="round"
@@ -337,10 +444,10 @@ function TrackedPlaceCard({
               strokeWidth="2.2"
               viewBox="0 0 24 24"
             >
-              <path d="M20 6v6h-6" />
-              <path d="M4 18v-6h6" />
-              <path d="M20 12a8 8 0 0 0-13.66-5.66L4 8" />
-              <path d="M4 12a8 8 0 0 0 13.66 5.66L20 16" />
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10" />
+              <path d="M20.5 15a9 9 0 0 1-14.9 3.4L1 14" />
             </svg>
           )}
         </button>

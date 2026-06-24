@@ -2674,10 +2674,17 @@ function BookingStatusModal({
   const [isCalendarCountsLoading, setIsCalendarCountsLoading] = useState(false)
   const [calendarCountsError, setCalendarCountsError] = useState('')
   const [isPredictionOpen, setIsPredictionOpen] = useState(false)
+  const isPastPredictionDate = date < getTodayKstDate()
 
   useEffect(() => {
     setCalendarMonthKey(formatYearMonthValue(date))
   }, [date])
+
+  useEffect(() => {
+    if (isPastPredictionDate) {
+      setIsPredictionOpen(false)
+    }
+  }, [isPastPredictionDate])
 
   useEffect(() => {
     if (!isCalendarOpen || calendarCountsByMonth[calendarMonthKey]) {
@@ -2895,13 +2902,20 @@ function BookingStatusModal({
                       <div>
                         <p className="text-sm font-black text-white">AI 예약 수요 예측</p>
                         <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-400">
-                          특정 날짜의 예상 예약 건수와 혼잡도를 예측합니다.
+                          {isPastPredictionDate
+                            ? '지난 날짜는 예약 수요 예측을 사용할 수 없습니다.'
+                            : '선택한 날짜의 예상 예약 건수와 혼잡도를 예측합니다.'}
                         </p>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setIsPredictionOpen(true)}
-                        className="inline-flex min-h-10 items-center justify-center rounded-md border border-cyan-300/30 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:border-cyan-200/60 hover:bg-cyan-300/18"
+                        onClick={() => {
+                          if (!isPastPredictionDate) {
+                            setIsPredictionOpen(true)
+                          }
+                        }}
+                        disabled={isPastPredictionDate}
+                        className="inline-flex min-h-10 items-center justify-center rounded-md border border-cyan-300/30 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:border-cyan-200/60 hover:bg-cyan-300/18 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-slate-500"
                       >
                         AI 예약 수요 예측
                       </button>
@@ -3015,6 +3029,7 @@ function BookingPredictionModal({
   const [prediction, setPrediction] = useState<PlaceBookingPredictionResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const selectedDateOutlookLabel = date === getTodayKstDate() ? '오늘 예약 전망' : `${date} 예약 전망`
 
   const loadPrediction = async () => {
     setIsLoading(true)
@@ -3078,7 +3093,7 @@ function BookingPredictionModal({
           data-aiva-scroll-lock-allow="true"
         >
           {isLoading ? (
-            <BookingPredictionSkeleton />
+            <BookingPredictionSkeleton selectedDateOutlookLabel={selectedDateOutlookLabel} />
           ) : errorMessage ? (
             <div className="rounded-md border border-rose-300/20 bg-rose-400/[0.08] p-4">
               <p className="font-black text-rose-100">{errorMessage}</p>
@@ -3098,7 +3113,7 @@ function BookingPredictionModal({
                     Operation Outlook
                   </p>
                   <h4 className="mt-1 break-keep text-lg font-black text-white">
-                    오늘의 운영 판단
+                    {prediction.todayOutlook.label.replace('예약 전망', '운영 판단')}
                   </h4>
                   <p className="mt-2 break-keep text-sm font-semibold leading-6 text-slate-300">
                     {prediction.summary}
@@ -3142,7 +3157,11 @@ function BookingPredictionModal({
   )
 }
 
-function BookingPredictionSkeleton() {
+function BookingPredictionSkeleton({
+  selectedDateOutlookLabel,
+}: {
+  selectedDateOutlookLabel: string
+}) {
   return (
     <div className="grid gap-4" role="status" aria-live="polite">
       <section className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] p-4">
@@ -3160,7 +3179,7 @@ function BookingPredictionSkeleton() {
       </section>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)_minmax(220px,0.8fr)]">
-        <ForecastDecisionSkeleton label="오늘 예약 전망" featured />
+        <ForecastDecisionSkeleton label={selectedDateOutlookLabel} featured />
         <WeeklyOperationSkeleton />
         <ForecastDecisionSkeleton label="다음 주 예상 총 예약" />
       </div>
