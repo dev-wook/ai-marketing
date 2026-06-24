@@ -2718,14 +2718,14 @@ function BookingStatusModal({
 
   return (
     <div
-      className="fixed inset-0 z-[9998] grid overscroll-none place-items-center bg-black/72 p-3 backdrop-blur-sm sm:p-5"
+      className="fixed inset-0 z-[9998] grid h-[100dvh] overflow-hidden overscroll-none bg-black/72 p-3 backdrop-blur-sm sm:place-items-center sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label={`${place.name} 예약현황`}
       onClick={onClose}
     >
       <section
-        className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.56)]"
+        className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.56)] sm:max-h-[88vh]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5 sm:py-5">
@@ -2750,7 +2750,7 @@ function BookingStatusModal({
         </div>
 
         <div
-          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch] sm:px-5 sm:py-5"
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [touch-action:pan-y] [-webkit-overflow-scrolling:touch] sm:px-5 sm:py-5"
           data-aiva-scroll-lock-allow="true"
         >
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_19rem] md:items-end">
@@ -3042,14 +3042,14 @@ function BookingPredictionModal({
 
   return (
     <div
-      className="fixed inset-0 z-[10000] grid overscroll-none bg-black/76 p-3 backdrop-blur-sm sm:place-items-center sm:p-5"
+      className="fixed inset-0 z-[10000] grid h-[100dvh] overflow-hidden overscroll-none bg-black/76 p-3 backdrop-blur-sm sm:place-items-center sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label={`${place.name} AI 예약 수요 예측`}
       onClick={onClose}
     >
       <section
-        className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.58)] xl:max-w-7xl"
+        className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.58)] sm:max-h-[88vh] xl:max-w-7xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
@@ -3074,7 +3074,7 @@ function BookingPredictionModal({
         </div>
 
         <div
-          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch] sm:px-5 lg:px-6"
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [touch-action:pan-y] [-webkit-overflow-scrolling:touch] sm:px-5 lg:px-6"
           data-aiva-scroll-lock-allow="true"
         >
           {isLoading ? (
@@ -3859,14 +3859,15 @@ function BookingCalendarModal({
 
   return (
     <div
-      className="fixed inset-0 z-[10000] grid place-items-center bg-black/62 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[10000] grid h-[100dvh] overflow-hidden overscroll-none bg-black/62 p-4 backdrop-blur-sm sm:place-items-center"
       role="dialog"
       aria-modal="true"
       aria-label="예약현황 날짜 선택"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-xl border border-cyan-300/20 bg-[#080c17] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.5)]"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto overscroll-contain rounded-xl border border-cyan-300/20 bg-[#080c17] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.5)] [touch-action:pan-y] [-webkit-overflow-scrolling:touch]"
+        data-aiva-scroll-lock-allow="true"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3">

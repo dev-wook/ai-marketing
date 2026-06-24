@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
 
 const scrollLockDatasetKey = 'aivaScrollLocked'
 const scrollAllowedSelector = '[data-aiva-scroll-lock-allow="true"]'
@@ -36,7 +36,7 @@ function recoverOrphanedScrollLock() {
 }
 
 export function useBodyScrollLock(active: boolean) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active) {
       recoverOrphanedScrollLock()
       return
@@ -85,6 +85,7 @@ export function useBodyScrollLock(active: boolean) {
 
     const onTouchMove = (event: TouchEvent) => {
       if (event.touches.length > 1) {
+        event.preventDefault()
         return
       }
 
@@ -102,7 +103,19 @@ export function useBodyScrollLock(active: boolean) {
       const isAtBottom =
         scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 1
 
-      if (!canScroll || (isAtTop && deltaY > 0) || (isAtBottom && deltaY < 0)) {
+      if (!canScroll) {
+        event.preventDefault()
+        return
+      }
+
+      if (isAtTop && deltaY > 0) {
+        scrollElement.scrollTop = 0
+        event.preventDefault()
+        return
+      }
+
+      if (isAtBottom && deltaY < 0) {
+        scrollElement.scrollTop = scrollElement.scrollHeight
         event.preventDefault()
       }
     }
@@ -129,14 +142,22 @@ export function useBodyScrollLock(active: boolean) {
       }
     }
 
+    const onScroll = () => {
+      if (window.scrollY !== scrollY) {
+        window.scrollTo(0, scrollY)
+      }
+    }
+
     document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true })
     document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
     document.addEventListener('wheel', onWheel, { capture: true, passive: false })
+    window.addEventListener('scroll', onScroll, { passive: true })
 
     return () => {
       document.removeEventListener('touchstart', onTouchStart, { capture: true })
       document.removeEventListener('touchmove', onTouchMove, { capture: true })
       document.removeEventListener('wheel', onWheel, { capture: true })
+      window.removeEventListener('scroll', onScroll)
       document.body.style.overflow = previousOverflow
       document.body.style.overscrollBehavior = previousOverscrollBehavior
       document.body.style.touchAction = previousTouchAction
