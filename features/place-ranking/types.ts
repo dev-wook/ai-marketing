@@ -316,6 +316,18 @@ export type PlaceBookingPredictionWindow = {
   timeRange: string
   reason: string
   confidence: number
+  recommendation?: string
+}
+
+export type PlaceBookingOutlookStatus = 'BUSY' | 'NORMAL' | 'QUIET'
+
+export type PlaceBookingForecastSummary = {
+  label: string
+  status: PlaceBookingOutlookStatus
+  expectedBookings: string
+  comparisonText: string
+  recommendation: string
+  description: string
 }
 
 export type PlaceBookingPredictionResponse = {
@@ -332,6 +344,15 @@ export type PlaceBookingPredictionResponse = {
     max: number
   }
   expectedAdditionalBookings: number
+  todayOutlook: PlaceBookingForecastSummary
+  weekOutlook: PlaceBookingForecastSummary
+  nextWeekOutlook: PlaceBookingForecastSummary
+  statusInsight: {
+    label: string
+    status: PlaceBookingOutlookStatus
+    headline: string
+    reason: string
+  }
   summary: string
   busyWindows: PlaceBookingPredictionWindow[]
   quietWindows: PlaceBookingPredictionWindow[]

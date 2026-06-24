@@ -2061,25 +2061,7 @@ function BookingTopBoard({
   const [isAllModalOpen, setIsAllModalOpen] = useState(false)
 
   if (isLoading && top.length === 0) {
-    return (
-      <section className="mt-5 rounded-md border border-cyan-300/20 bg-cyan-300/[0.055] p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
-              Today Booking
-            </p>
-            <h4 className="mt-1 text-lg font-black text-white">오늘의 예약 TOP 100 확인 중</h4>
-            <p className="mt-1 text-sm font-bold text-slate-400">
-              네이버 예약을 사용하는 플레이스의 당일 예약 현황을 정리하고 있습니다.
-            </p>
-          </div>
-          <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-cyan-200/25 border-t-cyan-200" />
-        </div>
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
-        </div>
-      </section>
-    )
+    return <BookingTopBoardSkeleton date={date} />
   }
 
   if (errorMessage && top.length === 0) {
@@ -2164,6 +2146,74 @@ function BookingTopBoard({
         />
       ) : null}
     </>
+  )
+}
+
+function BookingTopBoardSkeleton({ date }: { date: string }) {
+  return (
+    <section
+      className="mt-5 rounded-md border border-white/10 bg-[#080c17]/55 p-4"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
+            Today Booking
+          </p>
+          <h4 className="mt-1 whitespace-nowrap text-lg font-black text-white sm:text-xl">
+            오늘의 예약 TOP 100
+          </h4>
+          <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
+            예약 데이터를 집계하고 있습니다.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center justify-between gap-2 sm:flex-col sm:items-end">
+          <span className="hidden w-fit rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-black text-slate-400 sm:inline-flex">
+            {formatCalendarDateLabel(date)}
+          </span>
+          <div className="flex items-center gap-2">
+            <SkeletonLine className="h-9 w-20" />
+            <SkeletonLine className="h-9 w-24" />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 md:hidden">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <BookingTopRowSkeleton key={index} index={index} />
+        ))}
+      </div>
+      <div className="mt-4 hidden gap-2 md:grid md:grid-cols-2">
+        {Array.from({ length: 10 }).map((_, index) => (
+          <BookingTopRowSkeleton key={index} index={index} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function BookingTopRowSkeleton({ index }: { index: number }) {
+  const visual = getBookingTopVisual(index)
+
+  return (
+    <article
+      className={`grid grid-cols-[3.65rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md border px-3 py-2.5 ${visual.containerClass}`}
+    >
+      <span
+        className={`inline-flex h-10 items-center justify-center rounded-md px-2 text-xs font-black leading-none ${visual.badgeClass}`}
+      >
+        {visual.badgeText}
+      </span>
+      <div className="min-w-0">
+        <SkeletonLine className="h-4 w-28" />
+        <SkeletonLine className="mt-2 h-3 w-20" />
+      </div>
+      <div className="grid justify-items-end">
+        <SkeletonLine className="h-3 w-7" />
+        <SkeletonLine className="mt-2 h-5 w-8" />
+      </div>
+    </article>
   )
 }
 
@@ -2472,17 +2522,7 @@ function BookingTopAllModal({
           data-aiva-scroll-lock-allow="true"
         >
           {isLoading ? (
-            <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.055] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-black text-cyan-100">
-                  선택한 날짜의 예약 현황을 확인하고 있습니다.
-                </p>
-                <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-cyan-200/25 border-t-cyan-200" />
-              </div>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full w-1/3 animate-[aiva-loading_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-300 via-blue-300 to-fuchsia-400" />
-              </div>
-            </div>
+            <BookingTopListSkeleton />
           ) : displayedItems.length > 0 ? (
             displayedItems.map((item, index) => {
               const placeKey = createPlaceBlacklistKey(item.placeId, item.name)
@@ -2544,6 +2584,22 @@ function BookingTopAllModal({
       </section>
     </div>,
     document.body,
+  )
+}
+
+function BookingTopListSkeleton() {
+  return (
+    <div className="grid gap-2" role="status" aria-live="polite">
+      <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.055] p-4">
+        <p className="text-sm font-black text-cyan-100">오늘의 예약 현황을 분석하고 있습니다.</p>
+        <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-400">
+          네이버 예약 데이터를 집계해 TOP100 순위를 구성하는 중입니다.
+        </p>
+      </div>
+      {Array.from({ length: 12 }).map((_, index) => (
+        <BookingTopRowSkeleton key={index} index={index} />
+      ))}
+    </div>
   )
 }
 
@@ -3037,28 +3093,17 @@ function BookingPredictionModal({
           ) : prediction ? (
             <div className="grid gap-4">
               <section className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] p-4">
-                <div className="grid gap-3 sm:grid-cols-4">
-                  <PredictionSummaryTile
-                    label="예상 예약 건수"
-                    value={`${prediction.expectedBookingsRange.min}~${prediction.expectedBookingsRange.max}건`}
-                    highlight
-                  />
-                  <PredictionSummaryTile
-                    label="예약 수요 지수"
-                    value={`${prediction.demandIndex}점`}
-                  />
-                  <PredictionSummaryTile label="예측 신뢰도" value={`${prediction.confidence}%`} />
-                  <PredictionSummaryTile
-                    label="상태"
-                    value={formatDemandLevel(prediction.demandLevel)}
-                  />
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100/75">
+                    Operation Outlook
+                  </p>
+                  <h4 className="mt-1 break-keep text-lg font-black text-white">
+                    오늘의 운영 판단
+                  </h4>
+                  <p className="mt-2 break-keep text-sm font-semibold leading-6 text-slate-300">
+                    {prediction.summary}
+                  </p>
                 </div>
-
-                <DemandGauge score={prediction.demandIndex} level={prediction.demandLevel} />
-
-                <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">
-                  {prediction.summary}
-                </p>
                 {!prediction.aiAvailable ? (
                   <p className="mt-3 break-keep rounded-md border border-amber-200/20 bg-amber-300/[0.08] p-3 text-xs font-black leading-5 text-amber-100">
                     Gemini 상세 예측은 일시적으로 제한되어 기본 패턴 예측을 표시합니다.
@@ -3066,50 +3111,28 @@ function BookingPredictionModal({
                 ) : null}
               </section>
 
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+              <div className="grid gap-3 md:grid-cols-2">
+                <ForecastDecisionCard outlook={prediction.todayOutlook} featured />
+                <ForecastDecisionCard outlook={prediction.weekOutlook} />
+                <ForecastDecisionCard outlook={prediction.nextWeekOutlook} />
+                <StatusInsightCard insight={prediction.statusInsight} />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
                 <PredictionWindowList
                   title="예약 집중 예상 시간"
                   tone="busy"
                   windows={prediction.busyWindows}
                 />
                 <PredictionWindowList
-                  title="운영 여유 후보 시간"
+                  title="개인 업무 추천 시간"
                   tone="quiet"
                   windows={prediction.quietWindows}
                 />
               </div>
 
-              <PredictionBulletSection title="예측 근거" items={prediction.basis} />
               <PredictionBulletSection title="운영 추천" items={prediction.recommendedActions} />
-
-              <div className="grid gap-3 md:grid-cols-4">
-                <PredictionMetric label="현재 예약됨" value={`${prediction.data.currentBookedSlots}개`} />
-                <PredictionMetric label="현재 가능" value={`${prediction.data.currentAvailableSlots}개`} />
-                <PredictionMetric
-                  label="동일 요일 평균"
-                  value={`${prediction.data.sameWeekdayAverageBookings}건`}
-                />
-                <PredictionMetric
-                  label="4~5주 전 평균"
-                  value={`${prediction.data.cycleAverageBookings}건`}
-                />
-                <PredictionMetric
-                  label="주간 흐름"
-                  value={formatTrendValue(prediction.data.weeklyTrendRate)}
-                />
-                <PredictionMetric
-                  label="월간 흐름"
-                  value={formatTrendValue(prediction.data.monthlyTrendRate)}
-                />
-                <PredictionMetric
-                  label="요일 표본"
-                  value={`${prediction.data.patternSampledDateCount}일`}
-                />
-                <PredictionMetric
-                  label="주기 표본"
-                  value={`${prediction.data.cycleSampledDateCount}일`}
-                />
-              </div>
+              <PredictionBulletSection title="판단 근거" items={prediction.basis} />
             </div>
           ) : null}
         </div>
@@ -3129,48 +3152,40 @@ function BookingPredictionSkeleton() {
           </p>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          {['예상 예약 건수', '예약 수요 지수', '예측 신뢰도', '상태'].map((label, index) => (
-            <div
-              key={label}
-              className={`rounded-md border p-3 ${
-                index === 0
-                  ? 'border-cyan-200/30 bg-cyan-200/[0.08]'
-                  : 'border-white/10 bg-white/[0.045]'
-              }`}
-            >
-              <p className="text-[11px] font-black text-slate-500">{label}</p>
-              <SkeletonLine className="mt-3 h-6 w-20" />
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 rounded-md border border-white/10 bg-[#070b15]/55 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <SkeletonLine className="h-3 w-20" />
-            <SkeletonLine className="h-4 w-24" />
-          </div>
-          <SkeletonLine className="mt-3 h-2 w-full rounded-full" />
-          <div className="mt-2 flex justify-between">
-            <SkeletonLine className="h-3 w-8" />
-            <SkeletonLine className="h-3 w-8" />
-            <SkeletonLine className="h-3 w-8" />
-          </div>
-        </div>
-
         <div className="mt-4 grid gap-2">
           <SkeletonLine className="h-4 w-11/12" />
           <SkeletonLine className="h-4 w-8/12" />
         </div>
       </section>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <PredictionWindowSkeleton title="예약 집중 예상 시간" tone="busy" />
-        <PredictionWindowSkeleton title="운영 여유 후보 시간" tone="quiet" />
+      <div className="grid gap-3 md:grid-cols-2">
+        {['오늘 예약 전망', '이번 주 전망', '다음 주 전망', '평소 대비 상태'].map((label, index) => (
+          <div
+            key={label}
+            className={`rounded-md border p-4 ${
+              index === 0
+                ? 'border-cyan-200/30 bg-cyan-200/[0.08]'
+                : 'border-white/10 bg-white/[0.045]'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-black text-white">{label}</p>
+              <SkeletonLine className="h-6 w-16 rounded-full" />
+            </div>
+            <SkeletonLine className="mt-4 h-7 w-24" />
+            <SkeletonLine className="mt-3 h-3 w-full" />
+            <SkeletonLine className="mt-2 h-3 w-9/12" />
+          </div>
+        ))}
       </div>
 
-      <PredictionBulletSkeleton title="예측 근거" rows={4} />
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <PredictionWindowSkeleton title="예약 집중 예상 시간" tone="busy" />
+        <PredictionWindowSkeleton title="개인 업무 추천 시간" tone="quiet" />
+      </div>
+
       <PredictionBulletSkeleton title="운영 추천" rows={3} />
+      <PredictionBulletSkeleton title="판단 근거" rows={4} />
     </div>
   )
 }
@@ -3238,58 +3253,76 @@ function SkeletonLine({ className = '' }: { className?: string }) {
   )
 }
 
-function PredictionSummaryTile({
-  highlight = false,
-  label,
-  value,
+function ForecastDecisionCard({
+  featured = false,
+  outlook,
 }: {
-  highlight?: boolean
-  label: string
-  value: string
+  featured?: boolean
+  outlook: PlaceBookingPredictionResponse['todayOutlook']
 }) {
   return (
     <div
       className={`rounded-md border p-3 ${
-        highlight
+        featured
           ? 'border-cyan-200/30 bg-cyan-200/[0.08]'
           : 'border-white/10 bg-white/[0.045]'
       }`}
     >
-      <p className="break-keep text-[11px] font-black text-slate-400">{label}</p>
-      <p className="mt-1 break-keep text-xl font-black text-white">{value}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="break-keep text-sm font-black text-white">{outlook.label}</p>
+        <ForecastStatusBadge status={outlook.status} />
+      </div>
+      <p className="mt-3 break-keep text-2xl font-black text-white">{outlook.expectedBookings}</p>
+      <p className="mt-1 break-keep text-xs font-black text-cyan-100/75">
+        {outlook.comparisonText}
+      </p>
+      <p className="mt-3 break-keep text-xs font-semibold leading-5 text-slate-300">
+        {outlook.description}
+      </p>
+      <p className="mt-3 break-keep rounded-md bg-white/[0.055] px-3 py-2 text-xs font-black leading-5 text-white">
+        {outlook.recommendation}
+      </p>
     </div>
   )
 }
 
-function DemandGauge({
-  level,
-  score,
+function StatusInsightCard({
+  insight,
 }: {
-  level: PlaceBookingPredictionResponse['demandLevel']
-  score: number
+  insight: PlaceBookingPredictionResponse['statusInsight']
 }) {
-  const boundedScore = Math.min(100, Math.max(0, score))
+  return (
+    <div className="rounded-md border border-emerald-300/20 bg-emerald-300/[0.07] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="break-keep text-sm font-black text-white">{insight.label}</p>
+        <ForecastStatusBadge status={insight.status} />
+      </div>
+      <p className="mt-3 break-keep text-lg font-black leading-7 text-white">
+        {insight.headline}
+      </p>
+      <p className="mt-3 break-keep text-xs font-semibold leading-5 text-slate-300">
+        {insight.reason}
+      </p>
+    </div>
+  )
+}
+
+function ForecastStatusBadge({
+  status,
+}: {
+  status: PlaceBookingPredictionResponse['todayOutlook']['status']
+}) {
+  const meta =
+    status === 'BUSY'
+      ? { className: 'bg-orange-300/15 text-orange-100', label: '바쁨' }
+      : status === 'QUIET'
+        ? { className: 'bg-emerald-300/15 text-emerald-100', label: '여유' }
+        : { className: 'bg-cyan-300/15 text-cyan-100', label: '보통' }
 
   return (
-    <div className="mt-4 rounded-md border border-white/10 bg-[#070b15]/55 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-black text-cyan-100/80">수요 게이지</p>
-        <p className="text-sm font-black text-white">
-          {formatDemandLevel(level)} · {boundedScore}%
-        </p>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-        <div
-          className={`h-full rounded-full ${getDemandGaugeColor(level)}`}
-          style={{ width: `${boundedScore}%` }}
-        />
-      </div>
-      <div className="mt-2 flex justify-between text-[11px] font-black text-slate-500">
-        <span>여유</span>
-        <span>보통</span>
-        <span>혼잡</span>
-      </div>
-    </div>
+    <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-black ${meta.className}`}>
+      {meta.label}
+    </span>
   )
 }
 
@@ -3319,8 +3352,8 @@ function PredictionWindowList({
       </p>
       <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-500">
         {tone === 'busy'
-          ? '실제 예약과 재방문 주기 신호가 상대적으로 높은 시간입니다.'
-          : '다른 시간대보다 수요 점수가 낮아 정비나 내부 업무 후보로 볼 수 있는 시간입니다.'}
+          ? '예약 유입 가능성이 높아 대기와 응대가 필요한 시간입니다.'
+          : '예약 가능성이 낮아 개인 업무나 정리 시간을 잡기 좋은 후보입니다.'}
       </p>
       {windows.length ? (
         <div className="mt-3 grid gap-2">
@@ -3340,6 +3373,11 @@ function PredictionWindowList({
               <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-400">
                 {window.reason}
               </p>
+              {window.recommendation ? (
+                <p className="mt-2 break-keep rounded-md bg-white/[0.045] px-3 py-2 text-xs font-black leading-5 text-white">
+                  {window.recommendation}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>
@@ -3347,15 +3385,6 @@ function PredictionWindowList({
         <p className="mt-3 text-sm font-bold text-slate-400">뚜렷한 시간대 신호가 없습니다.</p>
       )}
     </section>
-  )
-}
-
-function PredictionMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
-      <p className="text-[11px] font-black text-slate-400">{label}</p>
-      <p className="mt-1 text-lg font-black text-white">{value}</p>
-    </div>
   )
 }
 
@@ -3375,38 +3404,6 @@ function PredictionBulletSection({ items, title }: { items: string[]; title: str
       </ul>
     </section>
   )
-}
-
-function formatDemandLevel(level: PlaceBookingPredictionResponse['demandLevel']) {
-  if (level === 'HIGH') {
-    return '혼잡 가능성 높음'
-  }
-
-  if (level === 'MEDIUM') {
-    return '보통 수요'
-  }
-
-  return '여유 가능성'
-}
-
-function getDemandGaugeColor(level: PlaceBookingPredictionResponse['demandLevel']) {
-  if (level === 'HIGH') {
-    return 'bg-gradient-to-r from-orange-300 to-rose-300'
-  }
-
-  if (level === 'MEDIUM') {
-    return 'bg-gradient-to-r from-cyan-300 to-amber-300'
-  }
-
-  return 'bg-gradient-to-r from-emerald-300 to-cyan-300'
-}
-
-function formatTrendValue(value: number) {
-  if (!Number.isFinite(value) || Math.abs(value) < 0.1) {
-    return '변동 없음'
-  }
-
-  return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
 }
 
 type PlaceHistoryModalProps = {
