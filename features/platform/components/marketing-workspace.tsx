@@ -795,7 +795,7 @@ function WorkStatusPanel({
 
   return (
     <div
-      className={`fixed inset-0 z-[75] overflow-hidden overscroll-none transition-opacity duration-200 ${
+      className={`fixed inset-0 z-[10010] overflow-hidden overscroll-none transition-opacity duration-200 ${
         isOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
       }`}
       aria-hidden={!isOpen}
@@ -804,10 +804,10 @@ function WorkStatusPanel({
         type="button"
         aria-label="작업 알림 닫기"
         onClick={onClose}
-        className="absolute inset-0 bg-black/45"
+        className="absolute inset-0 z-0 bg-black/45"
       />
       <aside
-        className={`absolute right-0 top-0 flex h-[100dvh] w-[min(92vw,420px)] transform-gpu flex-col overflow-hidden overscroll-contain border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
+        className={`absolute right-0 top-0 z-10 flex h-[100dvh] w-[min(92vw,420px)] transform-gpu flex-col overflow-hidden overscroll-contain border-l border-cyan-300/18 bg-[#080b14]/98 shadow-[-28px_0_80px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -824,7 +824,7 @@ function WorkStatusPanel({
           <button
             type="button"
             onClick={onClose}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-xl font-black text-slate-200 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
+            className="grid h-11 w-11 shrink-0 touch-manipulation place-items-center rounded-md border border-white/10 bg-white/[0.04] text-xl font-black text-slate-200 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
             aria-label="작업 알림 닫기"
           >
             ×
@@ -1050,7 +1050,7 @@ function BackgroundWorkJobCard({
                       setIsCancelling(false)
                     }
                   }}
-                  className="mt-3 min-h-9 w-full rounded-md border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-black text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-3 min-h-11 w-full touch-manipulation rounded-md border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-black text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isCancelling ? '중도취소 중...' : '중도취소'}
                 </button>

@@ -1636,14 +1636,14 @@ function BatchKeywordModal({
 }: BatchKeywordModalProps) {
   return (
     <div
-      className="fixed inset-0 z-[9998] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[10020] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="자동 기록 키워드 관리"
       onClick={onClose}
     >
       <section
-        className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.52)]"
+        className="relative z-10 flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.52)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
@@ -1659,7 +1659,7 @@ function BatchKeywordModal({
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+            className="inline-flex min-h-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-3 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
           >
             닫기
           </button>
@@ -1676,7 +1676,7 @@ function BatchKeywordModal({
             <button
               type="submit"
               disabled={!keywordInput.trim() || isLoading}
-              className="min-h-12 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-12 touch-manipulation rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               추가
             </button>
@@ -1717,7 +1717,7 @@ function BatchKeywordModal({
                     type="button"
                     onClick={() => onRemove(item.id)}
                     disabled={isLoading}
-                    className="min-h-9 rounded-md border border-white/10 bg-white/[0.05] px-3 text-xs font-black text-slate-200 transition hover:bg-rose-400/15 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-11 touch-manipulation rounded-md border border-white/10 bg-white/[0.05] px-3 text-xs font-black text-slate-200 transition hover:bg-rose-400/15 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     삭제
                   </button>
@@ -1767,14 +1767,14 @@ function BlacklistManagementModal({
 
   return (
     <div
-      className="fixed inset-0 z-[9998] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[10020] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="제외 목록 관리"
       onClick={onClose}
     >
       <section
-        className="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.52)]"
+        className="relative z-10 flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.52)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
@@ -1792,14 +1792,14 @@ function BlacklistManagementModal({
               type="button"
               onClick={onRefresh}
               disabled={isLoading}
-              className="rounded-md border border-cyan-300/25 bg-cyan-300/[0.08] px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.14] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 touch-manipulation items-center justify-center rounded-md border border-cyan-300/25 bg-cyan-300/[0.08] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.14] disabled:cursor-not-allowed disabled:opacity-50"
             >
               새로고침
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+              className="inline-flex min-h-11 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-3 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
             >
               닫기
             </button>
@@ -1887,7 +1887,7 @@ function BlacklistManagementModal({
                         type="button"
                         onClick={() => onRemove(entry)}
                         disabled={isLoading}
-                        className="min-h-9 rounded-md border border-rose-300/20 bg-rose-300/[0.06] px-3 text-xs font-black text-rose-100 transition hover:bg-rose-300/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="min-h-11 touch-manipulation rounded-md border border-rose-300/20 bg-rose-300/[0.06] px-3 text-xs font-black text-rose-100 transition hover:bg-rose-300/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         제외 해제
                       </button>
@@ -2077,14 +2077,14 @@ function BookingTopBoard({
               <button
                 type="button"
                 onClick={onOpenBlacklistManagement}
-                className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-white/10 bg-white/[0.045] px-3 text-xs font-black text-slate-200 transition hover:border-cyan-300/30 hover:bg-cyan-300/[0.08] hover:text-cyan-50"
+                className="inline-flex min-h-11 touch-manipulation items-center justify-center whitespace-nowrap rounded-md border border-white/10 bg-white/[0.045] px-3 text-xs font-black text-slate-200 transition hover:border-cyan-300/30 hover:bg-cyan-300/[0.08] hover:text-cyan-50"
               >
                 제외 관리
               </button>
               <button
                 type="button"
                 onClick={() => setIsAllModalOpen(true)}
-                className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12]"
+                className="inline-flex min-h-11 touch-manipulation items-center justify-center whitespace-nowrap rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12]"
               >
                 전체 순위 보기
               </button>
@@ -2392,10 +2392,10 @@ function BookingTopAllModal({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-md">
+    <div className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/70 p-3 backdrop-blur-md">
       <section
         ref={modalRef}
-        className="relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-y-auto rounded-md border border-cyan-300/20 bg-[#080c17] shadow-[0_28px_80px_rgba(0,0,0,0.55)] md:overflow-hidden"
+        className="relative z-10 flex max-h-[86vh] w-full max-w-3xl flex-col overflow-y-auto rounded-md border border-cyan-300/20 bg-[#080c17] shadow-[0_28px_80px_rgba(0,0,0,0.55)] md:overflow-hidden"
         data-aiva-scroll-lock-allow="true"
       >
         <div className="relative flex flex-col gap-4 border-b border-white/10 p-4 pr-[5.75rem] sm:flex-row sm:items-start sm:justify-between sm:pr-4">
@@ -2429,7 +2429,7 @@ function BookingTopAllModal({
                 type="button"
                 onClick={() => setIsCalendarOpen(true)}
                 disabled={isLoading}
-                className="inline-flex h-11 w-full min-w-[9.5rem] items-center justify-center rounded-md border border-white/10 bg-[#090d18] px-3 text-center text-sm font-black text-white outline-none transition hover:border-cyan-300/45 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                className="inline-flex h-11 w-full min-w-[9.5rem] touch-manipulation items-center justify-center rounded-md border border-white/10 bg-[#090d18] px-3 text-center text-sm font-black text-white outline-none transition hover:border-cyan-300/45 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 <span className="whitespace-nowrap">{formatCalendarDateLabel(date)}</span>
               </button>
@@ -2437,7 +2437,7 @@ function BookingTopAllModal({
             <button
               type="button"
               onClick={onClose}
-              className="absolute right-4 top-4 inline-flex min-h-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-slate-100 transition hover:bg-white/[0.1] sm:static"
+              className="absolute right-4 top-4 inline-flex min-h-11 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-slate-100 transition hover:bg-white/[0.1] sm:static"
             >
               닫기
             </button>
@@ -2457,7 +2457,7 @@ function BookingTopAllModal({
             <button
               type="button"
               onClick={() => setIsBlacklistMode((current) => !current)}
-              className={`inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border px-3 text-xs font-black transition ${
+              className={`inline-flex min-h-11 touch-manipulation items-center justify-center whitespace-nowrap rounded-md border px-3 text-xs font-black transition ${
                 isBlacklistMode
                   ? 'border-fuchsia-300/35 bg-fuchsia-300/[0.12] text-fuchsia-50 hover:bg-fuchsia-300/[0.18]'
                   : 'border-white/10 bg-white/[0.05] text-slate-200 hover:bg-white/[0.09]'
@@ -2469,7 +2469,7 @@ function BookingTopAllModal({
               type="button"
               onClick={applyPendingExcludes}
               disabled={isBlacklistLoading || pendingExcludeItems.length === 0}
-              className="inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12] disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex min-h-11 touch-manipulation items-center justify-center whitespace-nowrap rounded-md border border-cyan-300/25 bg-cyan-300/[0.06] px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[0.12] disabled:cursor-not-allowed disabled:opacity-45"
             >
               {isBlacklistLoading ? '재산정 중' : '순위 재산정'}
             </button>
@@ -2485,7 +2485,7 @@ function BookingTopAllModal({
           />
           <button
             type="submit"
-            className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/[0.12] px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.18]"
+            className="min-h-11 touch-manipulation rounded-md border border-cyan-300/35 bg-cyan-300/[0.12] px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.18]"
           >
             검색
           </button>
@@ -2522,7 +2522,7 @@ function BookingTopAllModal({
                       type="button"
                       onClick={() => togglePendingExclude(item)}
                       disabled={isSavingExclude}
-                      className={`inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-md border px-2 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-xs ${
+                      className={`inline-flex min-h-11 touch-manipulation items-center justify-center whitespace-nowrap rounded-md border px-2 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-xs ${
                         isPendingExclude
                           ? 'border-fuchsia-300/45 bg-fuchsia-300/[0.14] text-fuchsia-50 hover:bg-fuchsia-300/[0.2]'
                           : 'border-white/10 bg-white/[0.045] text-slate-300 hover:border-fuchsia-300/30 hover:bg-fuchsia-300/[0.08] hover:text-fuchsia-50'
@@ -2544,7 +2544,7 @@ function BookingTopAllModal({
           <button
             type="button"
             onClick={scrollToTop}
-            className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-5 z-[90] inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-cyan-300/35 bg-[#0d2333]/95 px-4 text-xs font-black text-cyan-50 shadow-[0_14px_34px_rgba(0,0,0,0.35)] transition hover:bg-cyan-300/20 md:absolute md:bottom-4 md:right-4"
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-5 z-[10025] inline-flex h-11 min-w-11 touch-manipulation items-center justify-center rounded-full border border-cyan-300/35 bg-[#0d2333]/95 px-4 text-xs font-black text-cyan-50 shadow-[0_14px_34px_rgba(0,0,0,0.35)] transition hover:bg-cyan-300/20 md:absolute md:bottom-4 md:right-4"
           >
             TOP
           </button>
@@ -2692,14 +2692,14 @@ function BookingStatusModal({
 
   return (
     <div
-      className="fixed inset-0 z-[9998] grid h-[100dvh] overflow-hidden overscroll-none bg-black/72 p-3 backdrop-blur-sm sm:place-items-center sm:p-5"
+      className="fixed inset-0 z-[10020] grid h-[100dvh] overflow-hidden overscroll-none bg-black/72 p-3 backdrop-blur-sm sm:place-items-center sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label={`${place.name} 예약현황`}
       onClick={onClose}
     >
       <section
-        className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.56)] sm:max-h-[88vh]"
+        className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden overscroll-contain rounded-2xl border border-cyan-300/20 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.56)] sm:max-h-[88vh]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5 sm:py-5">
@@ -2717,7 +2717,7 @@ function BookingStatusModal({
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.1]"
+            className="relative z-10 inline-flex h-12 min-w-12 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-3 text-sm font-black text-slate-100 transition hover:bg-white/[0.1]"
           >
             닫기
           </button>
@@ -2970,14 +2970,14 @@ function PlaceHistoryModal({ place, rows, isLoading, onClose }: PlaceHistoryModa
 
   return (
     <div
-      className="fixed inset-0 z-[9998] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[10020] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label={`${place.name} 순위 이력`}
       onClick={onClose}
     >
       <div
-        className="max-h-[82vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+        className="relative z-10 max-h-[82vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
@@ -2991,7 +2991,7 @@ function PlaceHistoryModal({ place, rows, isLoading, onClose }: PlaceHistoryModa
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100"
+            className="inline-flex min-h-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-3 text-xs font-black text-slate-100"
           >
             닫기
           </button>
@@ -3054,14 +3054,14 @@ function ReviewBottomSheet({ place, onClose }: ReviewBottomSheetProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[9998] grid place-items-center bg-black/65 p-5 backdrop-blur-sm sm:hidden"
+      className="fixed inset-0 z-[10020] grid place-items-center bg-black/65 p-5 backdrop-blur-sm sm:hidden"
       role="dialog"
       aria-modal="true"
       aria-label={`${place.name} 추천 리뷰 보기`}
       onClick={onClose}
     >
       <div
-        className="max-h-[72vh] w-full max-w-[24rem] overflow-hidden rounded-2xl border border-white/10 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+        className="relative z-10 max-h-[72vh] w-full max-w-[24rem] overflow-hidden rounded-2xl border border-white/10 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-white/10 bg-[#070b15]/95 px-4 py-4 backdrop-blur">
@@ -3074,7 +3074,7 @@ function ReviewBottomSheet({ place, onClose }: ReviewBottomSheetProps) {
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-100"
+            className="inline-flex min-h-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.06] px-3 text-xs font-black text-slate-100"
           >
             닫기
           </button>
@@ -3170,7 +3170,7 @@ function BookingCalendarModal({
 
   return (
     <div
-      className="fixed inset-0 z-[10000] grid h-[100dvh] place-items-center overflow-hidden overscroll-none bg-black/62 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[10030] grid h-[100dvh] place-items-center overflow-hidden overscroll-none bg-black/62 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="예약현황 날짜 선택"
@@ -3383,20 +3383,20 @@ type ImagePreviewModalProps = {
 function ImagePreviewModal({ image, onClose }: ImagePreviewModalProps) {
   return (
     <div
-      className="fixed inset-0 z-[9999] grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[10020] grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="이미지 확대 보기"
       onClick={onClose}
     >
       <div
-        className="relative grid h-[min(76vh,620px)] w-[min(88vw,760px)] place-items-center rounded-md border border-white/10 bg-[#050812] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.5)] md:h-[min(72vh,620px)] md:w-[min(76vw,780px)] md:p-5"
+        className="relative z-10 grid h-[min(76vh,620px)] w-[min(88vw,760px)] place-items-center rounded-md border border-white/10 bg-[#050812] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.5)] md:h-[min(72vh,620px)] md:w-[min(76vw,780px)] md:p-5"
         onClick={(event) => event.stopPropagation()}
       >
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-10 rounded-md border border-white/20 bg-black/70 px-3 py-2 text-sm font-black text-white backdrop-blur transition hover:bg-black/85 md:right-4 md:top-4"
+          className="absolute right-3 top-3 z-10 inline-flex min-h-11 touch-manipulation items-center justify-center rounded-md border border-white/20 bg-black/70 px-3 text-sm font-black text-white backdrop-blur transition hover:bg-black/85 md:right-4 md:top-4"
         >
           닫기
         </button>

@@ -653,10 +653,10 @@ function AiBlockDetailModal({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] grid place-items-center overflow-hidden bg-black/65 p-4">
-      <button type="button" aria-label="AI 예약 상세 닫기" className="absolute inset-0" onClick={onClose} />
+    <div className="fixed inset-0 z-[10020] grid place-items-center overflow-hidden bg-black/65 p-4">
+      <button type="button" aria-label="AI 예약 상세 닫기" className="absolute inset-0 z-0" onClick={onClose} />
       <section
-        className="relative max-h-[88dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-md border border-cyan-300/22 bg-[#080c16] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]"
+        className="relative z-10 max-h-[88dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-md border border-cyan-300/22 bg-[#080c16] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]"
         data-aiva-scroll-lock-allow="true"
       >
         <div className="flex items-start justify-between gap-4">
@@ -669,7 +669,7 @@ function AiBlockDetailModal({
               {block.date} · {block.time}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-xl font-black text-white">
+          <button type="button" onClick={onClose} className="grid h-11 w-11 touch-manipulation place-items-center rounded-md border border-white/10 bg-white/[0.05] text-xl font-black text-white">
             ×
           </button>
         </div>
@@ -1334,10 +1334,10 @@ function DayDetailModal({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] grid place-items-center overflow-hidden bg-black/65 p-4">
-      <button type="button" aria-label="예약 목록 닫기" className="absolute inset-0" onClick={onClose} />
+    <div className="fixed inset-0 z-[10020] grid place-items-center overflow-hidden bg-black/65 p-4">
+      <button type="button" aria-label="예약 목록 닫기" className="absolute inset-0 z-0" onClick={onClose} />
       <section
-        className="relative max-h-[88dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-md border border-cyan-300/22 bg-[#080c16] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]"
+        className="relative z-10 max-h-[88dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-md border border-cyan-300/22 bg-[#080c16] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]"
         data-aiva-scroll-lock-allow="true"
       >
         <div className="flex items-start justify-between gap-4">
@@ -1347,7 +1347,7 @@ function DayDetailModal({
             </p>
             <h2 className="mt-2 text-2xl font-black text-white">{day.date}</h2>
           </div>
-          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-xl font-black text-white">
+          <button type="button" onClick={onClose} className="grid h-11 w-11 touch-manipulation place-items-center rounded-md border border-white/10 bg-white/[0.05] text-xl font-black text-white">
             ×
           </button>
         </div>

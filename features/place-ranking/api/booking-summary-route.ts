@@ -117,28 +117,17 @@ async function collectBookingSummary(
       date,
     })
     const isToday = date === getTodayKstDate()
-    const currentMinute = isToday ? getCurrentKstMinute() : null
     const summary = response.products.reduce(
       (accumulator, product) => {
         const manualBlockedSlots = product.slots.filter(
           (slot) => slot.statusReason === 'manual_block_or_full',
         )
-        const elapsedManualBlockedSlots =
-          currentMinute === null
-            ? 0
-            : manualBlockedSlots.filter((slot) => {
-                const minute = parseTimeToMinute(slot.time)
-
-                return minute !== null && minute < currentMinute
-              }).length
 
         return {
           totalSlots: accumulator.totalSlots + product.summary.totalSlots,
           bookedSlots: accumulator.bookedSlots + product.summary.bookedSlots,
           availableSlots: accumulator.availableSlots + product.summary.availableSlots,
           manualBlockedSlots: accumulator.manualBlockedSlots + manualBlockedSlots.length,
-          elapsedManualBlockedSlots:
-            accumulator.elapsedManualBlockedSlots + elapsedManualBlockedSlots,
           offHoursSlots:
             accumulator.offHoursSlots +
             product.slots.filter((slot) => slot.statusReason === 'off_hours').length,
@@ -151,18 +140,17 @@ async function collectBookingSummary(
         bookedSlots: 0,
         availableSlots: 0,
         manualBlockedSlots: 0,
-        elapsedManualBlockedSlots: 0,
         offHoursSlots: 0,
         firstAvailableTime: null as string | null,
       },
     )
+    const closedSlots = summary.manualBlockedSlots + summary.offHoursSlots
     const isManualClosedToday =
       isToday &&
       summary.totalSlots > 0 &&
       summary.bookedSlots === 0 &&
       summary.availableSlots === 0 &&
-      summary.manualBlockedSlots === summary.totalSlots &&
-      summary.elapsedManualBlockedSlots === 0
+      closedSlots === summary.totalSlots
 
     return {
       placeId: item.placeId,
@@ -247,31 +235,6 @@ function getTodayKstDate() {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
-}
-
-function getCurrentKstMinute() {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    hour12: false,
-    minute: '2-digit',
-    timeZone: 'Asia/Seoul',
-  }).formatToParts(new Date())
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
-  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
-
-  return hour * 60 + minute
-}
-
-function parseTimeToMinute(time: string) {
-  const [hourText, minuteText] = time.split(':')
-  const hour = Number(hourText)
-  const minute = Number(minuteText)
-
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-    return null
-  }
-
-  return hour * 60 + minute
 }
 
 function createBookingSummaryCacheKey(
