@@ -209,7 +209,7 @@ export function BookingInsightCalendarTool() {
                   <span className="truncate text-sm font-black text-white">{place.name}</span>
                   <span className="truncate text-xs font-bold text-cyan-100/75">{place.category}</span>
                   <span className="truncate text-xs font-bold text-slate-400">
-                    {place.location.commonAddress || place.location.roadAddress || place.location.address || '주소 미확인'}
+                    {formatPlaceAddress(place)}
                   </span>
                 </span>
               </button>
@@ -339,6 +339,16 @@ export function BookingInsightCalendarTool() {
         onOpenAiBlock={setSelectedAiBlock}
       />
     </div>
+  )
+}
+
+function formatPlaceAddress(place: PlaceRankingItem) {
+  return (
+    place.location.fullAddress ||
+    place.location.address ||
+    place.location.roadAddress ||
+    place.location.commonAddress ||
+    '주소 미확인'
   )
 }
 
