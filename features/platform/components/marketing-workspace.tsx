@@ -551,7 +551,7 @@ function MobileBottomNavigation({
       aria-label="주요 도구"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#070a12]/94 px-2 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_44px_rgba(0,0,0,0.34)] backdrop-blur-xl md:hidden"
     >
-      <div className="mx-auto flex w-full max-w-md min-w-0 items-end justify-between gap-1 overflow-x-auto overscroll-x-contain rounded-[22px] border border-white/10 bg-white/[0.045] px-1.5 py-1.5 [-webkit-overflow-scrolling:touch]">
+      <div className="mx-auto grid w-full max-w-md min-w-0 grid-cols-6 items-end gap-1 rounded-[22px] border border-white/10 bg-white/[0.045] px-1.5 py-1.5">
         {mobileNavigationItems.map((item) => (
           <MobileBottomNavigationButton
             key={item.key}
@@ -580,7 +580,7 @@ function MobileBottomNavigationButton({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       aria-label={item.label}
-      className={`grid min-h-[58px] min-w-[46px] flex-1 place-items-center rounded-[18px] px-0.5 py-1.5 text-center transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/18 ${
+      className={`grid min-h-[58px] min-w-0 touch-manipulation place-items-center rounded-[18px] px-0.5 py-1.5 text-center transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/18 ${
         active
           ? 'bg-cyan-200/14 text-cyan-100 shadow-[0_0_22px_rgba(103,232,249,0.13)]'
           : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'

@@ -411,8 +411,12 @@ export type PlaceBookingSummaryItem = {
   name: string
   category: string
   status: 'ready' | 'unavailable' | 'failed'
+  totalSlots: number
   bookedSlots: number
   availableSlots: number
+  manualBlockedSlots: number
+  offHoursSlots: number
+  isManualClosedToday: boolean
   productCount: number
   firstAvailableTime: string | null
   message?: string

@@ -116,19 +116,53 @@ async function collectBookingSummary(
       bookingBusinessId: item.bookingBusinessId,
       date,
     })
+    const isToday = date === getTodayKstDate()
+    const currentMinute = isToday ? getCurrentKstMinute() : null
     const summary = response.products.reduce(
-      (accumulator, product) => ({
-        bookedSlots: accumulator.bookedSlots + product.summary.bookedSlots,
-        availableSlots: accumulator.availableSlots + product.summary.availableSlots,
-        firstAvailableTime:
-          accumulator.firstAvailableTime ?? product.summary.firstAvailableTime,
-      }),
+      (accumulator, product) => {
+        const manualBlockedSlots = product.slots.filter(
+          (slot) => slot.statusReason === 'manual_block_or_full',
+        )
+        const elapsedManualBlockedSlots =
+          currentMinute === null
+            ? 0
+            : manualBlockedSlots.filter((slot) => {
+                const minute = parseTimeToMinute(slot.time)
+
+                return minute !== null && minute < currentMinute
+              }).length
+
+        return {
+          totalSlots: accumulator.totalSlots + product.summary.totalSlots,
+          bookedSlots: accumulator.bookedSlots + product.summary.bookedSlots,
+          availableSlots: accumulator.availableSlots + product.summary.availableSlots,
+          manualBlockedSlots: accumulator.manualBlockedSlots + manualBlockedSlots.length,
+          elapsedManualBlockedSlots:
+            accumulator.elapsedManualBlockedSlots + elapsedManualBlockedSlots,
+          offHoursSlots:
+            accumulator.offHoursSlots +
+            product.slots.filter((slot) => slot.statusReason === 'off_hours').length,
+          firstAvailableTime:
+            accumulator.firstAvailableTime ?? product.summary.firstAvailableTime,
+        }
+      },
       {
+        totalSlots: 0,
         bookedSlots: 0,
         availableSlots: 0,
+        manualBlockedSlots: 0,
+        elapsedManualBlockedSlots: 0,
+        offHoursSlots: 0,
         firstAvailableTime: null as string | null,
       },
     )
+    const isManualClosedToday =
+      isToday &&
+      summary.totalSlots > 0 &&
+      summary.bookedSlots === 0 &&
+      summary.availableSlots === 0 &&
+      summary.manualBlockedSlots === summary.totalSlots &&
+      summary.elapsedManualBlockedSlots === 0
 
     return {
       placeId: item.placeId,
@@ -136,8 +170,12 @@ async function collectBookingSummary(
       name: item.name,
       category: item.category,
       status: 'ready',
+      totalSlots: summary.totalSlots,
       bookedSlots: summary.bookedSlots,
       availableSlots: summary.availableSlots,
+      manualBlockedSlots: summary.manualBlockedSlots,
+      offHoursSlots: summary.offHoursSlots,
+      isManualClosedToday,
       productCount: response.products.length,
       firstAvailableTime: summary.firstAvailableTime,
     }
@@ -148,8 +186,12 @@ async function collectBookingSummary(
       name: item.name,
       category: item.category,
       status: 'failed',
+      totalSlots: 0,
       bookedSlots: 0,
       availableSlots: 0,
+      manualBlockedSlots: 0,
+      offHoursSlots: 0,
+      isManualClosedToday: false,
       productCount: 0,
       firstAvailableTime: null,
       message: error instanceof Error ? error.message : '예약 요약 조회에 실패했습니다.',
@@ -196,6 +238,40 @@ function createPlaceBlacklistKey(placeId?: string | null, placeName = '') {
 
 function normalizeBlacklistName(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ko-KR')
+}
+
+function getTodayKstDate() {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+function getCurrentKstMinute() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit',
+    timeZone: 'Asia/Seoul',
+  }).formatToParts(new Date())
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
+
+  return hour * 60 + minute
+}
+
+function parseTimeToMinute(time: string) {
+  const [hourText, minuteText] = time.split(':')
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return null
+  }
+
+  return hour * 60 + minute
 }
 
 function createBookingSummaryCacheKey(

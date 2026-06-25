@@ -1976,19 +1976,28 @@ function BookingCountBadge({
   }
 
   const hasBookedSlots = summary.bookedSlots > 0
+  const isClosedToday = summary.isManualClosedToday
 
   return (
     <span
       className={`mt-2 inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black sm:text-[11px] ${
-        hasBookedSlots
+        isClosedToday
+          ? 'border-slate-400/20 bg-white/[0.045] text-slate-300'
+          : hasBookedSlots
           ? 'border-fuchsia-300/25 bg-fuchsia-300/[0.08] text-fuchsia-100'
           : 'border-white/10 bg-white/[0.04] text-slate-400'
       }`}
     >
-      <span className="text-cyan-100/85">오늘 예약</span>
-      <strong className={hasBookedSlots ? 'text-white' : 'text-slate-300'}>
-        {summary.bookedSlots}
-      </strong>
+      {isClosedToday ? (
+        <span className="text-slate-200">휴무</span>
+      ) : (
+        <>
+          <span className="text-cyan-100/85">오늘 예약</span>
+          <strong className={hasBookedSlots ? 'text-white' : 'text-slate-300'}>
+            {summary.bookedSlots}
+          </strong>
+        </>
+      )}
     </span>
   )
 }
@@ -2734,7 +2743,7 @@ function BookingStatusModal({
                   type="button"
                   onClick={() => onDateChange(shiftDateValue(date, -1))}
                   disabled={isLoading}
-                  className="inline-flex h-11 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black leading-none text-cyan-100 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-11 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black leading-none text-cyan-100 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="이전 날짜"
                 >
                   ‹
@@ -2743,7 +2752,7 @@ function BookingStatusModal({
                   type="button"
                   onClick={() => setIsCalendarOpen(true)}
                   disabled={isLoading}
-                  className="inline-flex h-11 min-w-0 items-center justify-center rounded-md border border-white/10 bg-[#090d18] px-3 text-center text-sm font-black text-white outline-none transition hover:border-cyan-300/45 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-11 min-w-0 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-[#090d18] px-3 text-center text-sm font-black text-white outline-none transition hover:border-cyan-300/45 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span className="whitespace-nowrap">{formatCalendarDateLabel(date)}</span>
                 </button>
@@ -2751,7 +2760,7 @@ function BookingStatusModal({
                   type="button"
                   onClick={() => onDateChange(shiftDateValue(date, 1))}
                   disabled={isLoading}
-                  className="inline-flex h-11 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black leading-none text-cyan-100 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-11 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black leading-none text-cyan-100 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="다음 날짜"
                 >
                   ›
@@ -3183,7 +3192,7 @@ function BookingCalendarModal({
           <button
             type="button"
             onClick={() => moveMonth(-1)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black text-slate-100 transition hover:bg-white/[0.1]"
+            className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black text-slate-100 transition hover:bg-white/[0.1]"
             aria-label="이전 달"
           >
             ‹
@@ -3194,7 +3203,7 @@ function BookingCalendarModal({
           <button
             type="button"
             onClick={() => moveMonth(1)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black text-slate-100 transition hover:bg-white/[0.1]"
+            className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-lg font-black text-slate-100 transition hover:bg-white/[0.1]"
             aria-label="다음 달"
           >
             ›
@@ -3205,7 +3214,7 @@ function BookingCalendarModal({
           <button
             type="button"
             onClick={() => setPickerMode((current) => (current === 'year' ? null : 'year'))}
-            className={`rounded-md border px-3 py-2 text-sm font-black transition ${
+            className={`min-h-11 touch-manipulation rounded-md border px-3 py-2 text-sm font-black transition ${
               pickerMode === 'year'
                 ? 'border-cyan-200/45 bg-cyan-200/[0.12] text-cyan-50'
                 : 'border-white/10 bg-white/[0.045] text-slate-100 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
@@ -3217,7 +3226,7 @@ function BookingCalendarModal({
           <button
             type="button"
             onClick={() => setPickerMode((current) => (current === 'month' ? null : 'month'))}
-            className={`rounded-md border px-3 py-2 text-sm font-black transition ${
+            className={`min-h-11 touch-manipulation rounded-md border px-3 py-2 text-sm font-black transition ${
               pickerMode === 'month'
                 ? 'border-cyan-200/45 bg-cyan-200/[0.12] text-cyan-50'
                 : 'border-white/10 bg-white/[0.045] text-slate-100 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
@@ -3235,7 +3244,7 @@ function BookingCalendarModal({
                 key={year}
                 type="button"
                 onClick={() => selectVisibleYear(year)}
-                className={`rounded-md border px-2 py-2 text-xs font-black transition ${
+                className={`min-h-10 touch-manipulation rounded-md border px-2 py-2 text-xs font-black transition ${
                   year === visibleMonth.year
                     ? 'border-cyan-200/50 bg-cyan-100 text-[#07111f]'
                     : 'border-white/10 bg-[#0d1322] text-slate-200 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
@@ -3254,7 +3263,7 @@ function BookingCalendarModal({
                 key={monthIndex}
                 type="button"
                 onClick={() => selectVisibleMonth(monthIndex)}
-                className={`rounded-md border px-2 py-2 text-xs font-black transition ${
+                className={`min-h-10 touch-manipulation rounded-md border px-2 py-2 text-xs font-black transition ${
                   monthIndex === visibleMonth.monthIndex
                     ? 'border-cyan-200/50 bg-cyan-100 text-[#07111f]'
                     : 'border-white/10 bg-[#0d1322] text-slate-200 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
@@ -3315,7 +3324,7 @@ function BookingCalendarModal({
                     key={cell.value}
                     type="button"
                     onClick={() => onSelect(cell.value)}
-                    className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-sm font-black transition ${
+                    className={`flex min-h-12 touch-manipulation flex-col items-center justify-center gap-0.5 rounded-md px-1 text-sm font-black transition ${
                       isSelected
                     ? 'bg-cyan-100 text-[#07111f]'
                     : 'border border-white/10 bg-white/[0.04] text-slate-200 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]'
@@ -3346,14 +3355,14 @@ function BookingCalendarModal({
           <button
             type="button"
             onClick={() => onSelect(getTodayKstDate())}
-            className="rounded-md border border-cyan-300/25 bg-cyan-300/[0.08] px-3 py-2 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.14]"
+            className="min-h-11 touch-manipulation rounded-md border border-cyan-300/25 bg-cyan-300/[0.08] px-3 py-2 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.14]"
           >
             오늘
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-black text-slate-100 transition hover:bg-white/[0.1]"
+            className="min-h-11 touch-manipulation rounded-md border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-black text-slate-100 transition hover:bg-white/[0.1]"
           >
             닫기
           </button>
