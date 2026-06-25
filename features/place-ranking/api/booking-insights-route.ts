@@ -43,6 +43,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PlaceBookingInsightCalendarRequest
     const yearMonth = normalizeYearMonth(body.yearMonth)
+    const productFilter = normalizeProductFilter(body)
     const cacheKey = createBookingInsightCacheKey(body, yearMonth)
     const cachedResponse = readCachedBookingInsight(cacheKey)
 
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
     const historyStatuses = historyDates
       .map((date) => collectedMap.get(date))
       .filter((item): item is CollectedStatus => Boolean(item?.response))
-    const patterns = createWeekdayPatterns(historyStatuses)
+    const patterns = createWeekdayPatterns(historyStatuses, productFilter)
     const monthDays = monthDates.reduce<Record<string, PlaceBookingInsightDay>>((accumulator, date) => {
       const collectedDay = collectedMap.get(date)
       accumulator[date] = createInsightDay({
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
         date,
         forecastUntil,
         patterns,
+        productFilter,
         today,
       })
 
@@ -85,6 +87,7 @@ export async function POST(request: Request) {
         historyDates,
         monthDates,
         patterns,
+        productFilter,
         today,
       }),
       summary: createInsightSummary({
@@ -152,22 +155,24 @@ function createInsightDay({
   date,
   forecastUntil,
   patterns,
+  productFilter,
   today,
 }: {
   collected?: CollectedStatus
   date: string
   forecastUntil: string
   patterns: Map<number, WeekdayPattern>
+  productFilter: ProductFilter
   today: string
 }): PlaceBookingInsightDay {
   const isPast = date < today
   const isToday = date === today
   const isFuture = date > today
   const response = collected?.response ?? null
-  const actualBlocks = response ? createActualBlocks(response) : []
+  const actualBlocks = response ? createActualBlocks(response, productFilter) : []
   const weekday = createLocalDate(date).getDay()
   const pattern = patterns.get(weekday)
-  const isClosed = isLikelyClosedDay(pattern, response)
+  const isClosed = isLikelyClosedDay(pattern, response, productFilter)
   const aiBlocks =
     !isPast && date <= forecastUntil && !isClosed && response
       ? createAiBlocks({
@@ -175,7 +180,7 @@ function createInsightDay({
           date,
           isToday,
           pattern,
-          products: response.products,
+          products: filterProducts(response.products, productFilter),
         })
       : []
 
@@ -195,23 +200,39 @@ function createInsightDay({
   }
 }
 
-function createActualBlocks(response: PlaceBookingStatusResponse): PlaceBookingInsightBlock[] {
-  return response.products.flatMap((product) =>
+type ProductFilter = {
+  productId?: string
+  productName?: string
+}
+
+function createActualBlocks(
+  response: PlaceBookingStatusResponse,
+  productFilter: ProductFilter = {},
+): PlaceBookingInsightBlock[] {
+  return filterProducts(response.products, productFilter).flatMap((product) =>
     product.slots
       .filter((slot) => slot.status === 'booked')
-      .flatMap((slot) => {
-        const count = Math.max(slot.bookingCount, 1)
-
-        return Array.from({ length: count }, (_, index) => ({
-          id: `actual:${response.date}:${product.id}:${slot.time}:${index}`,
-          type: 'actual' as const,
-          date: response.date,
-          time: slot.time,
-          label: slot.time,
-          productName: product.name,
-        }))
-      }),
+      .map((slot) => ({
+        id: `actual:${response.date}:${product.id}:${slot.time}`,
+        type: 'actual' as const,
+        date: response.date,
+        time: slot.time,
+        label: slot.time,
+        productName: product.name,
+      })),
   ).sort((left, right) => left.time.localeCompare(right.time))
+}
+
+function filterProducts(products: PlaceBookingProduct[], productFilter: ProductFilter) {
+  if (productFilter.productId) {
+    return products.filter((product) => product.id === productFilter.productId)
+  }
+
+  if (productFilter.productName) {
+    return products.filter((product) => product.name === productFilter.productName)
+  }
+
+  return products
 }
 
 function createAiBlocks({
@@ -269,7 +290,7 @@ function createAiBlocks({
   }))
 }
 
-function createWeekdayPatterns(statuses: CollectedStatus[]) {
+function createWeekdayPatterns(statuses: CollectedStatus[], productFilter: ProductFilter) {
   const patterns = new Map<number, WeekdayPattern>()
 
   statuses.forEach((item) => {
@@ -288,7 +309,7 @@ function createWeekdayPatterns(statuses: CollectedStatus[]) {
         minMinute: null,
         maxMinute: null,
       }
-    const actualBlocks = createActualBlocks(item.response)
+    const actualBlocks = createActualBlocks(item.response, productFilter)
 
     if (actualBlocks.length > 0) {
       pattern.activeDayCount += 1
@@ -316,12 +337,14 @@ function createAccuracySummary({
   historyDates,
   monthDates,
   patterns,
+  productFilter,
   today,
 }: {
   collectedMap: Map<string, CollectedStatus>
   historyDates: string[]
   monthDates: string[]
   patterns: Map<number, WeekdayPattern>
+  productFilter: ProductFilter
   today: string
 }): PlaceBookingInsightResponse['accuracy'] {
   const recent7Dates = historyDates.slice(-7)
@@ -329,9 +352,9 @@ function createAccuracySummary({
   const monthToDate = monthDates.filter((date) => date < today)
 
   return {
-    recent7Days: calculateBacktestAccuracy('최근 7일', recent7Dates, collectedMap, patterns),
-    recent4Weeks: calculateBacktestAccuracy('최근 4주', recent28Dates, collectedMap, patterns),
-    monthToDate: calculateBacktestAccuracy('이번 달', monthToDate, collectedMap, patterns),
+    recent7Days: calculateBacktestAccuracy('최근 7일', recent7Dates, collectedMap, patterns, productFilter),
+    recent4Weeks: calculateBacktestAccuracy('최근 4주', recent28Dates, collectedMap, patterns, productFilter),
+    monthToDate: calculateBacktestAccuracy('이번 달', monthToDate, collectedMap, patterns, productFilter),
   }
 }
 
@@ -340,6 +363,7 @@ function calculateBacktestAccuracy(
   dates: string[],
   collectedMap: Map<string, CollectedStatus>,
   patterns: Map<number, WeekdayPattern>,
+  productFilter: ProductFilter,
 ) {
   let total = 0
   let matched = 0
@@ -352,7 +376,7 @@ function calculateBacktestAccuracy(
       return
     }
 
-    const actualTimes = new Set(createActualBlocks(response).map((block) => block.time))
+    const actualTimes = new Set(createActualBlocks(response, productFilter).map((block) => block.time))
     const threshold = Math.max(2, Math.ceil(pattern.activeDayCount * 0.24))
     const predictedTimes = Array.from(pattern.timeCounts.entries())
       .filter(([, count]) => count >= threshold)
@@ -446,9 +470,13 @@ function createInsightSummary({
   }
 }
 
-function isLikelyClosedDay(pattern: WeekdayPattern | undefined, response: PlaceBookingStatusResponse | null) {
+function isLikelyClosedDay(
+  pattern: WeekdayPattern | undefined,
+  response: PlaceBookingStatusResponse | null,
+  productFilter: ProductFilter,
+) {
   if (response) {
-    const hasActiveSlot = response.products.some((product) =>
+    const hasActiveSlot = filterProducts(response.products, productFilter).some((product) =>
       product.slots.some((slot) => slot.status === 'available' || slot.status === 'booked'),
     )
 
@@ -587,8 +615,17 @@ function createBookingInsightCacheKey(
     yearMonth,
     body.bookingBusinessId?.trim() ?? '',
     body.bookingUrl?.trim() ?? '',
+    body.productId?.trim() ?? '',
+    body.productName?.trim() ?? '',
     getTodayKstDate(),
   ])
+}
+
+function normalizeProductFilter(body: PlaceBookingInsightCalendarRequest): ProductFilter {
+  return {
+    productId: body.productId?.trim() || undefined,
+    productName: body.productName?.trim() || undefined,
+  }
 }
 
 function readCachedBookingInsight(cacheKey: string) {

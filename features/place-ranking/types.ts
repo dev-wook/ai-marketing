@@ -396,6 +396,8 @@ export type PlaceBookingInsightCalendarRequest = {
   bookingUrl?: string
   bookingBusinessId?: string
   yearMonth?: string
+  productId?: string
+  productName?: string
 }
 
 export type PlaceBookingInsightBlock = {

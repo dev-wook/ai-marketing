@@ -6,6 +6,8 @@ import { useBodyScrollLock } from '@/features/platform/components/use-body-scrol
 import type {
   PlaceBookingInsightBlock,
   PlaceBookingInsightResponse,
+  PlaceBookingProduct,
+  PlaceBookingStatusResponse,
   PlaceRankingItem,
   PlaceRankingResponse,
 } from '../types'
@@ -21,10 +23,14 @@ export function BookingInsightCalendarTool() {
   const [query, setQuery] = useState('')
   const [places, setPlaces] = useState<PlaceRankingItem[]>([])
   const [selectedPlace, setSelectedPlace] = useState<PlaceRankingItem | null>(null)
+  const [products, setProducts] = useState<PlaceBookingProduct[]>([])
+  const [selectedProduct, setSelectedProduct] = useState<PlaceBookingProduct | null>(null)
   const [yearMonth, setYearMonth] = useState(getCurrentYearMonth())
   const [insight, setInsight] = useState<PlaceBookingInsightResponse | null>(null)
   const [selectedAiBlock, setSelectedAiBlock] = useState<PlaceBookingInsightBlock | null>(null)
+  const [selectedDay, setSelectedDay] = useState<PlaceBookingInsightResponse['days'][string] | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false)
   const [isLoadingInsight, setIsLoadingInsight] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -40,6 +46,8 @@ export function BookingInsightCalendarTool() {
     setIsSearching(true)
     setErrorMessage('')
     setSelectedPlace(null)
+    setProducts([])
+    setSelectedProduct(null)
     setInsight(null)
 
     try {
@@ -52,13 +60,38 @@ export function BookingInsightCalendarTool() {
     }
   }
 
-  const loadInsight = async (place: PlaceRankingItem, nextYearMonth = yearMonth) => {
+  const selectPlace = async (place: PlaceRankingItem) => {
     setSelectedPlace(place)
+    setSelectedProduct(null)
+    setInsight(null)
+    setErrorMessage('')
+    setIsLoadingProducts(true)
+
+    try {
+      const status = await requestBookingStatus(place, getTodayDate())
+      setProducts(status.products)
+      if (status.products.length === 1) {
+        setSelectedProduct(status.products[0])
+      }
+    } catch (error) {
+      setProducts([])
+      setErrorMessage(error instanceof Error ? error.message : '예약상품을 불러오지 못했습니다.')
+    } finally {
+      setIsLoadingProducts(false)
+    }
+  }
+
+  const loadInsight = async (place = selectedPlace, product = selectedProduct, nextYearMonth = yearMonth) => {
+    if (!place || !product) {
+      setErrorMessage('플레이스와 예약상품을 먼저 선택해주세요.')
+      return
+    }
+
     setIsLoadingInsight(true)
     setErrorMessage('')
 
     try {
-      const data = await requestBookingInsight(place, nextYearMonth)
+      const data = await requestBookingInsight(place, product, nextYearMonth)
       setInsight(data)
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'AI 예약 수요 캘린더 조회에 실패했습니다.')
@@ -70,16 +103,23 @@ export function BookingInsightCalendarTool() {
   const moveMonth = async (direction: -1 | 1) => {
     const nextYearMonth = addMonths(yearMonth, direction)
     setYearMonth(nextYearMonth)
-    if (selectedPlace) {
-      await loadInsight(selectedPlace, nextYearMonth)
+    if (selectedPlace && selectedProduct && insight) {
+      await loadInsight(selectedPlace, selectedProduct, nextYearMonth)
     }
   }
 
   const moveToday = async () => {
     const nextYearMonth = getCurrentYearMonth()
     setYearMonth(nextYearMonth)
-    if (selectedPlace) {
-      await loadInsight(selectedPlace, nextYearMonth)
+    if (selectedPlace && selectedProduct && insight) {
+      await loadInsight(selectedPlace, selectedProduct, nextYearMonth)
+    }
+  }
+
+  const selectYearMonth = async (nextYearMonth: string) => {
+    setYearMonth(nextYearMonth)
+    if (selectedPlace && selectedProduct && insight) {
+      await loadInsight(selectedPlace, selectedProduct, nextYearMonth)
     }
   }
 
@@ -121,25 +161,71 @@ export function BookingInsightCalendarTool() {
         </form>
 
         {places.length ? (
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {places.slice(0, 6).map((place) => (
               <button
                 key={place.id}
                 type="button"
-                onClick={() => loadInsight(place)}
-                className={`grid min-w-0 gap-2 rounded-md border p-3 text-left transition hover:border-cyan-300/45 hover:bg-cyan-300/10 ${
+                onClick={() => selectPlace(place)}
+                className={`grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-3 rounded-md border p-3 text-left transition hover:border-cyan-300/45 hover:bg-cyan-300/10 ${
                   selectedPlace?.id === place.id
                     ? 'border-cyan-300/45 bg-cyan-300/10'
                     : 'border-white/10 bg-white/[0.035]'
                 }`}
               >
-                <span className="truncate text-sm font-black text-white">{place.name}</span>
-                <span className="truncate text-xs font-bold text-cyan-100/75">{place.category}</span>
-                <span className="truncate text-xs font-bold text-slate-400">
-                  {place.location.commonAddress || place.location.roadAddress || place.location.address || '주소 미확인'}
+                <span className="block h-16 w-16 overflow-hidden rounded-md border border-white/10 bg-white/[0.04]">
+                  {place.images.mainImageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={place.images.mainImageUrl} alt="" className="h-full w-full object-cover" />
+                  ) : null}
+                </span>
+                <span className="grid min-w-0 content-center gap-1">
+                  <span className="truncate text-sm font-black text-white">{place.name}</span>
+                  <span className="truncate text-xs font-bold text-cyan-100/75">{place.category}</span>
+                  <span className="truncate text-xs font-bold text-slate-400">
+                    {place.location.commonAddress || place.location.roadAddress || place.location.address || '주소 미확인'}
+                  </span>
                 </span>
               </button>
             ))}
+          </div>
+        ) : null}
+
+        {selectedPlace ? (
+          <div className="mt-4 rounded-md border border-white/10 bg-white/[0.035] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/75">
+                  Booking Product
+                </p>
+                <h2 className="mt-1 text-base font-black text-white">예약상품 선택</h2>
+              </div>
+              {isLoadingProducts ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-100/30 border-t-cyan-100" />
+              ) : null}
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {products.map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedProduct(product)
+                    setInsight(null)
+                  }}
+                  className={`rounded-md border px-3 py-3 text-left transition hover:border-cyan-300/45 hover:bg-cyan-300/10 ${
+                    selectedProduct?.id === product.id
+                      ? 'border-cyan-300/45 bg-cyan-300/10'
+                      : 'border-white/10 bg-[#080f1d]/75'
+                  }`}
+                >
+                  <span className="block truncate text-sm font-black text-white">{product.name}</span>
+                  <span className="mt-1 block text-xs font-bold text-slate-400">
+                    오늘 예약 {product.summary.bookedSlots}건 · 가능 {product.summary.availableSlots}개
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -151,7 +237,7 @@ export function BookingInsightCalendarTool() {
       </section>
 
       <section className="rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:p-5">
-        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+        <div className="grid gap-3 xl:grid-cols-[1fr_auto] xl:items-center">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
               Monthly Calendar
@@ -160,10 +246,30 @@ export function BookingInsightCalendarTool() {
               {formatYearMonthTitle(yearMonth)}
             </h2>
             {selectedPlace ? (
-              <p className="mt-1 truncate text-sm font-bold text-slate-400">{selectedPlace.name}</p>
+              <p className="mt-1 truncate text-sm font-bold text-slate-400">
+                {selectedPlace.name}{selectedProduct ? ` · ${selectedProduct.name}` : ''}
+              </p>
             ) : null}
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-[auto_auto_auto_auto_auto_auto]">
+            <select
+              value={yearMonth.slice(0, 4)}
+              onChange={(event) => selectYearMonth(`${event.target.value}-${yearMonth.slice(5, 7)}`)}
+              className="h-10 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none focus:border-cyan-300/70"
+            >
+              {getYearOptions().map((year) => (
+                <option key={year} value={year}>{year}년</option>
+              ))}
+            </select>
+            <select
+              value={yearMonth.slice(5, 7)}
+              onChange={(event) => selectYearMonth(`${yearMonth.slice(0, 4)}-${event.target.value}`)}
+              className="h-10 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none focus:border-cyan-300/70"
+            >
+              {Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0')).map((month) => (
+                <option key={month} value={month}>{Number(month)}월</option>
+              ))}
+            </select>
             <button type="button" onClick={() => moveMonth(-1)} className="h-10 rounded-md border border-white/10 bg-white/[0.05] px-3 text-sm font-black text-white transition hover:bg-white/[0.1]">
               이전 달
             </button>
@@ -172,6 +278,14 @@ export function BookingInsightCalendarTool() {
             </button>
             <button type="button" onClick={() => moveMonth(1)} className="h-10 rounded-md border border-white/10 bg-white/[0.05] px-3 text-sm font-black text-white transition hover:bg-white/[0.1]">
               다음 달
+            </button>
+            <button
+              type="button"
+              onClick={() => loadInsight()}
+              disabled={!selectedPlace || !selectedProduct || isLoadingInsight}
+              className="h-10 rounded-md bg-white px-4 text-sm font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {isLoadingInsight ? '조회 중' : '캘린더 조회'}
             </button>
           </div>
         </div>
@@ -190,6 +304,7 @@ export function BookingInsightCalendarTool() {
               day={insight?.days[date.date]}
               isLoading={isLoadingInsight}
               onOpenAiBlock={setSelectedAiBlock}
+              onOpenDay={setSelectedDay}
             />
           ))}
         </div>
@@ -200,6 +315,7 @@ export function BookingInsightCalendarTool() {
       {insight ? <InsightAnalysisPanel insight={insight} /> : null}
 
       <AiBlockDetailModal block={selectedAiBlock} onClose={() => setSelectedAiBlock(null)} />
+      <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />
     </div>
   )
 }
@@ -209,25 +325,34 @@ function CalendarDayCell({
   day,
   isLoading,
   onOpenAiBlock,
+  onOpenDay,
 }: {
   date: CalendarDate
   day?: PlaceBookingInsightResponse['days'][string]
   isLoading: boolean
   onOpenAiBlock: (block: PlaceBookingInsightBlock) => void
+  onOpenDay: (day: PlaceBookingInsightResponse['days'][string]) => void
 }) {
   const isMuted = !date.isCurrentMonth
-  const visibleActualBlocks = day?.actualBlocks.slice(0, 3) ?? []
-  const visibleAiBlocks = day?.aiBlocks.slice(0, 3) ?? []
-  const overflowCount =
-    Math.max((day?.actualBlocks.length ?? 0) - visibleActualBlocks.length, 0) +
-    Math.max((day?.aiBlocks.length ?? 0) - visibleAiBlocks.length, 0)
+  const combinedBlocks = sortBookingBlocksByTime([
+    ...(day?.actualBlocks ?? []),
+    ...(day?.aiBlocks ?? []),
+  ])
+  const visibleBlocks = combinedBlocks.slice(0, 4)
+  const overflowCount = Math.max(combinedBlocks.length - visibleBlocks.length, 0)
 
   return (
     <div
-      className={`min-h-[8.75rem] rounded-md border border-white/10 bg-[#080f1d]/86 p-2 md:rounded-none md:border-l-0 md:border-t-0 ${
+      className={`relative min-h-[8.75rem] rounded-md border border-white/10 bg-[#080f1d]/86 p-2 md:rounded-none md:border-l-0 md:border-t-0 ${
         isMuted ? 'opacity-35' : ''
-      } ${date.isToday ? 'ring-2 ring-cyan-300/35' : ''}`}
+      } ${date.isToday ? 'z-10 border-cyan-300/45 md:border-l md:border-t' : ''}`}
     >
+      {date.isToday ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-md border-2 border-cyan-300/45 md:rounded-none"
+        />
+      ) : null}
       <div className="flex items-center justify-between gap-2">
         <span className={`text-sm font-black ${date.isToday ? 'text-cyan-100' : 'text-slate-200'}`}>
           {date.day}
@@ -247,32 +372,58 @@ function CalendarDayCell({
           </>
         ) : null}
 
-        {!isLoading && visibleActualBlocks.map((block) => (
-          <span
+        {!isLoading && visibleBlocks.map((block) => (
+          <BookingBlockPill
             key={block.id}
-            className="truncate rounded border border-cyan-300/20 bg-cyan-300/14 px-2 py-1 text-[11px] font-black text-cyan-50"
-            title={block.productName}
-          >
-            {block.time} 실예약
-          </span>
+            block={block}
+            onOpenAiBlock={onOpenAiBlock}
+          />
         ))}
 
-        {!isLoading && visibleAiBlocks.map((block) => (
+        {!isLoading && overflowCount > 0 && day ? (
           <button
-            key={block.id}
             type="button"
-            onClick={() => onOpenAiBlock(block)}
-            className="truncate rounded border border-dashed border-fuchsia-300/35 bg-fuchsia-300/10 px-2 py-1 text-left text-[11px] font-black text-fuchsia-100 transition hover:bg-fuchsia-300/18"
+            onClick={() => onOpenDay(day)}
+            className="w-fit rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-black text-cyan-100 transition hover:bg-cyan-300/10"
           >
-            AI {block.time}
+            +{overflowCount}개 더 보기
           </button>
-        ))}
-
-        {!isLoading && overflowCount > 0 ? (
-          <span className="text-[11px] font-black text-slate-500">+{overflowCount}개 더 있음</span>
         ) : null}
       </div>
     </div>
+  )
+}
+
+function BookingBlockPill({
+  block,
+  onOpenAiBlock,
+}: {
+  block: PlaceBookingInsightBlock
+  onOpenAiBlock: (block: PlaceBookingInsightBlock) => void
+}) {
+  const className =
+    block.type === 'ai'
+      ? 'truncate rounded border border-dashed border-cyan-200/40 bg-cyan-300/[0.08] px-2 py-1 text-left text-[11px] font-black leading-4 text-cyan-100 transition hover:bg-cyan-300/16'
+      : 'truncate rounded border border-cyan-300/20 bg-cyan-300/14 px-2 py-1 text-left text-[11px] font-black leading-4 text-cyan-50'
+
+  if (block.type === 'ai') {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenAiBlock(block)}
+        className={className}
+        title={block.productName}
+      >
+        <span className="mr-1 rounded bg-cyan-200/20 px-1 text-[9px] leading-none">AI</span>
+        {block.time}
+      </button>
+    )
+  }
+
+  return (
+    <span className={className} title={block.productName}>
+      {block.time}
+    </span>
   )
 }
 
@@ -440,6 +591,22 @@ function ChipList({ items, title }: { items: string[]; title: string }) {
   )
 }
 
+function sortBookingBlocksByTime(blocks: PlaceBookingInsightBlock[]) {
+  return [...blocks].sort((left, right) => {
+    const timeCompare = left.time.localeCompare(right.time)
+
+    if (timeCompare !== 0) {
+      return timeCompare
+    }
+
+    if (left.type === right.type) {
+      return left.id.localeCompare(right.id)
+    }
+
+    return left.type === 'actual' ? -1 : 1
+  })
+}
+
 async function requestRankings(keyword: string) {
   const response = await fetch('/api/place-ranking/rankings', {
     method: 'POST',
@@ -455,13 +622,38 @@ async function requestRankings(keyword: string) {
   return body as PlaceRankingResponse
 }
 
-async function requestBookingInsight(place: PlaceRankingItem, yearMonth: string) {
+async function requestBookingStatus(place: PlaceRankingItem, date: string) {
+  const response = await fetch('/api/place-ranking/booking-status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      bookingBusinessId: place.actions.bookingBusinessId,
+      bookingUrl: place.actions.bookingUrl,
+      date,
+    }),
+  })
+  const body = (await response.json()) as PlaceBookingStatusResponse | PlaceRankingErrorBody
+
+  if (!response.ok) {
+    throw new Error((body as PlaceRankingErrorBody).message ?? '예약상품을 불러오지 못했습니다.')
+  }
+
+  return body as PlaceBookingStatusResponse
+}
+
+async function requestBookingInsight(
+  place: PlaceRankingItem,
+  product: PlaceBookingProduct,
+  yearMonth: string,
+) {
   const response = await fetch('/api/place-ranking/booking-insights', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       bookingBusinessId: place.actions.bookingBusinessId,
       bookingUrl: place.actions.bookingUrl,
+      productId: product.id,
+      productName: product.name,
       yearMonth,
     }),
   })
@@ -472,6 +664,84 @@ async function requestBookingInsight(place: PlaceRankingItem, yearMonth: string)
   }
 
   return body as PlaceBookingInsightResponse
+}
+
+function DayDetailModal({
+  day,
+  onClose,
+}: {
+  day: PlaceBookingInsightResponse['days'][string] | null
+  onClose: () => void
+}) {
+  useBodyScrollLock(Boolean(day))
+
+  if (!day) {
+    return null
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[90] grid place-items-center overflow-hidden bg-black/65 p-4">
+      <button type="button" aria-label="예약 목록 닫기" className="absolute inset-0" onClick={onClose} />
+      <section
+        className="relative max-h-[88dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-md border border-cyan-300/22 bg-[#080c16] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]"
+        data-aiva-scroll-lock-allow="true"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">
+              Daily Schedule
+            </p>
+            <h2 className="mt-2 text-2xl font-black text-white">{day.date}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-xl font-black text-white">
+            ×
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4">
+          <ScheduleList title="실예약" blocks={day.actualBlocks} type="actual" />
+          <ScheduleList title="AI 예측" blocks={day.aiBlocks} type="ai" />
+        </div>
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+function ScheduleList({
+  blocks,
+  title,
+  type,
+}: {
+  blocks: PlaceBookingInsightBlock[]
+  title: string
+  type: 'actual' | 'ai'
+}) {
+  return (
+    <div>
+      <p className="text-sm font-black text-white">{title}</p>
+      <div className="mt-2 grid gap-2">
+        {blocks.length ? blocks.map((block) => (
+          <div
+            key={block.id}
+            className={`rounded-md border px-3 py-2 text-sm font-black ${
+              type === 'ai'
+                ? 'border-dashed border-cyan-200/40 bg-cyan-300/[0.08] text-cyan-100'
+                : 'border-cyan-300/20 bg-cyan-300/14 text-cyan-50'
+            }`}
+          >
+            {type === 'ai' ? <span className="mr-2 rounded bg-cyan-200/20 px-1.5 py-0.5 text-[10px]">AI</span> : null}
+            {block.time}
+            {block.productName ? <span className="ml-2 text-xs text-slate-400">{block.productName}</span> : null}
+          </div>
+        )) : (
+          <p className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-slate-500">
+            표시할 예약이 없습니다.
+          </p>
+        )}
+      </div>
+    </div>
+  )
 }
 
 type CalendarDate = {
@@ -517,6 +787,12 @@ function getCurrentYearMonth() {
     year: 'numeric',
     month: '2-digit',
   }).format(new Date())
+}
+
+function getYearOptions() {
+  const currentYear = Number(getCurrentYearMonth().slice(0, 4))
+
+  return Array.from({ length: 7 }, (_, index) => String(currentYear - 3 + index))
 }
 
 function getTodayDate() {
