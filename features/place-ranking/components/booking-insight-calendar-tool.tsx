@@ -296,7 +296,7 @@ export function BookingInsightCalendarTool() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-2 pt-3 md:grid-cols-7 md:gap-0 md:pt-0">
+        <div className="grid grid-cols-7 overflow-hidden rounded-md border border-white/10 md:overflow-visible md:rounded-none md:border-0">
           {calendarDays.map((date) => (
             <CalendarDayCell
               key={date.key}
@@ -343,32 +343,33 @@ function CalendarDayCell({
 
   return (
     <div
-      className={`relative min-h-[8.75rem] rounded-md border border-white/10 bg-[#080f1d]/86 p-2 md:rounded-none md:border-l-0 md:border-t-0 ${
+      className={`relative min-h-[5.8rem] border border-white/10 bg-[#080f1d]/86 p-1 md:min-h-[8.75rem] md:rounded-none md:border-l-0 md:border-t-0 md:p-2 ${
         isMuted ? 'opacity-35' : ''
       } ${date.isToday ? 'z-10 border-cyan-300/45 md:border-l md:border-t' : ''}`}
     >
       {date.isToday ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-md border-2 border-cyan-300/45 md:rounded-none"
+          className="pointer-events-none absolute inset-0 border-2 border-cyan-300/45"
         />
       ) : null}
-      <div className="flex items-center justify-between gap-2">
-        <span className={`text-sm font-black ${date.isToday ? 'text-cyan-100' : 'text-slate-200'}`}>
+      <div className="flex min-w-0 items-center justify-between gap-1">
+        <span className={`text-[11px] font-black md:text-sm ${date.isToday ? 'text-cyan-100' : 'text-slate-200'}`}>
           {date.day}
         </span>
         {day?.isClosed ? (
-          <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-black text-slate-500">
-            휴무
+          <span className="rounded-full bg-white/[0.06] px-1 py-0.5 text-[8px] font-black text-slate-500 md:px-2 md:text-[10px]">
+            <span className="md:hidden">휴</span>
+            <span className="hidden md:inline">휴무</span>
           </span>
         ) : null}
       </div>
 
-      <div className="mt-2 grid gap-1">
+      <div className="mt-1 grid gap-0.5 md:mt-2 md:gap-1">
         {isLoading && date.isCurrentMonth ? (
           <>
-            <span className="h-5 animate-pulse rounded bg-white/[0.08]" />
-            <span className="h-5 w-2/3 animate-pulse rounded bg-white/[0.06]" />
+            <span className="h-3 animate-pulse rounded bg-white/[0.08] md:h-5" />
+            <span className="h-3 w-2/3 animate-pulse rounded bg-white/[0.06] md:h-5" />
           </>
         ) : null}
 
@@ -384,9 +385,10 @@ function CalendarDayCell({
           <button
             type="button"
             onClick={() => onOpenDay(day)}
-            className="w-fit rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-black text-cyan-100 transition hover:bg-cyan-300/10"
+            className="w-fit rounded-full border border-white/10 bg-white/[0.05] px-1 py-0.5 text-[8px] font-black text-cyan-100 transition hover:bg-cyan-300/10 md:px-1.5 md:text-[10px]"
           >
-            +{overflowCount}개 더 보기
+            <span className="md:hidden">+{overflowCount}</span>
+            <span className="hidden md:inline">+{overflowCount}개 더 보기</span>
           </button>
         ) : null}
       </div>
@@ -403,8 +405,8 @@ function BookingBlockPill({
 }) {
   const className =
     block.type === 'ai'
-      ? 'truncate rounded border border-dashed border-cyan-200/40 bg-cyan-300/[0.08] px-2 py-1 text-left text-[11px] font-black leading-4 text-cyan-100 transition hover:bg-cyan-300/16'
-      : 'truncate rounded border border-cyan-300/20 bg-cyan-300/14 px-2 py-1 text-left text-[11px] font-black leading-4 text-cyan-50'
+      ? 'truncate rounded border border-dashed border-cyan-200/40 bg-cyan-300/[0.08] px-1 py-0.5 text-left text-[9px] font-black leading-3 text-cyan-100 transition hover:bg-cyan-300/16 md:px-2 md:py-1 md:text-[11px] md:leading-4'
+      : 'truncate rounded border border-cyan-300/20 bg-cyan-300/14 px-1 py-0.5 text-left text-[9px] font-black leading-3 text-cyan-50 md:px-2 md:py-1 md:text-[11px] md:leading-4'
 
   if (block.type === 'ai') {
     return (
@@ -414,7 +416,7 @@ function BookingBlockPill({
         className={className}
         title={block.productName}
       >
-        <span className="mr-1 rounded bg-cyan-200/20 px-1 text-[9px] leading-none">AI</span>
+        <span className="mr-0.5 rounded bg-cyan-200/20 px-0.5 text-[8px] leading-none md:mr-1 md:px-1 md:text-[9px]">AI</span>
         {block.time}
       </button>
     )
