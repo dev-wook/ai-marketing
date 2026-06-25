@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useBodyScrollLock } from '@/features/platform/components/use-body-scroll-lock'
 import type {
@@ -19,7 +19,13 @@ type PlaceRankingErrorBody = {
 
 const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
 
+type CalendarSelectOption = {
+  label: string
+  value: string
+}
+
 export function BookingInsightCalendarTool() {
+  const queryInputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [places, setPlaces] = useState<PlaceRankingItem[]>([])
   const [selectedPlace, setSelectedPlace] = useState<PlaceRankingItem | null>(null)
@@ -36,6 +42,12 @@ export function BookingInsightCalendarTool() {
 
   const calendarDays = useMemo(() => createCalendarDays(yearMonth), [yearMonth])
   const canSearch = query.trim().length > 0 && !isSearching
+
+  const clearQueryInput = () => {
+    setQuery('')
+    setErrorMessage('')
+    queryInputRef.current?.focus()
+  }
 
   const submitSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -144,13 +156,27 @@ export function BookingInsightCalendarTool() {
         </div>
 
         <form onSubmit={submitSearch} className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="예: 라솝뷰티"
-            className="min-h-13 rounded-md border border-white/10 bg-[#090d18] px-4 text-base font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
-            disabled={isSearching}
-          />
+          <div className="relative">
+            <input
+              ref={queryInputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="예: 라솝뷰티"
+              className="min-h-13 w-full rounded-md border border-white/10 bg-[#090d18] px-4 pr-12 text-base font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
+              disabled={isSearching}
+            />
+            {query ? (
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={clearQueryInput}
+                aria-label="검색어 전체 삭제"
+                className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-xl font-black leading-none text-slate-500 transition hover:bg-white/[0.08] hover:text-cyan-100"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
           <button
             type="submit"
             disabled={!canSearch}
@@ -220,9 +246,6 @@ export function BookingInsightCalendarTool() {
                   }`}
                 >
                   <span className="block truncate text-sm font-black text-white">{product.name}</span>
-                  <span className="mt-1 block text-xs font-bold text-slate-400">
-                    오늘 예약 {product.summary.bookedSlots}건 · 가능 {product.summary.availableSlots}개
-                  </span>
                 </button>
               ))}
             </div>
@@ -252,24 +275,19 @@ export function BookingInsightCalendarTool() {
             ) : null}
           </div>
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-[auto_auto_auto_auto_auto_auto]">
-            <select
+            <CalendarSelect
+              options={getYearOptions().map((year) => ({ label: `${year}년`, value: year }))}
               value={yearMonth.slice(0, 4)}
-              onChange={(event) => selectYearMonth(`${event.target.value}-${yearMonth.slice(5, 7)}`)}
-              className="h-10 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none focus:border-cyan-300/70"
-            >
-              {getYearOptions().map((year) => (
-                <option key={year} value={year}>{year}년</option>
-              ))}
-            </select>
-            <select
+              onChange={(value) => void selectYearMonth(`${value}-${yearMonth.slice(5, 7)}`)}
+            />
+            <CalendarSelect
+              options={Array.from({ length: 12 }, (_, index) => {
+                const month = String(index + 1).padStart(2, '0')
+                return { label: `${Number(month)}월`, value: month }
+              })}
               value={yearMonth.slice(5, 7)}
-              onChange={(event) => selectYearMonth(`${yearMonth.slice(0, 4)}-${event.target.value}`)}
-              className="h-10 rounded-md border border-white/10 bg-[#090d18] px-3 text-sm font-black text-white outline-none focus:border-cyan-300/70"
-            >
-              {Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0')).map((month) => (
-                <option key={month} value={month}>{Number(month)}월</option>
-              ))}
-            </select>
+              onChange={(value) => void selectYearMonth(`${yearMonth.slice(0, 4)}-${value}`)}
+            />
             <button type="button" onClick={() => moveMonth(-1)} className="h-10 rounded-md border border-white/10 bg-white/[0.05] px-3 text-sm font-black text-white transition hover:bg-white/[0.1]">
               이전 달
             </button>
@@ -315,7 +333,74 @@ export function BookingInsightCalendarTool() {
       {insight ? <InsightAnalysisPanel insight={insight} /> : null}
 
       <AiBlockDetailModal block={selectedAiBlock} onClose={() => setSelectedAiBlock(null)} />
-      <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />
+      <DayDetailModal
+        day={selectedDay}
+        onClose={() => setSelectedDay(null)}
+        onOpenAiBlock={setSelectedAiBlock}
+      />
+    </div>
+  )
+}
+
+function CalendarSelect({
+  onChange,
+  options,
+  value,
+}: {
+  onChange: (value: string) => void
+  options: CalendarSelectOption[]
+  value: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const selectedOption = options.find((option) => option.value === value) ?? options[0]
+
+  return (
+    <div
+      className="relative"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setIsOpen(false)
+        }
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setIsOpen((next) => !next)}
+        aria-expanded={isOpen}
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-3 rounded-md border bg-[#090d18] px-3 text-left text-sm font-black text-white outline-none transition hover:border-cyan-300/35 hover:bg-white/[0.035] focus:ring-4 focus:ring-cyan-300/10 lg:min-w-[7rem] ${
+          isOpen ? 'border-cyan-300/70' : 'border-white/10'
+        }`}
+      >
+        <span className="truncate">{selectedOption?.label ?? value}</span>
+        <span className={`text-sm text-cyan-100/75 transition ${isOpen ? 'rotate-180' : ''}`}>▾</span>
+      </button>
+
+      {isOpen ? (
+        <div className="absolute left-0 top-[calc(100%+0.4rem)] z-50 max-h-64 w-full min-w-[8rem] overflow-y-auto rounded-md border border-cyan-300/25 bg-[#070d18] p-1 shadow-[0_18px_44px_rgba(0,0,0,0.48)]">
+          {options.map((option) => {
+            const isSelected = option.value === value
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value)
+                  setIsOpen(false)
+                }}
+                className={`flex h-9 w-full items-center justify-between rounded px-3 text-left text-sm font-black transition ${
+                  isSelected
+                    ? 'bg-cyan-300/14 text-cyan-50'
+                    : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
+                }`}
+              >
+                <span>{option.label}</span>
+                {isSelected ? <span className="text-[10px] text-cyan-100">선택</span> : null}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -338,8 +423,10 @@ function CalendarDayCell({
     ...(day?.actualBlocks ?? []),
     ...(day?.aiBlocks ?? []),
   ])
-  const visibleBlocks = combinedBlocks.slice(0, 4)
-  const overflowCount = Math.max(combinedBlocks.length - visibleBlocks.length, 0)
+  const mobileVisibleBlocks = combinedBlocks.slice(0, 3)
+  const desktopVisibleBlocks = combinedBlocks.slice(0, 4)
+  const mobileOverflowCount = Math.max(combinedBlocks.length - mobileVisibleBlocks.length, 0)
+  const desktopOverflowCount = Math.max(combinedBlocks.length - desktopVisibleBlocks.length, 0)
   const canOpenDay = Boolean(day && combinedBlocks.length)
 
   return (
@@ -386,22 +473,43 @@ function CalendarDayCell({
           </>
         ) : null}
 
-        {!isLoading && visibleBlocks.map((block) => (
-          <BookingBlockPill
-            key={block.id}
-            block={block}
-            onOpenAiBlock={onOpenAiBlock}
-          />
-        ))}
+        <div className="contents md:hidden">
+          {!isLoading && mobileVisibleBlocks.map((block) => (
+            <BookingBlockPill
+              key={block.id}
+              block={block}
+              onOpenAiBlock={onOpenAiBlock}
+            />
+          ))}
+        </div>
 
-        {!isLoading && overflowCount > 0 && day ? (
+        <div className="hidden contents md:contents">
+          {!isLoading && desktopVisibleBlocks.map((block) => (
+            <BookingBlockPill
+              key={block.id}
+              block={block}
+              onOpenAiBlock={onOpenAiBlock}
+            />
+          ))}
+        </div>
+
+        {!isLoading && mobileOverflowCount > 0 && day ? (
           <button
             type="button"
             onClick={() => onOpenDay(day)}
-            className="w-fit rounded-full border border-white/10 bg-white/[0.035] px-0.5 py-px text-[7px] font-black leading-3 text-cyan-100/75 transition hover:bg-cyan-300/10 md:px-1.5 md:py-0.5 md:text-[10px] md:leading-none md:text-cyan-100"
+            className="w-fit rounded-full border border-white/[0.08] bg-white/[0.03] px-0.5 py-0 text-[6px] font-bold leading-[10px] text-cyan-100/65 transition hover:bg-cyan-300/10 md:px-1.5 md:py-0.5 md:text-[10px] md:font-black md:leading-none md:text-cyan-100"
           >
-            <span className="md:hidden">+{overflowCount}</span>
-            <span className="hidden md:inline">+{overflowCount}개 더 보기</span>
+            <span className="md:hidden">+{mobileOverflowCount}</span>
+          </button>
+        ) : null}
+
+        {!isLoading && desktopOverflowCount > 0 && day ? (
+          <button
+            type="button"
+            onClick={() => onOpenDay(day)}
+            className="hidden w-fit rounded-full border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[10px] font-black leading-none text-cyan-100 transition hover:bg-cyan-300/10 md:inline-flex"
+          >
+            +{desktopOverflowCount}개 더 보기
           </button>
         ) : null}
       </div>
@@ -418,7 +526,7 @@ function BookingBlockPill({
 }) {
   const className =
     block.type === 'ai'
-      ? 'truncate rounded border border-dashed border-cyan-200/40 bg-cyan-300/[0.08] px-1 py-0.5 text-center text-[9px] font-black leading-3 text-cyan-100 transition hover:bg-cyan-300/16 md:px-2 md:py-1 md:text-left md:text-[11px] md:leading-4'
+      ? 'flex items-center justify-center truncate rounded border border-dashed border-cyan-200/40 bg-cyan-300/[0.08] px-1 py-px text-center text-[9px] font-black leading-3 text-cyan-100 transition hover:bg-cyan-300/16 md:block md:px-2 md:py-1 md:text-left md:text-[11px] md:leading-4'
       : 'truncate rounded border border-cyan-300/20 bg-cyan-300/14 px-1 py-0.5 text-center text-[9px] font-black leading-3 text-cyan-50 md:px-2 md:py-1 md:text-left md:text-[11px] md:leading-4'
 
   if (block.type === 'ai') {
@@ -429,7 +537,9 @@ function BookingBlockPill({
         className={className}
         title={block.productName}
       >
-        <span className="md:hidden">예약</span>
+        <span className="inline-flex items-center justify-center rounded-[3px] bg-cyan-200/20 px-0.5 text-[7px] font-black leading-[9px] text-cyan-100 md:hidden">
+          AI
+        </span>
         <span className="hidden md:inline">
           <span className="mr-1 rounded bg-cyan-200/20 px-1 text-[9px] leading-none">AI</span>
           {block.time}
@@ -512,7 +622,7 @@ function AiBlockDetailModal({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] grid place-items-center overflow-hidden bg-black/65 p-4">
+    <div className="fixed inset-0 z-[100] grid place-items-center overflow-hidden bg-black/65 p-4">
       <button type="button" aria-label="AI 예약 상세 닫기" className="absolute inset-0" onClick={onClose} />
       <section
         className="relative max-h-[88dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-md border border-cyan-300/22 bg-[#080c16] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]"
@@ -705,9 +815,11 @@ async function requestBookingInsight(
 function DayDetailModal({
   day,
   onClose,
+  onOpenAiBlock,
 }: {
   day: PlaceBookingInsightResponse['days'][string] | null
   onClose: () => void
+  onOpenAiBlock: (block: PlaceBookingInsightBlock) => void
 }) {
   useBodyScrollLock(Boolean(day))
 
@@ -736,7 +848,12 @@ function DayDetailModal({
 
         <div className="mt-5 grid gap-4">
           <ScheduleList title="실예약" blocks={sortBookingBlocksByTime(day.actualBlocks)} type="actual" />
-          <ScheduleList title="AI 예측" blocks={sortBookingBlocksByTime(day.aiBlocks)} type="ai" />
+          <ScheduleList
+            title="AI 예측"
+            blocks={sortBookingBlocksByTime(day.aiBlocks)}
+            type="ai"
+            onOpenAiBlock={onOpenAiBlock}
+          />
         </div>
       </section>
     </div>,
@@ -746,10 +863,12 @@ function DayDetailModal({
 
 function ScheduleList({
   blocks,
+  onOpenAiBlock,
   title,
   type,
 }: {
   blocks: PlaceBookingInsightBlock[]
+  onOpenAiBlock?: (block: PlaceBookingInsightBlock) => void
   title: string
   type: 'actual' | 'ai'
 }) {
@@ -757,20 +876,39 @@ function ScheduleList({
     <div>
       <p className="text-sm font-black text-white">{title}</p>
       <div className="mt-2 grid gap-2">
-        {blocks.length ? blocks.map((block) => (
-          <div
-            key={block.id}
-            className={`rounded-md border px-3 py-2 text-sm font-black ${
-              type === 'ai'
-                ? 'border-dashed border-cyan-200/40 bg-cyan-300/[0.08] text-cyan-100'
-                : 'border-cyan-300/20 bg-cyan-300/14 text-cyan-50'
-            }`}
-          >
-            {type === 'ai' ? <span className="mr-2 rounded bg-cyan-200/20 px-1.5 py-0.5 text-[10px]">AI</span> : null}
-            {block.time}
-            {block.productName ? <span className="ml-2 text-xs text-slate-400">{block.productName}</span> : null}
-          </div>
-        )) : (
+        {blocks.length ? blocks.map((block) => {
+          const className = `rounded-md border px-3 py-2 text-left text-sm font-black ${
+            type === 'ai'
+              ? 'border-dashed border-cyan-200/40 bg-cyan-300/[0.08] text-cyan-100 transition hover:bg-cyan-300/16'
+              : 'border-cyan-300/20 bg-cyan-300/14 text-cyan-50'
+          }`
+          const content = (
+            <>
+              {type === 'ai' ? <span className="mr-2 rounded bg-cyan-200/20 px-1.5 py-0.5 text-[10px]">AI</span> : null}
+              {block.time}
+              {block.productName ? <span className="ml-2 text-xs text-slate-400">{block.productName}</span> : null}
+            </>
+          )
+
+          if (type === 'ai' && onOpenAiBlock) {
+            return (
+              <button
+                key={block.id}
+                type="button"
+                onClick={() => onOpenAiBlock(block)}
+                className={`${className} appearance-none`}
+              >
+                {content}
+              </button>
+            )
+          }
+
+          return (
+            <div key={block.id} className={className}>
+              {content}
+            </div>
+          )
+        }) : (
           <p className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-slate-500">
             표시할 예약이 없습니다.
           </p>
