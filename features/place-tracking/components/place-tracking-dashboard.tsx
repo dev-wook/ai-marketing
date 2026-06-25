@@ -273,15 +273,8 @@ export function PlaceTrackingDashboard({
         </div>
       ) : null}
 
-      {isLoadingDashboard ? (
-        <div className="rounded-md border border-cyan-300/18 bg-cyan-300/8 p-4">
-          <div className="flex items-center gap-3">
-            <span className="block h-5 w-5 animate-spin rounded-full border-2 border-cyan-100/30 border-t-cyan-100" />
-            <p className="text-sm font-black text-cyan-100">
-              등록된 키워드 순위를 확인하고 있습니다.
-            </p>
-          </div>
-        </div>
+      {(isLoadingPlaces || isLoadingDashboard) && !dashboard ? (
+        <PlaceTrackingDashboardSkeleton mobileCompact={mobileCompact} />
       ) : null}
 
       {dashboard?.places.length ? (
@@ -332,6 +325,67 @@ function EmptyTrackingState({ onOpenManager }: { onOpenManager: () => void }) {
         플레이스 등록
       </button>
     </div>
+  )
+}
+
+function PlaceTrackingDashboardSkeleton({ mobileCompact }: { mobileCompact?: boolean }) {
+  const skeletonKeywords = [0, 1, 2]
+
+  return (
+    <article
+      aria-label="내 플레이스 순위 로딩 중"
+      className={joinClassNames(
+        'relative grid min-w-0 animate-pulse overflow-hidden rounded-md border border-cyan-300/14 bg-[#0a1220]/86 shadow-[0_18px_46px_rgba(0,0,0,0.18)]',
+        mobileCompact ? 'gap-3 p-3 md:gap-4 md:p-5' : 'gap-4 p-4 md:p-5',
+      )}
+    >
+      <div
+        className={joinClassNames(
+          'grid min-w-0 border-b border-white/10 md:grid-cols-[1fr_auto] md:items-start',
+          mobileCompact ? 'gap-2 pb-3 md:gap-3 md:pb-4' : 'gap-3 pb-4',
+        )}
+      >
+        <div className="min-w-0 pr-12 md:pr-0">
+          <div className="h-6 w-28 rounded-md bg-white/[0.08] md:h-8 md:w-36" />
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 md:gap-2">
+            <div className="h-7 w-28 rounded-full bg-white/[0.06]" />
+            <div className="h-7 w-24 rounded-full bg-cyan-300/[0.08]" />
+          </div>
+        </div>
+        <div className="absolute right-3 top-3 h-9 w-9 rounded-md bg-white/[0.06] md:static md:h-10 md:w-10" />
+      </div>
+
+      <div
+        className={joinClassNames(
+          'grid min-w-0',
+          mobileCompact
+            ? 'gap-1.5 sm:grid-cols-2 md:gap-3 xl:grid-cols-3 2xl:grid-cols-4'
+            : 'gap-2 sm:grid-cols-2 md:gap-3 xl:grid-cols-3 2xl:grid-cols-4',
+        )}
+      >
+        {skeletonKeywords.map((item) => (
+          <div
+            key={item}
+            className={joinClassNames(
+              'min-w-0 rounded-md border border-cyan-300/12 bg-[#0d1828]/82',
+              mobileCompact
+                ? 'flex items-center justify-between gap-2 px-2.5 py-2 md:grid md:min-h-28 md:content-between md:gap-3 md:px-3.5 md:py-3.5'
+                : 'grid gap-3 px-3.5 py-3.5 md:min-h-28 md:content-between',
+            )}
+          >
+            <div className="flex min-w-0 items-center gap-2 md:items-start md:justify-between md:gap-3">
+              <div className="h-8 w-14 rounded-md bg-white/[0.08] md:h-10 md:w-16" />
+              <div className="h-4 w-20 rounded-full bg-white/[0.06] md:hidden" />
+              <div className="hidden h-4 w-16 rounded-full bg-white/[0.06] md:block" />
+            </div>
+            <div className={joinClassNames('min-w-0', mobileCompact ? 'hidden md:block' : '')}>
+              <div className="h-5 w-32 rounded-md bg-white/[0.07]" />
+            </div>
+            {mobileCompact ? <div className="h-4 w-16 rounded-full bg-white/[0.06] md:hidden" /> : null}
+          </div>
+        ))}
+      </div>
+    </article>
   )
 }
 

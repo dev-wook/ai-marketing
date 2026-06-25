@@ -253,22 +253,22 @@ export function BlogPostingTool({
   }
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-center py-6">
+    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-start pt-4 pb-6 md:content-center md:py-6">
       <section className="text-center">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
           Blog Draft
         </p>
-        <h2 className="mt-3 text-3xl font-black tracking-normal md:text-5xl">
+        <h2 className="mt-2 text-2xl font-black tracking-normal md:mt-3 md:text-5xl">
           AI 블로그 원고를 작성하세요
         </h2>
-        <p className="mx-auto mt-4 max-w-6xl text-base font-semibold leading-7 text-slate-300">
+        <p className="mx-auto mt-3 max-w-6xl text-sm font-semibold leading-6 text-slate-300 md:mt-4 md:text-base md:leading-7">
           키워드를 입력하면 필요한 질문을 단계별로 드리고, 답변에 맞춘 블로그 원고를
           만들어드립니다.
         </p>
 
         <form
           onSubmit={submitKeyword}
-          className="mx-auto mt-8 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
+          className="mx-auto mt-4 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl md:mt-8"
         >
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">

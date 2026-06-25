@@ -12,6 +12,7 @@ type HomeFeature = {
 type HomeFeatureIcon =
   | 'tracking'
   | 'rank'
+  | 'bookingInsight'
   | 'diagnosis'
   | 'compare'
   | 'keyword'
@@ -23,6 +24,7 @@ export function HomeView({
   onOpenKeyword,
   onOpenPlaceCompetitor,
   onOpenPlaceDiagnosis,
+  onOpenBookingInsight,
   onOpenPlaceRanking,
   onOpenPlaceTracking,
 }: {
@@ -30,6 +32,7 @@ export function HomeView({
   onOpenKeyword: () => void
   onOpenPlaceCompetitor: () => void
   onOpenPlaceDiagnosis: () => void
+  onOpenBookingInsight: () => void
   onOpenPlaceRanking: () => void
   onOpenPlaceTracking: () => void
 }) {
@@ -49,6 +52,14 @@ export function HomeView({
       status: 'open',
       icon: 'rank',
       action: onOpenPlaceRanking,
+    },
+    {
+      title: 'AI 예약 수요 캘린더',
+      shortTitle: '예약',
+      description: '월간 예약 흐름과 AI 예측을 확인합니다.',
+      status: 'open',
+      icon: 'bookingInsight',
+      action: onOpenBookingInsight,
     },
     {
       title: 'AI 플레이스 진단',
@@ -94,12 +105,12 @@ export function HomeView({
   return (
     <div className="grid w-full min-w-0 gap-4 overflow-x-hidden md:gap-6">
       <PlaceTrackingDashboard
-        className="order-1 md:order-2"
+        className="order-1"
         mobileCompact
         onOpenManagerPage={onOpenPlaceTracking}
       />
 
-      <section className="order-2 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:order-1 md:p-5">
+      <section className="order-2 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:p-5">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
@@ -197,6 +208,22 @@ function HomeFeatureIconRenderer({ icon }: { icon: HomeFeatureIcon }) {
         <path d="M6 4h9l3 3v13H6z" />
         <path d="M15 4v4h4" />
         <path d="M8.8 14.2 11 16.4l4.2-5" />
+      </svg>
+    )
+  }
+
+  if (icon === 'bookingInsight') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <path d="M6 4v3" />
+        <path d="M18 4v3" />
+        <path d="M4 9h16" />
+        <path d="M5.5 6h13A1.5 1.5 0 0 1 20 7.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V7.5A1.5 1.5 0 0 1 5.5 6Z" />
+        <path d="M8 13h.01" />
+        <path d="M12 13h.01" />
+        <path d="M16 13h.01" />
+        <path d="M8 17h.01" />
+        <path d="M12 17h.01" />
       </svg>
     )
   }

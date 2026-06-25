@@ -1120,21 +1120,21 @@ export function PlaceRankingTool() {
   }
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-center py-6">
+    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-start pt-4 pb-6 md:content-center md:py-6">
       <section className="text-center">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
           Naver Place Ranking
         </p>
-        <h2 className="mt-3 text-3xl font-black tracking-normal md:text-5xl">
+        <h2 className="mt-2 text-2xl font-black tracking-normal md:mt-3 md:text-5xl">
           네이버 플레이스 순위를 실시간으로 조회하세요
         </h2>
-        <p className="mx-auto mt-4 max-w-4xl text-base font-semibold leading-7 text-slate-300">
+        <p className="mx-auto mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-300 md:mt-4 md:text-base md:leading-7">
           키워드 기준으로 네이버 플레이스 실시간 노출 순위를 확인합니다.
         </p>
 
         <form
           onSubmit={submitKeyword}
-          className="mx-auto mt-6 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
+          className="mx-auto mt-4 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl md:mt-6"
         >
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">

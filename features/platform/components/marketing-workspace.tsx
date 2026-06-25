@@ -7,6 +7,7 @@ import { AiPlaceDiagnosisTool } from '@/features/ai-place-diagnosis/components/a
 import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
 import type { AuthUser } from '@/features/auth/types'
 import { KeywordTool } from '@/features/keyword-analysis/components/keyword-tool'
+import { BookingInsightCalendarTool } from '@/features/place-ranking/components/booking-insight-calendar-tool'
 import { PlaceRankingTool } from '@/features/place-ranking/components/place-ranking-tool'
 import type { PlaceRankingBatchKeyword } from '@/features/place-ranking/types'
 import { PlaceTrackingDashboard } from '@/features/place-tracking/components/place-tracking-dashboard'
@@ -14,7 +15,7 @@ import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
 import { useBodyScrollLock } from './use-body-scroll-lock'
 
-type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'diagnosis' | 'competitor' | 'tracking' | 'my'
+type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'bookingInsight' | 'diagnosis' | 'competitor' | 'tracking' | 'my'
 type AiDiagnosisDataRefreshStatus = {
   checkedAt: string
   hasUpdatingKeyword: boolean
@@ -50,6 +51,7 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   keyword: '키워드 분석',
   blog: '블로그 원고 작성',
   place: '플레이스 순위 조회',
+  bookingInsight: 'AI 예약 수요 캘린더',
   diagnosis: 'AI 플레이스 진단',
   competitor: 'AI 플레이스 경쟁사 비교',
   tracking: '플레이스 관리',
@@ -67,6 +69,7 @@ type MobileNavIcon =
   | 'home'
   | 'placeManage'
   | 'rank'
+  | 'bookingInsight'
   | 'diagnosis'
   | 'compare'
   | 'keyword'
@@ -492,6 +495,7 @@ export function MarketingWorkspace() {
             {view === 'home' ? (
               <HomeView
                 onOpenBlogPosting={() => openView('blog')}
+                onOpenBookingInsight={() => openView('bookingInsight')}
                 onOpenPlaceCompetitor={() => openView('competitor')}
                 onOpenPlaceDiagnosis={() => openView('diagnosis')}
                 onOpenKeyword={() => openView('keyword')}
@@ -511,6 +515,7 @@ export function MarketingWorkspace() {
               />
             ) : null}
             {view === 'place' ? <PlaceRankingTool /> : null}
+            {view === 'bookingInsight' ? <BookingInsightCalendarTool /> : null}
             {view === 'diagnosis' ? <AiPlaceDiagnosisTool /> : null}
             {view === 'competitor' ? <AiPlaceCompetitorComparisonTool /> : null}
             {view === 'tracking' ? <PlaceTrackingDashboard mode="manager" /> : null}
@@ -645,6 +650,22 @@ function MobileNavIconRenderer({ icon }: { icon: MobileNavIcon }) {
         <path d="M6 4h9l3 3v13H6z" />
         <path d="M15 4v4h4" />
         <path d="M8.8 14.2 11 16.4l4.2-5" />
+      </svg>
+    )
+  }
+
+  if (icon === 'bookingInsight') {
+    return (
+      <svg {...commonProps} aria-hidden="true">
+        <path d="M6 4v3" />
+        <path d="M18 4v3" />
+        <path d="M4 9h16" />
+        <path d="M5.5 6h13A1.5 1.5 0 0 1 20 7.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V7.5A1.5 1.5 0 0 1 5.5 6Z" />
+        <path d="M8 13h.01" />
+        <path d="M12 13h.01" />
+        <path d="M16 13h.01" />
+        <path d="M8 17h.01" />
+        <path d="M12 17h.01" />
       </svg>
     )
   }

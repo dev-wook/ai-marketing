@@ -161,22 +161,22 @@ export function KeywordTool({
   }
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-center py-6">
+    <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-5xl content-start pt-4 pb-6 md:content-center md:py-6">
       <section className="text-center">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
           AI Search Keyword Analysis
         </p>
-        <h2 className="mt-3 text-3xl font-black tracking-normal md:text-5xl">
+        <h2 className="mt-2 text-2xl font-black tracking-normal md:mt-3 md:text-5xl">
           AI 검색 노출에 중요한 키워드를 분석하세요
         </h2>
-        <p className="mx-auto mt-4 max-w-6xl text-base font-semibold leading-7 text-slate-300 xl:whitespace-nowrap">
+        <p className="mx-auto mt-3 max-w-6xl text-sm font-semibold leading-6 text-slate-300 md:mt-4 md:text-base md:leading-7 xl:whitespace-nowrap">
           입력한 키워드를 기준으로 AI가 중요하게 판단할 만한 주제어, 검색 의도, 블로그 활용
           포인트를 분석합니다.
         </p>
 
         <form
           onSubmit={submitKeyword}
-          className="mx-auto mt-8 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
+          className="mx-auto mt-4 max-w-3xl rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl md:mt-8"
         >
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">

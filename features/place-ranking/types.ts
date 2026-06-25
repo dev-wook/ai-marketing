@@ -392,6 +392,72 @@ export type PlaceBookingPredictionResponse = {
   }
 }
 
+export type PlaceBookingInsightCalendarRequest = {
+  bookingUrl?: string
+  bookingBusinessId?: string
+  yearMonth?: string
+}
+
+export type PlaceBookingInsightBlock = {
+  id: string
+  type: 'actual' | 'ai'
+  date: string
+  time: string
+  label: string
+  productName?: string
+  confidence?: number
+  reason?: string
+  basis?: string[]
+}
+
+export type PlaceBookingInsightDay = {
+  date: string
+  isPast: boolean
+  isToday: boolean
+  isFuture: boolean
+  isClosed: boolean
+  status: 'ready' | 'failed'
+  actualBlocks: PlaceBookingInsightBlock[]
+  aiBlocks: PlaceBookingInsightBlock[]
+  bookedCount: number
+  predictedAdditionalCount: number
+  expectedFinalCount: number
+  message?: string
+}
+
+export type PlaceBookingInsightAccuracy = {
+  label: string
+  percent: number
+  matched: number
+  total: number
+}
+
+export type PlaceBookingInsightResponse = {
+  yearMonth: string
+  generatedAt: string
+  forecastUntil: string
+  days: Record<string, PlaceBookingInsightDay>
+  accuracy: {
+    recent7Days: PlaceBookingInsightAccuracy
+    recent4Weeks: PlaceBookingInsightAccuracy
+    monthToDate: PlaceBookingInsightAccuracy
+  }
+  summary: {
+    monthActualBookings: number
+    monthAiPredictedBookings: number
+    monthExpectedFinalBookings: number
+    thisWeekExpectedBookings: number
+    recentEightWeekAverage: number
+    comparisonRate: number
+    statusLabel: '좋음' | '보통' | '주의'
+    busyDates: string[]
+    quietDates: string[]
+    busyTimes: string[]
+    quietTimes: string[]
+    insight: string
+  }
+}
+
 export type PlaceBookingSummaryRequestItem = {
   placeId: string
   rank: number
