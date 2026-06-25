@@ -340,6 +340,7 @@ function CalendarDayCell({
   ])
   const visibleBlocks = combinedBlocks.slice(0, 4)
   const overflowCount = Math.max(combinedBlocks.length - visibleBlocks.length, 0)
+  const canOpenDay = Boolean(day && combinedBlocks.length)
 
   return (
     <div
@@ -354,9 +355,21 @@ function CalendarDayCell({
         />
       ) : null}
       <div className="flex min-w-0 items-center justify-between gap-1">
-        <span className={`text-[11px] font-black md:text-sm ${date.isToday ? 'text-cyan-100' : 'text-slate-200'}`}>
-          {date.day}
-        </span>
+        {canOpenDay && day ? (
+          <button
+            type="button"
+            onClick={() => onOpenDay(day)}
+            className={`rounded px-0.5 text-[11px] font-black transition hover:bg-white/10 md:text-sm ${
+              date.isToday ? 'text-cyan-100' : 'text-slate-200'
+            }`}
+          >
+            {date.day}
+          </button>
+        ) : (
+          <span className={`text-[11px] font-black md:text-sm ${date.isToday ? 'text-cyan-100' : 'text-slate-200'}`}>
+            {date.day}
+          </span>
+        )}
         {day?.isClosed ? (
           <span className="rounded-full bg-white/[0.06] px-1 py-0.5 text-[8px] font-black text-slate-500 md:px-2 md:text-[10px]">
             <span className="md:hidden">휴</span>
@@ -385,7 +398,7 @@ function CalendarDayCell({
           <button
             type="button"
             onClick={() => onOpenDay(day)}
-            className="w-fit rounded-full border border-white/10 bg-white/[0.05] px-1 py-0.5 text-[8px] font-black text-cyan-100 transition hover:bg-cyan-300/10 md:px-1.5 md:text-[10px]"
+            className="w-fit rounded-full border border-white/10 bg-white/[0.035] px-0.5 py-px text-[7px] font-black leading-3 text-cyan-100/75 transition hover:bg-cyan-300/10 md:px-1.5 md:py-0.5 md:text-[10px] md:leading-none md:text-cyan-100"
           >
             <span className="md:hidden">+{overflowCount}</span>
             <span className="hidden md:inline">+{overflowCount}개 더 보기</span>
@@ -405,8 +418,8 @@ function BookingBlockPill({
 }) {
   const className =
     block.type === 'ai'
-      ? 'truncate rounded border border-dashed border-cyan-200/40 bg-cyan-300/[0.08] px-1 py-0.5 text-left text-[9px] font-black leading-3 text-cyan-100 transition hover:bg-cyan-300/16 md:px-2 md:py-1 md:text-[11px] md:leading-4'
-      : 'truncate rounded border border-cyan-300/20 bg-cyan-300/14 px-1 py-0.5 text-left text-[9px] font-black leading-3 text-cyan-50 md:px-2 md:py-1 md:text-[11px] md:leading-4'
+      ? 'truncate rounded border border-dashed border-cyan-200/40 bg-cyan-300/[0.08] px-1 py-0.5 text-center text-[9px] font-black leading-3 text-cyan-100 transition hover:bg-cyan-300/16 md:px-2 md:py-1 md:text-left md:text-[11px] md:leading-4'
+      : 'truncate rounded border border-cyan-300/20 bg-cyan-300/14 px-1 py-0.5 text-center text-[9px] font-black leading-3 text-cyan-50 md:px-2 md:py-1 md:text-left md:text-[11px] md:leading-4'
 
   if (block.type === 'ai') {
     return (
@@ -416,15 +429,19 @@ function BookingBlockPill({
         className={className}
         title={block.productName}
       >
-        <span className="mr-0.5 rounded bg-cyan-200/20 px-0.5 text-[8px] leading-none md:mr-1 md:px-1 md:text-[9px]">AI</span>
-        {block.time}
+        <span className="md:hidden">예약</span>
+        <span className="hidden md:inline">
+          <span className="mr-1 rounded bg-cyan-200/20 px-1 text-[9px] leading-none">AI</span>
+          {block.time}
+        </span>
       </button>
     )
   }
 
   return (
     <span className={className} title={block.productName}>
-      {block.time}
+      <span className="md:hidden">예약</span>
+      <span className="hidden md:inline">{block.time}</span>
     </span>
   )
 }
