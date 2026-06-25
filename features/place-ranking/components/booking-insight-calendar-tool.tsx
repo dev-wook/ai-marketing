@@ -593,7 +593,7 @@ function ChipList({ items, title }: { items: string[]; title: string }) {
 
 function sortBookingBlocksByTime(blocks: PlaceBookingInsightBlock[]) {
   return [...blocks].sort((left, right) => {
-    const timeCompare = left.time.localeCompare(right.time)
+    const timeCompare = parseTimeToMinutes(left.time) - parseTimeToMinutes(right.time)
 
     if (timeCompare !== 0) {
       return timeCompare
@@ -605,6 +605,23 @@ function sortBookingBlocksByTime(blocks: PlaceBookingInsightBlock[]) {
 
     return left.type === 'actual' ? -1 : 1
   })
+}
+
+function parseTimeToMinutes(time: string) {
+  const match = time.match(/^(\d{1,2}):(\d{2})$/)
+
+  if (!match) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  return hours * 60 + minutes
 }
 
 async function requestRankings(keyword: string) {
@@ -699,8 +716,8 @@ function DayDetailModal({
         </div>
 
         <div className="mt-5 grid gap-4">
-          <ScheduleList title="실예약" blocks={day.actualBlocks} type="actual" />
-          <ScheduleList title="AI 예측" blocks={day.aiBlocks} type="ai" />
+          <ScheduleList title="실예약" blocks={sortBookingBlocksByTime(day.actualBlocks)} type="actual" />
+          <ScheduleList title="AI 예측" blocks={sortBookingBlocksByTime(day.aiBlocks)} type="ai" />
         </div>
       </section>
     </div>,
