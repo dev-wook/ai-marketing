@@ -96,16 +96,16 @@ const mobileNavigationItems: MobileNavItem[] = [
     icon: 'rank',
   },
   {
+    key: 'bookingInsight',
+    label: 'AI 예약 수요 캘린더',
+    shortLabel: '예약',
+    icon: 'bookingInsight',
+  },
+  {
     key: 'diagnosis',
     label: '플레이스 진단',
     shortLabel: '진단',
     icon: 'diagnosis',
-  },
-  {
-    key: 'competitor',
-    label: '경쟁사 비교',
-    shortLabel: '비교',
-    icon: 'compare',
   },
   {
     key: 'my',

@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useMemo, useRef, useState } from 'react'
+import { FormEvent, ReactNode, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useBodyScrollLock } from '@/features/platform/components/use-body-scroll-lock'
 import type {
@@ -562,13 +562,37 @@ function InsightAnalysisPanel({ insight }: { insight: PlaceBookingInsightRespons
     insight.accuracy.recent4Weeks,
     insight.accuracy.monthToDate,
   ]
+  const reservationDashboard = createReservationDashboardMock(insight)
 
   return (
     <section className="grid gap-4 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:p-5">
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="이번 달 실예약" value={`${insight.summary.monthActualBookings}건`} />
-        <MetricCard label="AI 추가 예측" value={`${insight.summary.monthAiPredictedBookings}건`} tone="ai" />
-        <MetricCard label="예상 최종 예약" value={`${insight.summary.monthExpectedFinalBookings}건`} />
+        <MetricCard
+          label="예상 추가 수요"
+          value={formatBookingRange(
+            insight.summary.monthExpectedAdditionalDemandMin,
+            insight.summary.monthExpectedAdditionalDemandMax,
+          )}
+          tone="ai"
+        />
+        <MetricCard
+          label="월말 예상 예약"
+          value={formatBookingRange(
+            insight.summary.monthExpectedFinalBookingsMin,
+            insight.summary.monthExpectedFinalBookingsMax,
+          )}
+        />
+        <MetricCard
+          label="전월 대비"
+          value={formatPercentMetric(insight.summary.monthExpectedVsPreviousMonthRate)}
+          tone={getPercentTone(insight.summary.monthExpectedVsPreviousMonthRate)}
+        />
+        <MetricCard
+          label="지난주 대비"
+          value={formatPercentMetric(insight.summary.weekOverWeekRate)}
+          tone={getPercentTone(insight.summary.weekOverWeekRate)}
+        />
         <MetricCard label="이번 주 상태" value={insight.summary.statusLabel} tone={insight.summary.statusLabel === '주의' ? 'warning' : 'good'} />
       </div>
 
@@ -576,16 +600,12 @@ function InsightAnalysisPanel({ insight }: { insight: PlaceBookingInsightRespons
         <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
           <h3 className="text-base font-black text-white">월간 운영 분석</h3>
           <p className="mt-2 text-sm font-bold leading-6 text-slate-300">{insight.summary.insight}</p>
-          <div className="mt-4 grid gap-2 md:grid-cols-2">
-            <ChipList title="예약 집중 예상 날짜" items={insight.summary.busyDates} />
-            <ChipList title="비교적 여유로운 날짜" items={insight.summary.quietDates} />
-            <ChipList title="예약 집중 예상 시간" items={insight.summary.busyTimes} />
-            <ChipList title="비교적 여유로운 시간" items={insight.summary.quietTimes} />
-          </div>
+          <WeeklyTrendChart items={insight.summary.weeklyTrend} />
+          <OperationSignalGrid insight={insight} />
         </div>
 
         <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
-          <h3 className="text-base font-black text-white">AI 적중률</h3>
+          <h3 className="text-base font-black text-white">시간대 예측 적중률</h3>
           <div className="mt-3 grid gap-3">
             {accuracyItems.map((item) => (
               <div key={item.label}>
@@ -602,6 +622,7 @@ function InsightAnalysisPanel({ insight }: { insight: PlaceBookingInsightRespons
               </div>
             ))}
           </div>
+          <ReservationDashboardGrid data={reservationDashboard} />
         </div>
       </div>
     </section>
@@ -683,41 +704,516 @@ function MetricCard({
   value,
 }: {
   label: string
-  tone?: 'default' | 'ai' | 'good' | 'warning'
+  tone?: MetricTone
   value: string
 }) {
-  const toneClass =
-    tone === 'ai'
-      ? 'border-fuchsia-300/25 bg-fuchsia-300/10 text-fuchsia-100'
-      : tone === 'good'
-        ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
-        : tone === 'warning'
-          ? 'border-amber-300/25 bg-amber-300/10 text-amber-100'
-          : 'border-cyan-300/18 bg-white/[0.035] text-cyan-100'
-
   return (
-    <div className={`rounded-md border p-4 ${toneClass}`}>
+    <div className={`rounded-md border p-4 ${metricToneClass[tone]}`}>
       <p className="text-xs font-black text-slate-400">{label}</p>
       <p className="mt-2 text-2xl font-black text-white">{value}</p>
     </div>
   )
 }
 
-function ChipList({ items, title }: { items: string[]; title: string }) {
+type MetricTone = 'default' | 'ai' | 'good' | 'warning' | 'danger'
+
+const metricToneClass: Record<MetricTone, string> = {
+  ai: 'border-fuchsia-300/25 bg-fuchsia-300/10 text-fuchsia-100',
+  danger: 'border-rose-300/25 bg-rose-400/10 text-rose-100',
+  default: 'border-cyan-300/18 bg-white/[0.035] text-cyan-100',
+  good: 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100',
+  warning: 'border-amber-300/25 bg-amber-300/10 text-amber-100',
+}
+
+type ReservationDashboardData = {
+  goal: {
+    aiExpected: number
+    currentActual: number
+    target: number
+  }
+  hourlyDeltas: Array<{
+    current: number
+    hour: string
+    previous: number
+  }>
+  weekdayDeltas: Array<{
+    current: number
+    day: string
+    previous: number
+  }>
+  weeklyComparison: Array<{
+    currentActual: number
+    currentExpected: number
+    label: string
+    previous: number
+  }>
+}
+
+function ReservationDashboardGrid({ data }: { data: ReservationDashboardData }) {
+  return (
+    <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <ReservationInsightCard title="전월 예약 흐름 비교">
+        <MonthlyFlowComparison items={data.weeklyComparison} />
+      </ReservationInsightCard>
+      <ReservationInsightCard title="시간대 증감">
+        <DeltaCompactList items={data.hourlyDeltas.map((item) => ({ ...item, label: item.hour }))} />
+      </ReservationInsightCard>
+      <ReservationInsightCard title="요일별 증감">
+        <WeekdayDeltaBars items={data.weekdayDeltas} />
+      </ReservationInsightCard>
+      <ReservationInsightCard title="예약 예측 달성률">
+        <GoalAchievement data={data.goal} />
+      </ReservationInsightCard>
+    </div>
+  )
+}
+
+function ReservationInsightCard({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <div className="min-h-[13.5rem] rounded-md border border-white/10 bg-[#080f1d]/70 p-3">
+      <h4 className="text-sm font-black text-white">{title}</h4>
+      <div className="mt-3">{children}</div>
+    </div>
+  )
+}
+
+function MonthlyFlowComparison({ items }: { items: ReservationDashboardData['weeklyComparison'] }) {
+  const maxValue = Math.max(
+    ...items.flatMap((item) => [item.previous, item.currentActual + item.currentExpected]),
+    1,
+  )
+
+  return (
+    <div className="grid gap-2.5">
+      {items.map((item) => {
+        const currentTotal = item.currentActual + item.currentExpected
+        const delta = calculateDeltaPercent(currentTotal, item.previous)
+
+        return (
+          <div key={item.label} className="grid gap-1">
+            <div className="flex items-center justify-between gap-2 text-[11px] font-black">
+              <span className="text-slate-300">{item.label}</span>
+              <DeltaBadge value={delta} />
+            </div>
+            <div className="grid gap-1">
+              <ComparisonBar label="지난달" maxValue={maxValue} tone="previous" value={item.previous} />
+              <CurrentMonthComparisonBar
+                actual={item.currentActual}
+                expected={item.currentExpected}
+                maxValue={maxValue}
+              />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function CurrentMonthComparisonBar({
+  actual,
+  expected,
+  maxValue,
+}: {
+  actual: number
+  expected: number
+  maxValue: number
+}) {
+  const total = actual + expected
+  const actualPercent = Math.min(100, (actual / maxValue) * 100)
+  const expectedPercent = Math.min(100 - actualPercent, (expected / maxValue) * 100)
+
+  return (
+    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2rem] items-center gap-2 text-[10px] font-bold text-slate-500">
+      <span>이번달</span>
+      <span className="flex h-2 overflow-hidden rounded-full bg-white/10">
+        <span className="block h-full bg-cyan-300" style={{ width: `${actualPercent}%` }} />
+        {expected > 0 ? (
+          <span className="block h-full bg-fuchsia-300" style={{ width: `${expectedPercent}%` }} />
+        ) : null}
+      </span>
+      <span className="text-right text-slate-300">{total}</span>
+    </div>
+  )
+}
+
+function ComparisonBar({
+  label,
+  maxValue,
+  tone,
+  value,
+}: {
+  label: string
+  maxValue: number
+  tone: 'current' | 'previous'
+  value: number
+}) {
+  const percent = Math.min(100, (value / maxValue) * 100)
+  const colorClass = tone === 'current' ? 'bg-cyan-300' : 'bg-white/25'
+
+  return (
+    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2rem] items-center gap-2 text-[10px] font-bold text-slate-500">
+      <span>{label}</span>
+      <span className="h-2 overflow-hidden rounded-full bg-white/10">
+        <span className={`block h-full rounded-full ${colorClass}`} style={{ width: `${percent}%` }} />
+      </span>
+      <span className="text-right text-slate-300">{value}</span>
+    </div>
+  )
+}
+
+function DeltaCompactList({
+  items,
+}: {
+  items: Array<{
+    current: number
+    label: string
+    previous: number
+  }>
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {items.map((item) => (
+        <div key={item.label} className="rounded border border-white/10 bg-white/[0.035] px-2 py-1.5">
+          <p className="text-[11px] font-black text-slate-300">{item.label}</p>
+          <DeltaBadge value={calculateDeltaPercent(item.current, item.previous)} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function WeekdayDeltaBars({ items }: { items: ReservationDashboardData['weekdayDeltas'] }) {
+  const maxAbsDelta = Math.max(
+    ...items.map((item) => Math.abs(calculateDeltaPercent(item.current, item.previous) ?? 0)),
+    1,
+  )
+
+  return (
+    <div className="grid gap-2">
+      {items.map((item) => {
+        const delta = calculateDeltaPercent(item.current, item.previous)
+        const width = delta === null ? 0 : Math.min(100, (Math.abs(delta) / maxAbsDelta) * 100)
+
+        return (
+          <div key={item.day} className="grid grid-cols-[1.5rem_minmax(0,1fr)_3.25rem] items-center gap-2 text-[11px] font-black">
+            <span className="text-slate-300">{item.day}</span>
+            <span className="h-2 overflow-hidden rounded-full bg-white/10">
+              <span className={`block h-full rounded-full ${getDeltaColorClass(delta)}`} style={{ width: `${width}%` }} />
+            </span>
+            <span className={getDeltaTextClass(delta)}>{formatDeltaPercent(delta)}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function GoalAchievement({ data }: { data: ReservationDashboardData['goal'] }) {
+  const currentPercent = Math.min(120, Math.round((data.currentActual / data.target) * 100))
+  const expectedPercent = Math.min(120, Math.round((data.aiExpected / data.target) * 100))
+  const actualWidth = Math.min(100, currentPercent)
+  const expectedAdditionalWidth = Math.max(0, Math.min(100 - actualWidth, expectedPercent - currentPercent))
+
   return (
     <div>
-      <p className="text-xs font-black uppercase tracking-[0.12em] text-cyan-200/70">{title}</p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {items.length ? items.map((item) => (
-          <span key={item} className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-black text-slate-200">
-            {item}
-          </span>
-        )) : (
-          <span className="text-xs font-bold text-slate-500">충분한 신호 없음</span>
-        )}
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <GoalStat label="목표" value={`${data.target}건`} />
+        <GoalStat label="실예약" value={`${data.currentActual}건`} />
+        <GoalStat label="AI예상" value={`${data.aiExpected}건`} />
+      </div>
+      <div className="mt-4">
+        <div className="flex items-center justify-between text-[11px] font-black text-slate-400">
+          <span>0</span>
+          <span className="text-cyan-100">{expectedPercent}%</span>
+          <span>100%</span>
+        </div>
+        <div className="relative mt-2 flex h-3 overflow-hidden rounded-full bg-white/10">
+          <span className="h-full bg-cyan-300" style={{ width: `${actualWidth}%` }} />
+          {expectedAdditionalWidth > 0 ? (
+            <span className="h-full bg-fuchsia-300" style={{ width: `${expectedAdditionalWidth}%` }} />
+          ) : null}
+          <span className="absolute inset-y-[-0.2rem] left-[83.33%] w-px bg-white/70" />
+        </div>
+        <p className="mt-2 text-xs font-bold text-slate-400">
+          현재 {currentPercent}% · AI 예상 {expectedPercent}%
+        </p>
       </div>
     </div>
   )
+}
+
+function GoalStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border border-white/10 bg-white/[0.035] px-2 py-2">
+      <p className="text-[10px] font-black text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-black text-white">{value}</p>
+    </div>
+  )
+}
+
+function DeltaBadge({ value }: { value: number | null }) {
+  return (
+    <span className={`inline-flex text-[11px] font-black ${getDeltaTextClass(value)}`}>
+      {formatDeltaPercent(value)}
+    </span>
+  )
+}
+
+function calculateDeltaPercent(current: number, previous: number) {
+  if (previous <= 0) {
+    return current > 0 ? 100 : null
+  }
+
+  return Math.round(((current - previous) / previous) * 100)
+}
+
+function formatDeltaPercent(value: number | null) {
+  if (value === null || value === 0) {
+    return '-'
+  }
+
+  return `${value > 0 ? '▲' : '▼'}${Math.abs(value)}%`
+}
+
+function getDeltaTextClass(value: number | null) {
+  if (value === null || value === 0) {
+    return 'text-slate-500'
+  }
+
+  return value > 0 ? 'text-rose-300' : 'text-blue-300'
+}
+
+function getDeltaColorClass(value: number | null) {
+  if (value === null || value === 0) {
+    return 'bg-slate-500'
+  }
+
+  return value > 0 ? 'bg-rose-300' : 'bg-blue-300'
+}
+
+function createReservationDashboardMock(insight: PlaceBookingInsightResponse): ReservationDashboardData {
+  const goalTarget = Math.max(90, insight.summary.previousMonthActualBookings || 90)
+  const aiExpected = Math.max(goalTarget, insight.summary.monthExpectedFinalBookingsMax)
+
+  return {
+    goal: {
+      aiExpected,
+      currentActual: insight.summary.monthActualBookings,
+      target: goalTarget,
+    },
+    hourlyDeltas: [
+      { hour: '10시', previous: 17, current: 19 },
+      { hour: '11시', previous: 13, current: 12 },
+      { hour: '12시', previous: 13, current: 17 },
+      { hour: '13시', previous: 24, current: 25 },
+      { hour: '14시', previous: 22, current: 18 },
+      { hour: '15시', previous: 13, current: 15 },
+      { hour: '16시', previous: 14, current: 15 },
+      { hour: '17시', previous: 11, current: 12 },
+      { hour: '18시', previous: 18, current: 22 },
+    ],
+    weekdayDeltas: [
+      { day: '월', previous: 25, current: 27 },
+      { day: '화', previous: 31, current: 30 },
+      { day: '수', previous: 27, current: 31 },
+      { day: '목', previous: 43, current: 44 },
+      { day: '금', previous: 25, current: 31 },
+      { day: '토', previous: 32, current: 30 },
+    ],
+    weeklyComparison: insight.summary.weeklyTrend.map((item, index) => ({
+      currentActual: item.actualBookings,
+      currentExpected: item.expectedAdditionalDemandMax,
+      label: item.label,
+      previous: [18, 19, 21, 20, 8][index] ?? Math.max(0, item.actualBookings - 1),
+    })),
+  }
+}
+
+function formatBookingRange(min: number, max: number) {
+  if (min === max) {
+    return `약 ${min}건`
+  }
+
+  return `약 ${min}~${max}건`
+}
+
+function formatPercentMetric(value: number | null) {
+  return value === null ? '데이터 부족' : `${value}%`
+}
+
+function getPercentTone(value: number | null): MetricTone {
+  if (value === null) {
+    return 'default'
+  }
+
+  if (value >= 100) {
+    return 'good'
+  }
+
+  if (value < 85) {
+    return 'danger'
+  }
+
+  return 'warning'
+}
+
+function WeeklyTrendChart({ items }: { items: PlaceBookingInsightResponse['summary']['weeklyTrend'] }) {
+  const maxValue = Math.max(...items.map((item) => item.expectedBookingsMax), 1)
+
+  return (
+    <div className="mt-4 rounded-md border border-white/10 bg-[#080f1d]/70 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-black text-white">주차별 예약 추이</p>
+        <div className="flex items-center gap-3 text-[10px] font-black text-slate-400">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-cyan-300" />
+            실예약
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-fuchsia-300" />
+            AI예상
+          </span>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3">
+        {items.map((item) => {
+          const actualPercent = Math.min(100, (item.actualBookings / maxValue) * 100)
+          const additionalPercent = Math.min(
+            100 - actualPercent,
+            (item.expectedAdditionalDemandMax / maxValue) * 100,
+          )
+
+          return (
+            <div key={`${item.startDate}-${item.endDate}`} className="grid gap-1">
+              <div className="flex items-center justify-between gap-3 text-xs font-black">
+                <span className="text-slate-300">
+                  {item.label}
+                  <span className="ml-2 text-[10px] text-slate-500">
+                    {formatShortDate(item.startDate)}~{formatShortDate(item.endDate)}
+                  </span>
+                </span>
+                <span className="text-cyan-100">
+                  {formatBookingRange(item.expectedBookingsMin, item.expectedBookingsMax)}
+                </span>
+              </div>
+              <div className="flex h-3 overflow-hidden rounded-full bg-white/10">
+                <span className="h-full bg-cyan-300" style={{ width: `${actualPercent}%` }} />
+                <span className="h-full bg-fuchsia-300" style={{ width: `${additionalPercent}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function OperationSignalGrid({ insight }: { insight: PlaceBookingInsightResponse }) {
+  const signals = createOperationSignals(insight)
+
+  return (
+    <div className="mt-4 grid gap-2 md:grid-cols-2">
+      {signals.map((signal) => (
+        <div
+          key={signal.label}
+          className={`rounded-md border p-3 ${metricToneClass[signal.tone]}`}
+        >
+          <p className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">
+            {signal.label}
+          </p>
+          <p className="mt-1 text-lg font-black text-white">{signal.value}</p>
+          <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-300">
+            {signal.description}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function createOperationSignals(insight: PlaceBookingInsightResponse) {
+  const trend = insight.summary.weeklyTrend
+  const peakWeek = [...trend].sort(
+    (left, right) => right.expectedBookingsMax - left.expectedBookingsMax,
+  )[0]
+  const aiDemandWeek = [...trend].sort(
+    (left, right) => right.expectedAdditionalDemandMax - left.expectedAdditionalDemandMax,
+  )[0]
+  const aiShare =
+    insight.summary.monthExpectedFinalBookingsMax > 0
+      ? Math.round(
+          (insight.summary.monthExpectedAdditionalDemandMax /
+            insight.summary.monthExpectedFinalBookingsMax) *
+            100,
+        )
+      : 0
+
+  return [
+    {
+      label: '월말 페이스',
+      value: formatPercentMetric(insight.summary.monthExpectedVsPreviousMonthRate),
+      description:
+        insight.summary.monthExpectedVsPreviousMonthRate === null
+          ? '전월 실예약 표본이 없어 비교 기준을 만들 수 없습니다.'
+          : `전월 실예약 ${insight.summary.previousMonthActualBookings}건 대비 월말 예상 예약 기준입니다.`,
+      tone: getPercentTone(insight.summary.monthExpectedVsPreviousMonthRate),
+    },
+    {
+      label: '이번 주 흐름',
+      value: formatPercentMetric(insight.summary.weekOverWeekRate),
+      description:
+        insight.summary.weekOverWeekRate === null
+          ? '지난주 예약 표본이 없어 비교 기준을 만들 수 없습니다.'
+          : `지난주 ${insight.summary.lastWeekBookings}건 대비 이번 주 예상 예약 기준입니다.`,
+      tone: getPercentTone(insight.summary.weekOverWeekRate),
+    },
+    {
+      label: 'AI 예상 의존도',
+      value: `${aiShare}%`,
+      description:
+        aiShare >= 20
+          ? '월말 예상에서 아직 확정되지 않은 AI 예상 수요 비중이 높습니다.'
+          : '월말 예상 대부분이 이미 확인된 실예약 기반입니다.',
+      tone: aiShare >= 20 ? 'warning' : 'default',
+    },
+    {
+      label: '피크 주차',
+      value: peakWeek ? `${peakWeek.label} ${formatBookingRange(peakWeek.expectedBookingsMin, peakWeek.expectedBookingsMax)}` : '데이터 부족',
+      description: peakWeek
+        ? `${formatShortDate(peakWeek.startDate)}~${formatShortDate(peakWeek.endDate)} 구간이 이번 달 가장 강한 예약 흐름입니다.`
+        : '주차별 예약 추이를 만들 수 있는 데이터가 부족합니다.',
+      tone: 'good',
+    },
+    {
+      label: 'AI 수요 보강 구간',
+      value: aiDemandWeek
+        ? `${aiDemandWeek.label} ${formatBookingRange(
+            aiDemandWeek.expectedAdditionalDemandMin,
+            aiDemandWeek.expectedAdditionalDemandMax,
+          )}`
+        : '데이터 부족',
+      description: aiDemandWeek
+        ? '실예약 외에 추가 유입 가능성이 가장 크게 잡힌 주차입니다.'
+        : 'AI 예상 수요를 계산할 수 있는 예약 가능 슬롯이 부족합니다.',
+      tone: 'ai',
+    },
+    {
+      label: '예측 신뢰 확인',
+      value: `${insight.accuracy.recent4Weeks.percent}%`,
+      description: `최근 4주 기준 ${insight.accuracy.recent4Weeks.matched}/${insight.accuracy.recent4Weeks.total}개 시간대가 실제 예약과 맞았습니다.`,
+      tone: insight.accuracy.recent4Weeks.percent >= 70 ? 'good' : 'warning',
+    },
+  ] satisfies Array<{
+    description: string
+    label: string
+    tone: MetricTone
+    value: string
+  }>
+}
+
+function formatShortDate(value: string) {
+  return value.slice(5).replace('-', '.')
 }
 
 function sortBookingBlocksByTime(blocks: PlaceBookingInsightBlock[]) {

@@ -407,6 +407,7 @@ export type PlaceBookingInsightBlock = {
   time: string
   label: string
   productName?: string
+  expectedDemand?: number
   confidence?: number
   reason?: string
   basis?: string[]
@@ -447,11 +448,30 @@ export type PlaceBookingInsightResponse = {
   summary: {
     monthActualBookings: number
     monthAiPredictedBookings: number
+    monthAiDemandSlotCount: number
+    monthExpectedAdditionalDemandMin: number
+    monthExpectedAdditionalDemandMax: number
     monthExpectedFinalBookings: number
+    monthExpectedFinalBookingsMin: number
+    monthExpectedFinalBookingsMax: number
+    previousMonthActualBookings: number
+    monthExpectedVsPreviousMonthRate: number | null
     thisWeekExpectedBookings: number
+    lastWeekBookings: number
+    weekOverWeekRate: number | null
     recentEightWeekAverage: number
     comparisonRate: number
     statusLabel: '좋음' | '보통' | '주의'
+    weeklyTrend: Array<{
+      label: string
+      startDate: string
+      endDate: string
+      actualBookings: number
+      expectedAdditionalDemandMin: number
+      expectedAdditionalDemandMax: number
+      expectedBookingsMin: number
+      expectedBookingsMax: number
+    }>
     busyDates: string[]
     quietDates: string[]
     busyTimes: string[]

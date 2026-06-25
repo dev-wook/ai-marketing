@@ -230,12 +230,7 @@ export function AiPlaceDiagnosisTool() {
 
         </div>
 
-        <form
-          className="rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.18)]"
-          onSubmit={handlePlaceSearch}
-        >
-          <label className="mb-2 block text-sm font-black text-slate-200">플레이스명 검색</label>
-          <div className="flex flex-col gap-3 md:flex-row">
+        <form onSubmit={handlePlaceSearch} className="grid gap-3 md:grid-cols-[1fr_auto]">
             <input
               value={placeSearchQuery}
               onChange={(event) => {
@@ -245,12 +240,12 @@ export function AiPlaceDiagnosisTool() {
               }}
               placeholder="예: 라솝뷰티"
               disabled={isSearching || isLoading}
-              className="min-h-14 flex-1 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-13 w-full rounded-md border border-white/10 bg-[#090d18] px-4 text-base font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={!canSearch}
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex min-h-13 items-center justify-center gap-2 rounded-md bg-white px-6 text-sm font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
             >
               {isSearching ? (
                 <>
@@ -261,7 +256,6 @@ export function AiPlaceDiagnosisTool() {
                 '플레이스 검색'
               )}
             </button>
-          </div>
         </form>
 
         <RecentSearchList
@@ -274,7 +268,9 @@ export function AiPlaceDiagnosisTool() {
 
         {placeSearchItems.length ? (
           <div className="grid gap-3">
-            <p className="text-sm font-black text-slate-200">검색 결과에서 진단할 플레이스를 선택하세요</p>
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/75">
+              Search Results
+            </p>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {placeSearchItems.map((place) => (
                 <PlaceSearchCard
@@ -292,36 +288,28 @@ export function AiPlaceDiagnosisTool() {
         ) : null}
 
         {selectedPlace ? (
-          <div className="rounded-md border border-cyan-200/25 bg-cyan-300/10 p-4">
-            <p className="text-xs font-black text-cyan-100/80">선택된 플레이스</p>
-            <p className="mt-1 break-keep text-sm font-black text-white">
-              {selectedPlace.name} · {selectedPlace.category}
-            </p>
-            <p className="mt-1 break-keep text-xs font-semibold leading-5 text-slate-300">
-              {selectedPlace.address || '주소 정보 없음'}
-            </p>
-          </div>
+          <SelectedPlaceSummary place={selectedPlace} />
         ) : null}
 
         <form
-          className="rounded-md border border-white/10 bg-white/[0.06] p-3 shadow-[0_22px_50px_rgba(0,0,0,0.18)]"
+          className="grid gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3 md:grid-cols-[1fr_auto]"
           onSubmit={handleSubmit}
         >
-          <label className="grid gap-2">
-            <span className="text-sm font-black text-slate-200">분석 키워드</span>
+          <label className="grid gap-2 md:block">
+            <span className="sr-only">분석 키워드</span>
             <input
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               placeholder="예: 노원 속눈썹펌"
               disabled={isSearching || isLoading}
-              className="min-h-14 rounded-md border border-white/10 bg-[#090d18] px-4 text-lg font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-13 w-full rounded-md border border-white/10 bg-[#090d18] px-4 text-base font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
             />
           </label>
 
           <button
             type="submit"
             disabled={!canSubmit}
-            className="mt-3 min-h-14 w-full rounded-md bg-white px-6 text-base font-black text-[#070a12] shadow-[0_0_26px_rgba(34,211,238,0.2)] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+            className="min-h-13 rounded-md bg-white px-6 text-sm font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {isLoading ? '진단 중' : 'AI 진단 시작'}
           </button>
@@ -576,14 +564,14 @@ function PlaceSearchCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`grid min-h-[8.5rem] grid-cols-[5.5rem_minmax(0,1fr)] gap-3 rounded-md border p-3 text-left transition ${
+      className={`grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-3 rounded-md border p-3 text-left transition ${
         selected
           ? 'border-cyan-200/70 bg-cyan-300/14 shadow-[0_0_0_3px_rgba(103,232,249,0.10)]'
           : 'border-white/10 bg-white/[0.035] hover:border-cyan-200/35 hover:bg-cyan-300/8'
       }`}
       aria-pressed={selected}
     >
-      <div className="h-24 w-full overflow-hidden rounded-md border border-white/10 bg-[#090d18]">
+      <div className="h-16 w-16 overflow-hidden rounded-md border border-white/10 bg-[#090d18]">
         {place.imageUrl ? (
           <img
             src={place.imageUrl}
@@ -598,7 +586,7 @@ function PlaceSearchCard({
         )}
       </div>
 
-      <span className="grid min-w-0 content-start gap-2">
+      <span className="grid min-w-0 content-center gap-1">
         <span className="flex min-w-0 items-start justify-between gap-2">
           <span className="min-w-0 break-keep text-sm font-black leading-5 text-white">
             {place.name}
@@ -617,6 +605,27 @@ function PlaceSearchCard({
         </span>
       </span>
     </button>
+  )
+}
+
+function SelectedPlaceSummary({ place }: { place: AiPlaceDiagnosisPlaceSearchItem }) {
+  return (
+    <div className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <span className="block h-16 w-16 overflow-hidden rounded-md border border-white/10 bg-white/[0.04]">
+        {place.imageUrl ? (
+          <img src={place.imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+        ) : null}
+      </span>
+      <span className="grid min-w-0 content-center gap-1">
+        <span className="truncate text-sm font-black text-white">{place.name}</span>
+        <span className="truncate text-xs font-bold text-cyan-100/75">
+          {place.category || '업종 정보 없음'}
+        </span>
+        <span className="truncate text-xs font-bold text-slate-400">
+          {place.address || '주소 정보 없음'}
+        </span>
+      </span>
+    </div>
   )
 }
 
