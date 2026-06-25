@@ -372,7 +372,7 @@ function CalendarSelect({
         }`}
       >
         <span className="truncate">{selectedOption?.label ?? value}</span>
-        <span className={`text-sm text-cyan-100/75 transition ${isOpen ? 'rotate-180' : ''}`}>▾</span>
+        <span className={`text-lg leading-none text-cyan-100/75 transition ${isOpen ? 'rotate-180' : ''}`}>▾</span>
       </button>
 
       {isOpen ? (
