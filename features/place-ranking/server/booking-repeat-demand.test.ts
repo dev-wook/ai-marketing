@@ -7,6 +7,7 @@ import {
   createFallbackRepeatDemandPredictions,
   createRepeatDemandCandidates,
   getCycleWeight,
+  getSameDayBookingWeight,
   getTimeWeight,
 } from './booking-repeat-demand'
 
@@ -34,6 +35,20 @@ test('time weights keep two hours as primary range and three hours as extended r
   assert.equal(getTimeWeight(120), 0.7)
   assert.equal(getTimeWeight(180), 0.4)
   assert.equal(getTimeWeight(210), 0)
+})
+
+test('same-day booking weights follow analyzed lead-time distribution', () => {
+  assert.equal(getSameDayBookingWeight(0), 0)
+  assert.equal(getSameDayBookingWeight(0.5), 0.1)
+  assert.equal(getSameDayBookingWeight(1), 0.24)
+  assert.equal(getSameDayBookingWeight(2), 0.38)
+  assert.equal(getSameDayBookingWeight(3), 0.53)
+  assert.equal(getSameDayBookingWeight(4), 0.62)
+  assert.equal(getSameDayBookingWeight(5), 0.73)
+  assert.equal(getSameDayBookingWeight(6), 0.82)
+  assert.equal(getSameDayBookingWeight(8), 0.9)
+  assert.equal(getSameDayBookingWeight(10), 0.96)
+  assert.equal(getSameDayBookingWeight(12), 1)
 })
 
 test('historical booking contribution is distributed without over-counting', () => {
@@ -82,6 +97,28 @@ test('zero-capacity and booked slots do not receive repeat demand', () => {
   })
 
   assert.deepEqual(candidates, [])
+})
+
+test('same-day demand excludes slots under 30 minutes and applies lead-time weight', () => {
+  const candidates = createRepeatDemandCandidates({
+    currentKstMinute: 13 * 60,
+    date: '2026-07-01',
+    historyStatuses: [createHistoryStatus('2026-06-01', ['14:00'])],
+    products: [
+      createProduct('target', [
+        ['13:20', 'available', 1],
+        ['13:30', 'available', 1],
+        ['14:00', 'available', 1],
+      ]),
+    ],
+    today: '2026-07-01',
+  })
+
+  const candidatesByTime = new Map(candidates.map((candidate) => [candidate.time, candidate]))
+
+  assert.equal(candidatesByTime.has('13:20'), false)
+  assert.equal(candidatesByTime.get('13:30')?.sameDayBookingWeight, 0.1)
+  assert.equal(candidatesByTime.get('14:00')?.sameDayBookingWeight, 0.24)
 })
 
 test('Gemini predictions are validated, capped, and unknown slot ids are ignored', () => {

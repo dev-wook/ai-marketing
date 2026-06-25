@@ -9,6 +9,10 @@ export type BookingRepeatDemandConfig = {
   weekdayWeights: Record<number, number>
   timeWeights: BookingRepeatDemandWeightRange[]
   bookingTimingWeights: BookingRepeatDemandWeightRange[]
+  sameDayBookingWeights: Array<{
+    maxHoursExclusive: number
+    weight: number
+  }>
   recencyWeight: {
     min: number
     max: number
@@ -52,6 +56,19 @@ export const bookingRepeatDemandConfig: BookingRepeatDemandConfig = {
     { min: 3, max: 5, weight: 0.85 },
     { min: 6, max: 7, weight: 0.65 },
     { min: 8, max: Number.MAX_SAFE_INTEGER, weight: 0.45 },
+  ],
+  sameDayBookingWeights: [
+    { maxHoursExclusive: 0, weight: 0 },
+    { maxHoursExclusive: 1, weight: 0.1 },
+    { maxHoursExclusive: 2, weight: 0.24 },
+    { maxHoursExclusive: 3, weight: 0.38 },
+    { maxHoursExclusive: 4, weight: 0.53 },
+    { maxHoursExclusive: 5, weight: 0.62 },
+    { maxHoursExclusive: 6, weight: 0.73 },
+    { maxHoursExclusive: 8, weight: 0.82 },
+    { maxHoursExclusive: 10, weight: 0.9 },
+    { maxHoursExclusive: 12, weight: 0.96 },
+    { maxHoursExclusive: Number.POSITIVE_INFINITY, weight: 1 },
   ],
   recencyWeight: {
     min: 0.86,

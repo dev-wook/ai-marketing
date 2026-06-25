@@ -68,14 +68,15 @@ export async function POST(request: Request) {
     const body = (await request.json()) as PlaceBookingInsightCalendarRequest
     const yearMonth = normalizeYearMonth(body.yearMonth)
     const productFilter = normalizeProductFilter(body)
-    const cacheKey = createBookingInsightCacheKey(body, yearMonth)
+    const today = getTodayKstDate()
+    const currentKstMinute = getCurrentKstMinute()
+    const cacheKey = createBookingInsightCacheKey(body, yearMonth, today, currentKstMinute)
     const cachedResponse = readCachedBookingInsight(cacheKey)
 
     if (cachedResponse) {
       return NextResponse.json(cachedResponse)
     }
 
-    const today = getTodayKstDate()
     const forecastUntil = addDays(today, maxForecastDays)
     const monthDates = getMonthDateValues(yearMonth)
     const previousMonthDates = getPreviousMonthDateValues(yearMonth)
@@ -96,6 +97,7 @@ export async function POST(request: Request) {
       monthDates,
       productFilter,
       today,
+      currentKstMinute,
     })
     const repeatDemandPredictions = await createRepeatDemandPredictions({
       dateCandidates: repeatDemandDateCandidates,
@@ -279,6 +281,7 @@ function filterProducts(products: PlaceBookingProduct[], productFilter: ProductF
 
 function createRepeatDemandDateCandidates({
   collectedMap,
+  currentKstMinute,
   forecastUntil,
   historyStatuses,
   monthDates,
@@ -286,6 +289,7 @@ function createRepeatDemandDateCandidates({
   today,
 }: {
   collectedMap: Map<string, CollectedStatus>
+  currentKstMinute: number
   forecastUntil: string
   historyStatuses: CollectedStatus[]
   monthDates: string[]
@@ -303,6 +307,7 @@ function createRepeatDemandDateCandidates({
       const products = response ? filterProducts(response.products, productFilter) : []
       const candidates = response
         ? createRepeatDemandCandidates({
+            currentKstMinute,
             date,
             historyStatuses: historyResponses,
             products,
@@ -418,7 +423,8 @@ function createRepeatDemandGeminiPrompt({
 12. 이용일까지 8일 이상 남았다면 수요는 존재할 수 있지만 아직 예약 신청 시점이 아닐 수 있음을 반영하세요.
 13. 근거가 부족한 슬롯에는 높은 신뢰도를 부여하지 마세요.
 14. 고객이 반드시 재방문한다고 단정하지 마세요.
-15. 반드시 지정된 JSON 형식으로만 응답하세요.
+15. 오늘 날짜 후보는 sameDayBookingWeight가 낮을수록 현재 시점에서 추가 예약 신청 여유가 적은 슬롯입니다.
+16. 반드시 지정된 JSON 형식으로만 응답하세요.
 
 응답 형식:
 {
@@ -483,6 +489,7 @@ ${JSON.stringify({
         weekdayScore: candidate.weekdayScore,
         timeScore: candidate.timeScore,
         bookingTimingScore: candidate.bookingTimingScore,
+        sameDayBookingWeight: candidate.sameDayBookingWeight,
         averageCycleDays: candidate.averageCycleDays,
       },
     })),
@@ -917,14 +924,19 @@ async function runWithConcurrency<T, R>(
 function createBookingInsightCacheKey(
   body: PlaceBookingInsightCalendarRequest,
   yearMonth: string,
+  currentKstDate: string,
+  currentKstMinute: number,
 ) {
+  const currentTimeBucket = Math.floor(currentKstMinute / 15)
+
   return JSON.stringify([
     yearMonth,
     body.bookingBusinessId?.trim() ?? '',
     body.bookingUrl?.trim() ?? '',
     body.productId?.trim() ?? '',
     body.productName?.trim() ?? '',
-    getTodayKstDate(),
+    currentKstDate,
+    currentTimeBucket,
   ])
 }
 

@@ -21,6 +21,7 @@ export type BookingDemandCandidate = {
   weekdayScore: number
   timeScore: number
   bookingTimingScore: number
+  sameDayBookingWeight: number
   baselineScore: number
 }
 
@@ -63,6 +64,7 @@ type CandidateAccumulator = BookingDemandCandidate & {
 
 export function createRepeatDemandCandidates({
   config = bookingRepeatDemandConfig,
+  currentKstMinute = null,
   date,
   historyStatuses,
   products,
@@ -70,6 +72,7 @@ export function createRepeatDemandCandidates({
   today,
 }: {
   config?: BookingRepeatDemandConfig
+  currentKstMinute?: number | null
   date: string
   historyStatuses: PlaceBookingStatusResponse[]
   products: PlaceBookingProduct[]
@@ -78,7 +81,13 @@ export function createRepeatDemandCandidates({
 }): BookingDemandCandidate[] {
   const targetDate = createLocalDate(date)
   const targetWeekday = targetDate.getDay()
-  const targetSlots = createAvailableTargetSlots({ date, products, productName })
+  const targetSlots = createAvailableTargetSlots({
+    currentKstMinute,
+    date,
+    products,
+    productName,
+    today,
+  })
 
   if (targetSlots.length === 0) {
     return []
@@ -126,7 +135,7 @@ export function createRepeatDemandCandidates({
     }
 
     slotScores.forEach((item) => {
-      const normalizedContribution = item.rawScore / rawScoreTotal
+      const normalizedContribution = (item.rawScore / rawScoreTotal) * item.slot.sameDayBookingWeight
       const existing = candidates.get(item.slot.slotId)
       const next =
         existing ??
@@ -143,6 +152,7 @@ export function createRepeatDemandCandidates({
           weekdayScore: 0,
           timeScore: 0,
           bookingTimingScore: getBookingTimingWeight(getDateDiffDays(today, date), config),
+          sameDayBookingWeight: item.slot.sameDayBookingWeight,
           baselineScore: 0,
           cycleScoreSum: 0,
           weekdayScoreSum: 0,
@@ -301,6 +311,17 @@ export function getBookingTimingWeight(daysUntilUse: number, config: BookingRepe
   return getRangeWeight(Math.max(0, daysUntilUse), config.bookingTimingWeights)
 }
 
+export function getSameDayBookingWeight(
+  hoursUntilSlot: number,
+  config: BookingRepeatDemandConfig = bookingRepeatDemandConfig,
+) {
+  if (hoursUntilSlot <= 0) {
+    return 0
+  }
+
+  return config.sameDayBookingWeights.find((range) => hoursUntilSlot < range.maxHoursExclusive)?.weight ?? 1
+}
+
 function collectHistoricalBookingSignals({
   date,
   historyStatuses,
@@ -342,13 +363,17 @@ function collectHistoricalBookingSignals({
 }
 
 function createAvailableTargetSlots({
+  currentKstMinute,
   date,
   products,
   productName,
+  today,
 }: {
+  currentKstMinute: number | null
   date: string
   products: PlaceBookingProduct[]
   productName?: string
+  today: string
 }) {
   return filterProductsByName(products, productName).flatMap((product) =>
     product.slots
@@ -360,12 +385,23 @@ function createAvailableTargetSlots({
           return null
         }
 
+        const minutesUntilSlot = date === today && currentKstMinute !== null
+          ? minute - currentKstMinute
+          : null
+
+        if (minutesUntilSlot !== null && minutesUntilSlot < 30) {
+          return null
+        }
+
         return {
           slotId: `${date}T${slot.time}:00+09:00`,
           time: slot.time,
           minute,
           productName: product.name,
           remainingCapacity: slot.remaining,
+          sameDayBookingWeight: minutesUntilSlot === null
+            ? 1
+            : getSameDayBookingWeight(minutesUntilSlot / 60),
         }
       })
       .filter((slot): slot is NonNullable<typeof slot> => Boolean(slot)),
@@ -390,7 +426,7 @@ function finalizeCandidate(candidate: CandidateAccumulator): BookingDemandCandid
   const capacityLimitedDemand = Math.min(candidate.remainingCapacity, candidate.expectedRepeatDemand)
   const demandScore = Math.min(1, capacityLimitedDemand / Math.max(1, candidate.remainingCapacity))
   const supportScore = Math.min(1, signalCount / 4)
-  const baselineScore = clampNumber(
+  const baseScore = clampNumber(
     demandScore * 0.36 +
       rawSignalStrength * 0.28 +
       supportScore * 0.18 +
@@ -399,6 +435,7 @@ function finalizeCandidate(candidate: CandidateAccumulator): BookingDemandCandid
     0,
     1,
   )
+  const baselineScore = clampNumber(baseScore * candidate.sameDayBookingWeight, 0, 1)
 
   return {
     slotId: candidate.slotId,
@@ -413,6 +450,7 @@ function finalizeCandidate(candidate: CandidateAccumulator): BookingDemandCandid
     weekdayScore: roundToTwo(weekdayScore),
     timeScore: roundToTwo(timeScore),
     bookingTimingScore: roundToTwo(candidate.bookingTimingScore),
+    sameDayBookingWeight: roundToTwo(candidate.sameDayBookingWeight),
     baselineScore: roundToTwo(baselineScore),
   }
 }
@@ -466,6 +504,10 @@ function createBaselineReasonCodes(candidate: BookingDemandCandidate) {
         : 'BOOKING_WINDOW_NOT_REACHED',
   )
 
+  if (candidate.sameDayBookingWeight < 1) {
+    reasonCodes.push('SAME_DAY_LEAD_TIME_WEIGHTED')
+  }
+
   if (candidate.remainingCapacity <= 1) {
     reasonCodes.push('CAPACITY_LIMITED')
   }
@@ -496,6 +538,9 @@ function createPredictionBasis(prediction: BookingDemandPrediction) {
     basis.push('이용일까지 8일 이상 남아 아직 실제 예약 신청이 본격화되기 전일 수 있습니다.')
   } else if (prediction.reasonCodes.includes('BOOKING_WINDOW_ACTIVE')) {
     basis.push('이용일이 가까워 실제 예약 신청 가능성이 높은 시점입니다.')
+  }
+  if (prediction.sameDayBookingWeight < 1) {
+    basis.push(`오늘 남은 예약 신청 여유를 ${Math.round(prediction.sameDayBookingWeight * 100)}% 가중치로 반영했습니다.`)
   }
 
   if (prediction.predictionMode === 'statistical-fallback') {
