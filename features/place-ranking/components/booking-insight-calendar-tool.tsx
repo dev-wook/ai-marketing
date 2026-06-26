@@ -1,15 +1,15 @@
 'use client'
 
-import { FormEvent, ReactNode, useMemo, useRef, useState } from 'react'
+import { FormEvent, ReactNode, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useBodyScrollLock } from '@/features/platform/components/use-body-scroll-lock'
+import { lasopBeautyFixedPlace } from '@/features/platform/service-maintenance'
 import type {
   PlaceBookingInsightBlock,
   PlaceBookingInsightResponse,
   PlaceBookingProduct,
   PlaceBookingStatusResponse,
   PlaceRankingItem,
-  PlaceRankingResponse,
 } from '../types'
 
 type PlaceRankingErrorBody = {
@@ -25,10 +25,8 @@ type CalendarSelectOption = {
 }
 
 export function BookingInsightCalendarTool() {
-  const queryInputRef = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState('')
-  const [places, setPlaces] = useState<PlaceRankingItem[]>([])
-  const [selectedPlace, setSelectedPlace] = useState<PlaceRankingItem | null>(null)
+  const [places, setPlaces] = useState<PlaceRankingItem[]>([lasopBeautyFixedPlace])
+  const [selectedPlace, setSelectedPlace] = useState<PlaceRankingItem | null>(lasopBeautyFixedPlace)
   const [products, setProducts] = useState<PlaceBookingProduct[]>([])
   const [selectedProduct, setSelectedProduct] = useState<PlaceBookingProduct | null>(null)
   const [yearMonth, setYearMonth] = useState(getCurrentYearMonth())
@@ -41,13 +39,7 @@ export function BookingInsightCalendarTool() {
   const [errorMessage, setErrorMessage] = useState('')
 
   const calendarDays = useMemo(() => createCalendarDays(yearMonth), [yearMonth])
-  const canSearch = query.trim().length > 0 && !isSearching
-
-  const clearQueryInput = () => {
-    setQuery('')
-    setErrorMessage('')
-    queryInputRef.current?.focus()
-  }
+  const canSearch = !isSearching
 
   const submitSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -57,16 +49,17 @@ export function BookingInsightCalendarTool() {
 
     setIsSearching(true)
     setErrorMessage('')
-    setSelectedPlace(null)
     setProducts([])
     setSelectedProduct(null)
     setInsight(null)
+    setPlaces([lasopBeautyFixedPlace])
 
     try {
-      const result = await requestRankings(query.trim())
-      setPlaces(result.items.filter((item) => item.actions.bookingUrl || item.actions.bookingBusinessId))
+      // TEMP_NAVER_PLACE_MAINTENANCE:
+      // 네이버 플레이스 조회 정상화 시 requestRankings 검색 플로우로 복구한다.
+      await selectPlace(lasopBeautyFixedPlace)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '플레이스 검색에 실패했습니다.')
+      setErrorMessage(error instanceof Error ? error.message : '예약상품을 불러오지 못했습니다.')
     } finally {
       setIsSearching(false)
     }
@@ -158,31 +151,22 @@ export function BookingInsightCalendarTool() {
         <form onSubmit={submitSearch} className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
           <div className="relative">
             <input
-              ref={queryInputRef}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="예: 라솝뷰티"
+              value="라솝뷰티"
+              readOnly
+              aria-label="고정 플레이스"
               className="min-h-13 w-full rounded-md border border-white/10 bg-[#090d18] px-4 pr-12 text-base font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
-              disabled={isSearching}
+              disabled
             />
-            {query ? (
-              <button
-                type="button"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={clearQueryInput}
-                aria-label="검색어 전체 삭제"
-                className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-xl font-black leading-none text-slate-500 transition hover:bg-white/[0.08] hover:text-cyan-100"
-              >
-                ×
-              </button>
-            ) : null}
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[10px] font-black text-amber-100">
+              임시 고정
+            </span>
           </div>
           <button
             type="submit"
             disabled={!canSearch}
             className="min-h-13 rounded-md bg-white px-6 text-sm font-black text-[#070a12] transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {isSearching ? '검색중...' : '플레이스 검색'}
+            {isSearching ? '불러오는 중...' : '라솝뷰티 예약상품 불러오기'}
           </button>
         </form>
 
@@ -1264,21 +1248,6 @@ function parseTimeToMinutes(time: string) {
   }
 
   return hours * 60 + minutes
-}
-
-async function requestRankings(keyword: string) {
-  const response = await fetch('/api/place-ranking/rankings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keyword, limit: 50 }),
-  })
-  const body = (await response.json()) as PlaceRankingResponse | PlaceRankingErrorBody
-
-  if (!response.ok) {
-    throw new Error((body as PlaceRankingErrorBody).message ?? '플레이스 검색에 실패했습니다.')
-  }
-
-  return body as PlaceRankingResponse
 }
 
 async function requestBookingStatus(place: PlaceRankingItem, date: string) {

@@ -1,10 +1,11 @@
 import { PlaceTrackingDashboard } from '@/features/place-tracking/components/place-tracking-dashboard'
+import { isPlaceServiceMaintenanceMode } from '@/features/platform/service-maintenance'
 
 type HomeFeature = {
   title: string
   shortTitle: string
   description: string
-  status: 'open' | 'soon'
+  status: 'open' | 'maintenance' | 'soon'
   icon: HomeFeatureIcon
   action?: () => void
 }
@@ -41,7 +42,7 @@ export function HomeView({
       title: '플레이스 관리',
       shortTitle: '관리',
       description: '내 플레이스와 키워드를 관리합니다.',
-      status: 'open',
+      status: isPlaceServiceMaintenanceMode ? 'maintenance' : 'open',
       icon: 'tracking',
       action: onOpenPlaceTracking,
     },
@@ -49,7 +50,7 @@ export function HomeView({
       title: '플레이스 순위 조회',
       shortTitle: '순위',
       description: '키워드별 노출 순서를 확인합니다.',
-      status: 'open',
+      status: isPlaceServiceMaintenanceMode ? 'maintenance' : 'open',
       icon: 'rank',
       action: onOpenPlaceRanking,
     },
@@ -65,7 +66,7 @@ export function HomeView({
       title: 'AI 플레이스 진단',
       shortTitle: '진단',
       description: 'AI 관점의 점수와 개선안을 확인합니다.',
-      status: 'open',
+      status: isPlaceServiceMaintenanceMode ? 'maintenance' : 'open',
       icon: 'diagnosis',
       action: onOpenPlaceDiagnosis,
     },
@@ -73,7 +74,7 @@ export function HomeView({
       title: 'AI 플레이스 경쟁사 비교',
       shortTitle: '비교',
       description: '두 플레이스의 강점과 약점을 비교합니다.',
-      status: 'open',
+      status: isPlaceServiceMaintenanceMode ? 'maintenance' : 'open',
       icon: 'compare',
       action: onOpenPlaceCompetitor,
     },
@@ -81,7 +82,7 @@ export function HomeView({
       title: 'AI 키워드 분석',
       shortTitle: '키워드',
       description: '검색 의도와 핵심 키워드를 분석합니다.',
-      status: 'open',
+      status: isPlaceServiceMaintenanceMode ? 'maintenance' : 'open',
       icon: 'keyword',
       action: onOpenKeyword,
     },
@@ -89,7 +90,7 @@ export function HomeView({
       title: 'AI 블로그 원고 작성',
       shortTitle: '블로그',
       description: '키워드와 답변으로 원고를 작성합니다.',
-      status: 'open',
+      status: isPlaceServiceMaintenanceMode ? 'maintenance' : 'open',
       icon: 'blog',
       action: onOpenBlogPosting,
     },
@@ -104,11 +105,23 @@ export function HomeView({
 
   return (
     <div className="grid w-full min-w-0 gap-4 overflow-x-hidden md:gap-6">
-      <PlaceTrackingDashboard
-        className="order-1"
-        mobileCompact
-        onOpenManagerPage={onOpenPlaceTracking}
-      />
+      {isPlaceServiceMaintenanceMode ? (
+        <section className="order-1 rounded-md border border-amber-300/20 bg-amber-400/[0.08] p-4 shadow-[0_0_34px_rgba(251,191,36,0.08)] md:p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-100/80">
+            Maintenance
+          </p>
+          <h2 className="mt-2 text-xl font-black text-white md:text-2xl">플레이스 기능 점검 중</h2>
+          <p className="mt-2 break-keep text-sm font-semibold leading-6 text-amber-50/80">
+            네이버 플레이스 조회 차단 해제 전까지 예약 수요 캘린더만 라솝뷰티 고정 모드로 제공합니다.
+          </p>
+        </section>
+      ) : (
+        <PlaceTrackingDashboard
+          className="order-1"
+          mobileCompact
+          onOpenManagerPage={onOpenPlaceTracking}
+        />
+      )}
 
       <section className="order-2 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:p-5">
         <div className="flex items-end justify-between gap-3">
@@ -136,8 +149,9 @@ export function HomeView({
 
 function HomeFeatureButton({ feature }: { feature: HomeFeature }) {
   const isOpen = feature.status === 'open'
+  const isMaintenance = feature.status === 'maintenance'
 
-  if (!isOpen) {
+  if (!isOpen && !isMaintenance) {
     return (
       <div className="grid min-w-0 justify-items-center gap-2 opacity-60">
         <span className="relative grid h-16 w-16 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-slate-400">
@@ -157,12 +171,19 @@ function HomeFeatureButton({ feature }: { feature: HomeFeature }) {
     <button
       type="button"
       onClick={feature.action}
-      className="group grid min-w-0 justify-items-center gap-2 rounded-2xl p-1 text-center transition hover:bg-white/[0.04] focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/16"
+      className={`group grid min-w-0 justify-items-center gap-2 rounded-2xl p-1 text-center transition hover:bg-white/[0.04] focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/16 ${
+        isMaintenance ? 'opacity-70' : ''
+      }`}
       aria-label={feature.title}
       title={feature.description}
     >
-      <span className="grid h-16 w-16 place-items-center rounded-2xl border border-cyan-300/18 bg-gradient-to-br from-cyan-300/14 via-white/[0.045] to-fuchsia-300/12 text-cyan-100 shadow-[0_14px_30px_rgba(0,0,0,0.18)] transition group-hover:-translate-y-0.5 group-hover:border-cyan-200/35 group-hover:bg-cyan-300/12">
+      <span className="relative grid h-16 w-16 place-items-center rounded-2xl border border-cyan-300/18 bg-gradient-to-br from-cyan-300/14 via-white/[0.045] to-fuchsia-300/12 text-cyan-100 shadow-[0_14px_30px_rgba(0,0,0,0.18)] transition group-hover:-translate-y-0.5 group-hover:border-cyan-200/35 group-hover:bg-cyan-300/12">
         <HomeFeatureIconRenderer icon={feature.icon} />
+        {isMaintenance ? (
+          <span className="absolute -right-1 -top-1 rounded-full bg-amber-300/20 px-1.5 py-0.5 text-[9px] font-black text-amber-100">
+            점검
+          </span>
+        ) : null}
       </span>
       <span className="max-w-full truncate text-center text-[12px] font-black text-slate-100">
         {feature.shortTitle}

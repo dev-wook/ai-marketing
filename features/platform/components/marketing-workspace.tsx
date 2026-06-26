@@ -11,6 +11,10 @@ import { BookingInsightCalendarTool } from '@/features/place-ranking/components/
 import { PlaceRankingTool } from '@/features/place-ranking/components/place-ranking-tool'
 import type { PlaceRankingBatchKeyword } from '@/features/place-ranking/types'
 import { PlaceTrackingDashboard } from '@/features/place-tracking/components/place-tracking-dashboard'
+import {
+  isPlaceServiceMaintenanceMode,
+  serviceMaintenanceMessage,
+} from '@/features/platform/service-maintenance'
 import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
 import { useBodyScrollLock } from './use-body-scroll-lock'
@@ -125,6 +129,7 @@ export function MarketingWorkspace() {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isWorkStatusOpen, setIsWorkStatusOpen] = useState(false)
   const [isAiDiagnosisDataManagerOpen, setIsAiDiagnosisDataManagerOpen] = useState(false)
+  const [maintenanceNotice, setMaintenanceNotice] = useState('')
   const [aiDiagnosisDataStatus, setAiDiagnosisDataStatus] =
     useState<AiDiagnosisDataRefreshStatus | null>(null)
   const [placeRankingBatchKeywords, setPlaceRankingBatchKeywords] = useState<PlaceRankingBatchKeyword[]>([])
@@ -149,6 +154,11 @@ export function MarketingWorkspace() {
   }, [])
 
   const openView = (nextView: ViewKey) => {
+    if (isMaintenanceLockedView(nextView)) {
+      setMaintenanceNotice(serviceMaintenanceMessage)
+      return
+    }
+
     setView(nextView)
   }
 
@@ -166,6 +176,11 @@ export function MarketingWorkspace() {
   }
 
   const openPlaceTrackingManager = () => {
+    if (isPlaceServiceMaintenanceMode) {
+      setMaintenanceNotice(serviceMaintenanceMessage)
+      return
+    }
+
     openView('tracking')
     window.scrollTo({ top: 0 })
   }
@@ -212,7 +227,7 @@ export function MarketingWorkspace() {
   }, [])
 
   useEffect(() => {
-    if (!authUser) {
+    if (!authUser || isPlaceServiceMaintenanceMode) {
       return
     }
 
@@ -388,7 +403,14 @@ export function MarketingWorkspace() {
             <div className="relative flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setIsAiDiagnosisDataManagerOpen(true)}
+                onClick={() => {
+                  if (isPlaceServiceMaintenanceMode) {
+                    setMaintenanceNotice(serviceMaintenanceMessage)
+                    return
+                  }
+
+                  setIsAiDiagnosisDataManagerOpen(true)
+                }}
                 aria-label="스케줄링 관리 열기"
                 className="relative grid h-11 w-11 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-slate-100 transition hover:border-cyan-300/50 hover:bg-cyan-300/10 hover:text-cyan-50 focus:outline-none focus:ring-4 focus:ring-cyan-300/15"
               >
@@ -412,6 +434,11 @@ export function MarketingWorkspace() {
               <button
                 type="button"
                 onClick={() => {
+                  if (isPlaceServiceMaintenanceMode) {
+                    setMaintenanceNotice(serviceMaintenanceMessage)
+                    return
+                  }
+
                   setIsWorkStatusOpen((current) => {
                     const nextOpen = !current
 
@@ -489,6 +516,13 @@ export function MarketingWorkspace() {
             onClose={() => setIsAiDiagnosisDataManagerOpen(false)}
           />
 
+          {maintenanceNotice ? (
+            <MaintenanceToast
+              message={maintenanceNotice}
+              onClose={() => setMaintenanceNotice('')}
+            />
+          ) : null}
+
           <section
             className="min-w-0 flex-1 pt-[96px] pb-[calc(102px+env(safe-area-inset-bottom))] lg:py-8 md:pt-6 md:pb-6"
           >
@@ -536,6 +570,27 @@ export function MarketingWorkspace() {
         </div>
       </div>
     </main>
+  )
+}
+
+function isMaintenanceLockedView(view: ViewKey) {
+  return isPlaceServiceMaintenanceMode && !['home', 'bookingInsight', 'my'].includes(view)
+}
+
+function MaintenanceToast({ message, onClose }: { message: string; onClose: () => void }) {
+  useEffect(() => {
+    const timer = window.setTimeout(onClose, 2600)
+
+    return () => window.clearTimeout(timer)
+  }, [onClose, message])
+
+  return (
+    <div
+      className="fixed left-1/2 top-20 z-[10050] w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 rounded-md border border-amber-300/30 bg-amber-400/12 px-4 py-3 text-center text-sm font-black text-amber-100 shadow-[0_18px_44px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+      role="status"
+    >
+      {message}
+    </div>
   )
 }
 
