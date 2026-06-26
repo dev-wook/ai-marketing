@@ -595,6 +595,7 @@ async function createTarget({
       '',
     imageUrl: place.images.mainImageUrl,
     metrics: createMetrics(place),
+    reviewMetrics: createReviewMetrics(place),
     profile: mergeProfileWithRanking({
       profile: enrichment.profile,
       place,
@@ -751,6 +752,23 @@ function createMetrics(place: PlaceRankingItem): AiPlaceDiagnosisMetrics {
     hasTalktalk: Boolean(place.actions.talktalkUrl),
     hasCoupon: place.benefits.hasCoupon,
     hasNPay: place.badges.includes('네이버페이'),
+  }
+}
+
+function createReviewMetrics(place: PlaceRankingItem) {
+  const visitorReviewCount = place.reviews.totalReviewCount
+  const blogReviewCount = place.reviews.blogCafeReviewCount
+  const totalReviewCount = visitorReviewCount + blogReviewCount
+
+  return {
+    visitorReviewCount,
+    blogReviewCount,
+    totalReviewCount,
+    visitorReviewRatio:
+      totalReviewCount > 0 ? roundRate(visitorReviewCount, totalReviewCount) : null,
+    blogReviewRatio:
+      totalReviewCount > 0 ? roundRate(blogReviewCount, totalReviewCount) : null,
+    fetchedAt: new Date().toISOString(),
   }
 }
 

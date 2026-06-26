@@ -1,4 +1,5 @@
 import type { PlaceRankingItem } from '@/features/place-ranking/types'
+import type { PlaceReviewMetrics } from '@/features/naver-place-reviews/types'
 
 export type AiPlaceDiagnosisRequest = {
   placeId?: string
@@ -53,6 +54,7 @@ export type AiPlaceDiagnosisTarget = {
   address: string
   imageUrl?: string
   metrics: AiPlaceDiagnosisMetrics
+  reviewMetrics: PlaceReviewMetrics
   profile: AiPlaceDiagnosisPlaceProfile
   manualContext: {
     hasIntroduction: boolean

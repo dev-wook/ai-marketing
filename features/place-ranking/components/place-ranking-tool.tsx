@@ -1373,6 +1373,10 @@ export function PlaceRankingTool() {
                         Boolean(item.actions.bookingUrl || item.actions.bookingBusinessId)
                       }
                     />
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <ReviewCountBadge type="visitor" count={item.reviews.totalReviewCount} />
+                      <ReviewCountBadge type="blog" count={item.reviews.blogCafeReviewCount} />
+                    </div>
                     <p className="mt-0.5 text-xs font-bold leading-snug text-cyan-100/80 sm:mt-1 sm:text-sm">
                       {item.category}
                     </p>
@@ -1998,6 +2002,30 @@ function BookingCountBadge({
           </strong>
         </>
       )}
+    </span>
+  )
+}
+
+function ReviewCountBadge({
+  type,
+  count,
+}: {
+  type: 'visitor' | 'blog'
+  count: number | null
+}) {
+  const label = type === 'visitor' ? '방문자' : '블로그'
+  const ariaLabel = type === 'visitor' ? '방문자 리뷰 수' : '블로그 리뷰 수'
+
+  return (
+    <span
+      className="inline-flex h-6 items-center gap-1 rounded-md border border-white/10 bg-white/[0.045] px-2 text-[10px] font-black text-slate-300 sm:text-[11px]"
+      aria-label={`${ariaLabel} ${typeof count === 'number' ? `${count}개` : '미확인'}`}
+      title={ariaLabel}
+    >
+      <span className="text-cyan-100/80">{label}</span>
+      <strong className="text-white">
+        {typeof count === 'number' ? count.toLocaleString() : '-'}
+      </strong>
     </span>
   )
 }
