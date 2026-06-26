@@ -832,56 +832,69 @@ function createMetricComparisonRows(
       winner: toWinner(reverseRankScore(left.rank), reverseRankScore(right.rank)),
     },
     {
+      label: '리뷰 신뢰도',
+      leftScore: left.reviewDiagnosis.score.totalReviewScore,
+      rightScore: right.reviewDiagnosis.score.totalReviewScore,
+      leftValue: `${left.reviewDiagnosis.score.totalReviewScore}/${left.reviewDiagnosis.score.maxReviewScore}`,
+      rightValue: `${right.reviewDiagnosis.score.totalReviewScore}/${right.reviewDiagnosis.score.maxReviewScore}`,
+      leftDetail: createReviewTrustRationale(leftResult, rightResult),
+      rightDetail: createReviewTrustRationale(rightResult, leftResult),
+      winner: toWinner(
+        left.reviewDiagnosis.score.totalReviewScore,
+        right.reviewDiagnosis.score.totalReviewScore,
+      ),
+    },
+    {
       label: '방문자 리뷰',
-      leftScore: left.metrics.totalReviewCount,
-      rightScore: right.metrics.totalReviewCount,
-      leftValue: `${left.metrics.totalReviewCount.toLocaleString()}개`,
-      rightValue: `${right.metrics.totalReviewCount.toLocaleString()}개`,
+      leftScore: getVisitorReviewCount(leftResult),
+      rightScore: getVisitorReviewCount(rightResult),
+      leftValue: `${getVisitorReviewCount(leftResult).toLocaleString()}개`,
+      rightValue: `${getVisitorReviewCount(rightResult).toLocaleString()}개`,
       leftDetail: createMetricRationale({
         label: '방문자 리뷰',
         name: left.name,
         peerName: right.name,
-        value: left.metrics.totalReviewCount,
-        peerValue: right.metrics.totalReviewCount,
+        value: getVisitorReviewCount(leftResult),
+        peerValue: getVisitorReviewCount(rightResult),
         unit: '개',
-        note: '리뷰 문구가 서비스 경험을 구체적으로 설명할수록 신뢰 근거로 더 강하게 해석됩니다.',
+        note: '경쟁사 중앙값과 상위사분위 대비 규모를 로그 보정하고, 리뷰 문구 품질은 별도 신뢰 기준으로 봅니다.',
       }),
       rightDetail: createMetricRationale({
         label: '방문자 리뷰',
         name: right.name,
         peerName: left.name,
-        value: right.metrics.totalReviewCount,
-        peerValue: left.metrics.totalReviewCount,
+        value: getVisitorReviewCount(rightResult),
+        peerValue: getVisitorReviewCount(leftResult),
         unit: '개',
-        note: '리뷰 문구가 서비스 경험을 구체적으로 설명할수록 신뢰 근거로 더 강하게 해석됩니다.',
+        note: '경쟁사 중앙값과 상위사분위 대비 규모를 로그 보정하고, 리뷰 문구 품질은 별도 신뢰 기준으로 봅니다.',
       }),
-      winner: toWinner(left.metrics.totalReviewCount, right.metrics.totalReviewCount),
+      winner: toWinner(getVisitorReviewCount(leftResult), getVisitorReviewCount(rightResult)),
     },
     {
       label: '블로그 리뷰',
-      leftScore: left.metrics.blogCafeReviewCount,
-      rightScore: right.metrics.blogCafeReviewCount,
-      leftValue: `${left.metrics.blogCafeReviewCount.toLocaleString()}개`,
-      rightValue: `${right.metrics.blogCafeReviewCount.toLocaleString()}개`,
+      leftScore: getBlogReviewCount(leftResult),
+      rightScore: getBlogReviewCount(rightResult),
+      leftValue: `${getBlogReviewCount(leftResult).toLocaleString()}개`,
+      rightValue: `${getBlogReviewCount(rightResult).toLocaleString()}개`,
       leftDetail: createMetricRationale({
         label: '블로그 리뷰',
         name: left.name,
         peerName: right.name,
-        value: left.metrics.blogCafeReviewCount,
-        peerValue: right.metrics.blogCafeReviewCount,
+        value: getBlogReviewCount(leftResult),
+        peerValue: getBlogReviewCount(rightResult),
         unit: '개',
-        note: '외부 콘텐츠 노출을 보는 보조 신호이며, 본문 품질 분석은 현재 비교 범위에 포함하지 않습니다.',
+        note: '외부 콘텐츠 확산을 보는 보조 신호이며, 수집되지 않은 본문 품질은 단점으로 단정하지 않습니다.',
       }),
       rightDetail: createMetricRationale({
         label: '블로그 리뷰',
         name: right.name,
         peerName: left.name,
-        value: right.metrics.blogCafeReviewCount,
-        peerValue: left.metrics.blogCafeReviewCount,
+        value: getBlogReviewCount(rightResult),
+        peerValue: getBlogReviewCount(leftResult),
         unit: '개',
-        note: '외부 콘텐츠 노출을 보는 보조 신호이며, 본문 품질 분석은 현재 비교 범위에 포함하지 않습니다.',
+        note: '외부 콘텐츠 확산을 보는 보조 신호이며, 수집되지 않은 본문 품질은 단점으로 단정하지 않습니다.',
       }),
-      winner: toWinner(left.metrics.blogCafeReviewCount, right.metrics.blogCafeReviewCount),
+      winner: toWinner(getBlogReviewCount(leftResult), getBlogReviewCount(rightResult)),
     },
     {
       label: '이미지',
@@ -960,7 +973,7 @@ function createCategorySignalSummary(
     case 'localEntity':
       return `주소는 ${result.target.address || '미확인'}이며 오시는 길 정보는 ${profile.locationGuide ? '확인됨' : '부족'}입니다.`
     case 'reviewTrust':
-      return `방문자 리뷰 ${metrics.totalReviewCount.toLocaleString()}개, 블로그 리뷰 ${metrics.blogCafeReviewCount.toLocaleString()}개가 확인됩니다.`
+      return `리뷰 신뢰도는 ${result.target.reviewDiagnosis.score.totalReviewScore}/${result.target.reviewDiagnosis.score.maxReviewScore}점이며 방문자 리뷰 ${getVisitorReviewCount(result).toLocaleString()}개, 블로그 리뷰 ${getBlogReviewCount(result).toLocaleString()}개를 경쟁사 기준으로 보정했습니다.`
     case 'contentRichness':
       return `이미지 ${metrics.imageCount.toLocaleString()}개와 해시태그 ${metrics.hashtagCount.toLocaleString()}개를 기준으로 정보량을 봅니다.`
     case 'conversion':
@@ -1056,6 +1069,31 @@ function createMetricRationale({
         : `${peerName}보다 ${Math.abs(diff).toLocaleString()}${unit} 적습니다`
 
   return `${name}의 ${label}는 ${value.toLocaleString()}${unit}로 ${comparison}. ${note}`
+}
+
+function createReviewTrustRationale(
+  result: AiPlaceDiagnosisResponse,
+  peerResult: AiPlaceDiagnosisResponse,
+) {
+  const diagnosis = result.target.reviewDiagnosis
+  const peerDiagnosis = peerResult.target.reviewDiagnosis
+  const scoreDiff = diagnosis.score.totalReviewScore - peerDiagnosis.score.totalReviewScore
+  const comparison =
+    scoreDiff === 0
+      ? `${peerResult.target.name}과 같은 수준입니다`
+      : scoreDiff > 0
+        ? `${peerResult.target.name}보다 ${Math.abs(scoreDiff).toFixed(1)}점 높습니다`
+        : `${peerResult.target.name}보다 ${Math.abs(scoreDiff).toFixed(1)}점 낮습니다`
+
+  return `${result.target.name}의 리뷰 신뢰도는 ${diagnosis.score.totalReviewScore}/${diagnosis.score.maxReviewScore}점으로 ${comparison}. 방문자 리뷰 ${getVisitorReviewCount(result).toLocaleString()}개, 블로그 리뷰 ${getBlogReviewCount(result).toLocaleString()}개를 경쟁사 중앙값과 상위사분위 기준으로 보정했습니다. ${diagnosis.contentMetrics ? '수집된 리뷰 문구의 서비스/지역 관련성도 부분 반영했습니다.' : '상세 리뷰 콘텐츠는 미수집이라 단점으로 단정하지 않았습니다.'} 사업자 답변 품질은 아직 수집되지 않아 점수에서 제외했습니다.`
+}
+
+function getVisitorReviewCount(result: AiPlaceDiagnosisResponse) {
+  return result.target.reviewDiagnosis.counts.visitorReviewCount ?? result.target.metrics.totalReviewCount
+}
+
+function getBlogReviewCount(result: AiPlaceDiagnosisResponse) {
+  return result.target.reviewDiagnosis.counts.blogReviewCount ?? result.target.metrics.blogCafeReviewCount
 }
 
 function createBookingProductRationale(

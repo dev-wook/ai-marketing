@@ -4,6 +4,7 @@ import type {
   AiPlaceDiagnosisScoreKey,
   AiPlaceFeatureSet,
   AiPlaceFieldStatusMap,
+  PlaceReviewDiagnosis,
 } from '../types'
 
 export const aiPlaceScoreDefinitions: Array<{
@@ -14,8 +15,8 @@ export const aiPlaceScoreDefinitions: Array<{
   { key: 'intentAndService', label: '검색 의도 및 서비스 적합도', maxScore: 20 },
   { key: 'serviceInformation', label: '서비스 정보 완성도', maxScore: 20 },
   { key: 'localEntity', label: '지역·위치·엔티티 명확성', maxScore: 15 },
-  { key: 'reviewTrust', label: '리뷰 및 신뢰 근거', maxScore: 15 },
-  { key: 'contentRichness', label: '콘텐츠 정보량', maxScore: 10 },
+  { key: 'reviewTrust', label: '리뷰 및 신뢰 근거', maxScore: 20 },
+  { key: 'contentRichness', label: '콘텐츠 정보량', maxScore: 5 },
   { key: 'conversion', label: '예약·문의·전환 편의성', maxScore: 10 },
   { key: 'differentiation', label: '고유 정보 및 차별성', maxScore: 10 },
 ]
@@ -31,6 +32,7 @@ export function scoreAiPlace({
   features,
   fieldStatus,
   keyword,
+  reviewDiagnosis,
   semanticScores = {},
 }: {
   benchmarkProfile: AiPlaceBenchmarkProfileSummary
@@ -38,6 +40,7 @@ export function scoreAiPlace({
   features: AiPlaceFeatureSet
   fieldStatus: AiPlaceFieldStatusMap
   keyword: string
+  reviewDiagnosis?: PlaceReviewDiagnosis
   semanticScores?: SemanticDiagnosisScores
 }) {
   const semantic = normalizeSemanticScores(semanticScores)
@@ -74,24 +77,22 @@ export function scoreAiPlace({
       reason: '주소, 오시는 길, 지역명 연결성, 길찾기 신호를 기준으로 평가했습니다.',
     }),
     createScore('reviewTrust', {
-      score:
-        ratioScore(normalizeReviewCount(features.review.visitorReviewCount), 4) +
-        ratioScore(normalizeReviewCount(features.review.blogReviewCount), 2) +
-        ratioScore(normalizeReviewCount(features.review.bookingReviewCount), 2) +
-        ratioScore(features.review.reviewSnippetSpecificityScore, 4) +
-        ratioScore(Math.min(features.review.reviewSnippetKeywordMentions / 2, 1), 2) +
-        ratioScore(Math.min(features.review.reviewImageCount / 6, 1), 1),
-      reason: '리뷰 수는 보정하고, 리뷰 스니펫 개수가 아니라 문구의 구체성과 키워드 적합도를 중심으로 평가했습니다.',
+      score: reviewDiagnosis
+        ? reviewDiagnosis.score.totalReviewScore
+        : createFallbackReviewTrustScore(features),
+      reason: reviewDiagnosis
+        ? '리뷰 수는 경쟁사 중앙값/상위사분위와 로그 보정으로 비교하고, 확보된 리뷰 문구 품질만 부분 반영했습니다. 미수집된 증가량과 사업자 답변 품질은 0점 처리하지 않았습니다.'
+        : '리뷰 수는 보정하고, 리뷰 스니펫 개수가 아니라 문구의 구체성과 키워드 적합도를 중심으로 평가했습니다.',
     }),
     createScore('contentRichness', {
       score:
-        ratioScore(Math.min(features.content.imageCount / 30, 1), 2) +
-        ratioScore(Math.min(features.service.productImageCount / 8, 1), 2) +
-        ratioScore(Math.min(features.content.optionCount / 8, 1), 1.5) +
-        ratioScore(Math.min(features.content.hashtagCount / 8, 1), 1) +
-        boolScore(features.content.hasWebsite, 1) +
-        boolScore(features.content.hasInstagram, 1) +
-        boolScore(features.service.hasPromotion, 1.5),
+        ratioScore(Math.min(features.content.imageCount / 30, 1), 1.2) +
+        ratioScore(Math.min(features.service.productImageCount / 8, 1), 1.2) +
+        ratioScore(Math.min(features.content.optionCount / 8, 1), 0.8) +
+        ratioScore(Math.min(features.content.hashtagCount / 8, 1), 0.5) +
+        boolScore(features.content.hasWebsite, 0.4) +
+        boolScore(features.content.hasInstagram, 0.4) +
+        boolScore(features.service.hasPromotion, 0.5),
       reason: '이미지 단순 개수는 낮게 보고, 상품 이미지와 소개/홍보/외부 채널 신호를 함께 평가했습니다.',
     }),
     createScore('conversion', {
@@ -188,6 +189,17 @@ function ratioScore(value: number, maxScore: number) {
 
 function normalizeReviewCount(value: number) {
   return Math.min(Math.log1p(Math.max(0, value)) / Math.log1p(500), 1)
+}
+
+function createFallbackReviewTrustScore(features: AiPlaceFeatureSet) {
+  return (
+    ratioScore(normalizeReviewCount(features.review.visitorReviewCount), 5) +
+    ratioScore(normalizeReviewCount(features.review.blogReviewCount), 3) +
+    ratioScore(normalizeReviewCount(features.review.bookingReviewCount), 2) +
+    ratioScore(features.review.reviewSnippetSpecificityScore, 5) +
+    ratioScore(Math.min(features.review.reviewSnippetKeywordMentions / 2, 1), 3) +
+    ratioScore(Math.min(features.review.reviewImageCount / 6, 1), 2)
+  )
 }
 
 function keywordServiceMentioned({

@@ -55,6 +55,7 @@ export type AiPlaceDiagnosisTarget = {
   imageUrl?: string
   metrics: AiPlaceDiagnosisMetrics
   reviewMetrics: PlaceReviewMetrics
+  reviewDiagnosis: PlaceReviewDiagnosis
   profile: AiPlaceDiagnosisPlaceProfile
   manualContext: {
     hasIntroduction: boolean
@@ -86,6 +87,50 @@ export type AiPlaceDiagnosisMetrics = {
   hasTalktalk: boolean
   hasCoupon: boolean
   hasNPay: boolean
+}
+
+export type PlaceReviewDiagnosis = {
+  counts: {
+    visitorReviewCount: number | null
+    blogReviewCount: number | null
+    totalReviewCount: number | null
+  }
+  benchmark: {
+    competitorVisitorMedian: number | null
+    competitorBlogMedian: number | null
+    competitorVisitorTopQuartile: number | null
+    competitorBlogTopQuartile: number | null
+  }
+  growth: {
+    visitorGrowth30d: number | null
+    blogGrowth30d: number | null
+    status: 'unavailable' | 'available'
+  }
+  contentMetrics: {
+    analyzedReviewCount: number
+    specificityScore: number
+    localRelevanceScore: number
+    serviceRelevanceScore: number
+    repeatOrRecommendationSignalScore: number
+  } | null
+  replyMetrics: {
+    replyRate: number | null
+    personalizationScore: number | null
+    informativenessScore: number | null
+    repeatedTemplateRisk: number | null
+  } | null
+  score: {
+    countScore: number
+    growthScore: number | null
+    contentScore: number | null
+    replyScore: number | null
+    totalReviewScore: number
+    maxReviewScore: number
+  }
+  strengths: string[]
+  weaknesses: string[]
+  recommendations: string[]
+  warnings: string[]
 }
 
 export type AiPlaceDiagnosisDataSource = {
@@ -249,6 +294,10 @@ export type AiPlaceDiagnosisCompetitorSummary = {
   averageRank: number
   averageReviewCount: number
   averageBlogReviewCount: number
+  medianReviewCount: number
+  medianBlogReviewCount: number
+  topQuartileReviewCount: number
+  topQuartileBlogReviewCount: number
   averageImageCount: number
   bookingEnabledRate: number
   couponEnabledRate: number

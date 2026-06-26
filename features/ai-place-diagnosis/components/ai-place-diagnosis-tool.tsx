@@ -10,6 +10,7 @@ import type {
   AiPlaceDiagnosisPlaceSearchItem,
   AiPlaceDiagnosisPlaceSearchResponse,
   AiPlaceDiagnosisResponse,
+  PlaceReviewDiagnosis,
 } from '../types'
 
 type DiagnosisErrorBody = {
@@ -395,11 +396,16 @@ function DiagnosisResult({ result }: { result: AiPlaceDiagnosisResponse }) {
           <Metric label="참고 순위" value={`${result.target.rank}위`} />
           <Metric
             label="방문자 리뷰"
-            value={`${result.target.metrics.totalReviewCount.toLocaleString()}개`}
+            value={formatNullableCount(result.target.reviewDiagnosis.counts.visitorReviewCount)}
           />
-          <Metric label="블로그 리뷰" value={`${result.target.metrics.blogCafeReviewCount.toLocaleString()}개`} />
+          <Metric
+            label="블로그 리뷰"
+            value={formatNullableCount(result.target.reviewDiagnosis.counts.blogReviewCount)}
+          />
         </div>
       </div>
+
+      <ReviewDiagnosisPanel diagnosis={result.target.reviewDiagnosis} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="항목별 점수">
@@ -534,6 +540,111 @@ function ScoreMetric({ label, value }: { label: string; value: string }) {
       <p className="break-keep text-xs font-black text-cyan-100/80">{label}</p>
       <p className="mt-2 break-keep text-3xl font-black text-white">{value}</p>
     </div>
+  )
+}
+
+function ReviewDiagnosisPanel({ diagnosis }: { diagnosis: PlaceReviewDiagnosis }) {
+  return (
+    <Panel title="리뷰 진단">
+      <div className="grid gap-4">
+        <div className="grid gap-3 md:grid-cols-4">
+          <Metric
+            label="리뷰 신뢰도"
+            value={`${diagnosis.score.totalReviewScore}/${diagnosis.score.maxReviewScore}`}
+          />
+          <Metric
+            label="방문자 리뷰"
+            value={formatNullableCount(diagnosis.counts.visitorReviewCount)}
+          />
+          <Metric
+            label="블로그 리뷰"
+            value={formatNullableCount(diagnosis.counts.blogReviewCount)}
+          />
+          <Metric label="답변 품질" value="미수집" />
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-4">
+            <SignalRow
+              label="방문자 경쟁 기준"
+              value={`중앙값 ${formatNullableCount(diagnosis.benchmark.competitorVisitorMedian)} · 상위25% ${formatNullableCount(diagnosis.benchmark.competitorVisitorTopQuartile)}`}
+            />
+            <SignalRow
+              label="블로그 경쟁 기준"
+              value={`중앙값 ${formatNullableCount(diagnosis.benchmark.competitorBlogMedian)} · 상위25% ${formatNullableCount(diagnosis.benchmark.competitorBlogTopQuartile)}`}
+            />
+            <SignalRow label="리뷰 수량 점수" value={`${diagnosis.score.countScore}/10`} />
+            <SignalRow
+              label="리뷰 증가량"
+              value={diagnosis.growth.status === 'available' ? '수집됨' : '스냅샷 누적 후 제공'}
+            />
+          </div>
+
+          <div className="grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-4">
+            <SignalRow
+              label="콘텐츠 품질"
+              value={
+                diagnosis.contentMetrics
+                  ? `부분 분석 · ${diagnosis.contentMetrics.analyzedReviewCount}개 문구`
+                  : '미수집'
+              }
+            />
+            <SignalRow
+              label="서비스 관련성"
+              value={
+                diagnosis.contentMetrics
+                  ? `${Math.round(diagnosis.contentMetrics.serviceRelevanceScore * 100)}%`
+                  : '미수집'
+              }
+            />
+            <SignalRow
+              label="지역 관련성"
+              value={
+                diagnosis.contentMetrics
+                  ? `${Math.round(diagnosis.contentMetrics.localRelevanceScore * 100)}%`
+                  : '미수집'
+              }
+            />
+            <SignalRow label="사업자 답변" value="미수집 · 점수 제외" />
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div>
+            <p className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-100/80">
+              Strengths
+            </p>
+            <BulletList items={diagnosis.strengths} />
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-fuchsia-100/80">
+              Weaknesses
+            </p>
+            <BulletList
+              items={
+                diagnosis.weaknesses.length
+                  ? diagnosis.weaknesses
+                  : ['현재 리뷰 진단에서 명확한 약점은 확인되지 않았습니다.']
+              }
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-100/80">
+              Actions
+            </p>
+            <BulletList items={diagnosis.recommendations} />
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          {diagnosis.warnings.map((warning) => (
+            <p key={warning} className="break-keep text-xs font-semibold leading-5 text-slate-400">
+              {warning}
+            </p>
+          ))}
+        </div>
+      </div>
+    </Panel>
   )
 }
 
@@ -819,6 +930,10 @@ function summarizeText(value: string) {
   }
 
   return value.length > 180 ? `${value.slice(0, 180)}...` : value
+}
+
+function formatNullableCount(value: number | null) {
+  return typeof value === 'number' ? `${value.toLocaleString()}개` : '미수집'
 }
 
 function readRecentPlaceSearches() {
