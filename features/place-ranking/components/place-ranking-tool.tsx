@@ -33,9 +33,9 @@ type SnapshotToast = {
   message: string
 }
 
-const rankingPageSize = 50
 const fetchLimit = 75
-const initialVisibleCount = rankingPageSize
+const initialVisibleCount = fetchLimit
+const bookingTopLimit = 30
 const recentPlaceRankingStorageKey = 'aiva:recent-place-ranking-keywords'
 const maxRecentKeywords = 5
 const calendarWeekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
@@ -452,7 +452,6 @@ export function PlaceRankingTool() {
   const keywordInputRef = useRef<HTMLInputElement | null>(null)
   const resultSectionRef = useRef<HTMLElement | null>(null)
   const rankingListStartRef = useRef<HTMLDivElement | null>(null)
-  const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   const canSubmit = useMemo(
     () => keyword.trim().length > 0 && !isLoading,
@@ -478,7 +477,7 @@ export function PlaceRankingTool() {
     )
   }, [blacklistPlaceKeys, bookingSummaryList])
   const visibleBookingTop = useMemo(() => {
-    return visibleBookingSummaryList.slice(0, 100)
+    return visibleBookingSummaryList.slice(0, bookingTopLimit)
   }, [visibleBookingSummaryList])
   const visibleItems = result?.items.slice(0, visibleCount) ?? []
   const filteredItems = useMemo(() => {
@@ -492,9 +491,6 @@ export function PlaceRankingTool() {
       item.name.toLocaleLowerCase('ko-KR').includes(filterText),
     )
   }, [appliedPlaceNameFilter, visibleItems])
-  const canTryLoadMore = Boolean(result && visibleCount < result.items.length)
-  const shouldShowLoadMorePrompt = canTryLoadMore && !appliedPlaceNameFilter
-
   useEffect(() => {
     setIsMounted(true)
     setRecentKeywords(readRecentPlaceRankingKeywords())
@@ -534,27 +530,6 @@ export function PlaceRankingTool() {
 
     return () => window.cancelAnimationFrame(frame)
   }, [isLoading, result, shouldScrollToResult])
-
-  useEffect(() => {
-    const target = loadMoreRef.current
-
-    if (!target || !shouldShowLoadMorePrompt) {
-      return
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          loadMoreRankings()
-        }
-      },
-      { rootMargin: '220px' },
-    )
-
-    observer.observe(target)
-
-    return () => observer.disconnect()
-  }, [result, shouldShowLoadMorePrompt])
 
   const runKeywordSearch = async (nextKeyword: string) => {
     if (!nextKeyword) {
@@ -624,14 +599,6 @@ export function PlaceRankingTool() {
     await runKeywordSearch(keyword.trim())
   }
 
-  const loadMoreRankings = () => {
-    if (!result) {
-      return
-    }
-
-    setVisibleCount((current) => Math.min(current + rankingPageSize, result.items.length))
-  }
-
   const submitPlaceNameFilter = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -650,35 +617,17 @@ export function PlaceRankingTool() {
     }
 
     const filterText = nextFilter.toLocaleLowerCase('ko-KR')
-    const currentMatchCount = result.items
-      .slice(0, visibleCount)
-      .filter((item) => item.name.toLocaleLowerCase('ko-KR').includes(filterText)).length
+    const currentMatchCount = result.items.filter((item) =>
+      item.name.toLocaleLowerCase('ko-KR').includes(filterText),
+    ).length
 
     if (currentMatchCount > 0) {
       setPlaceNameFilterNotice('')
       return
     }
 
-    const firstMatchIndex = result.items.findIndex((item) =>
-      item.name.toLocaleLowerCase('ko-KR').includes(filterText),
-    )
-
-    if (firstMatchIndex >= 0) {
-      const nextVisibleCount = Math.min(
-        Math.ceil((firstMatchIndex + 1) / rankingPageSize) * rankingPageSize,
-        result.items.length,
-      )
-
-      setVisibleCount((current) => Math.max(current, nextVisibleCount))
-      setPlaceNameFilterNotice(
-        `${nextVisibleCount}위까지 검색 범위를 확장해 일치하는 플레이스를 찾았습니다.`,
-      )
-      return
-    }
-
-    setVisibleCount(result.items.length)
     setPlaceNameFilterNotice(
-      `${result.items.length}위까지 검색 범위를 확장했지만 일치하는 플레이스명이 없습니다.`,
+      `조회된 ${result.items.length}위 결과 안에서 일치하는 플레이스명이 없습니다.`,
     )
   }
 
@@ -686,6 +635,13 @@ export function PlaceRankingTool() {
     setPlaceNameFilterInput('')
     setAppliedPlaceNameFilter('')
     setPlaceNameFilterNotice('')
+  }
+
+  const scrollToPageTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
   }
 
   const applyRecentKeyword = async (nextKeyword: string) => {
@@ -1255,7 +1211,7 @@ export function PlaceRankingTool() {
                 Filter
               </p>
               <p className="mt-1 text-sm font-bold text-slate-400">
-                현재 표시된 결과에 없으면 50위 단위로 검색 범위를 자동 확장합니다.
+                현재 조회된 최대 75위 결과 안에서 플레이스명을 빠르게 찾습니다.
               </p>
             </div>
             <div className="flex w-full flex-col gap-2 sm:flex-row md:max-w-md">
@@ -1531,21 +1487,24 @@ export function PlaceRankingTool() {
           {filteredItems.length === 0 ? (
             <div className="mt-5 rounded-md border border-white/10 bg-[#080c17]/70 p-5 text-center text-sm font-black text-slate-300">
               {appliedPlaceNameFilter
-                ? `${visibleItems.length}위까지 확인했지만 일치하는 플레이스명이 없습니다.`
-                : canTryLoadMore
-                ? `현재 ${visibleItems.length}위까지 확인했습니다. 아래로 스크롤하면 다음 50개를 이어서 확인합니다.`
+                ? `조회된 ${visibleItems.length}위 결과 안에서 일치하는 플레이스명이 없습니다.`
                 : `${visibleItems.length}위까지 확인했지만 일치하는 플레이스명이 없습니다.`}
             </div>
           ) : null}
 
-          {shouldShowLoadMorePrompt ? (
-            <div
-              ref={loadMoreRef}
-              className="mt-5 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4 text-center text-sm font-black text-cyan-100"
+          <div className="mt-6 border-t border-white/10 pt-4">
+            <p className="text-sm font-bold text-slate-400">
+              ⓘ 최대 75개의 검색결과를 제공합니다.
+            </p>
+            <button
+              type="button"
+              onClick={scrollToPageTop}
+              className="mx-auto mt-5 flex min-h-10 items-center justify-center gap-1 rounded-md px-4 text-sm font-black text-slate-200 transition hover:bg-white/[0.06] hover:text-white"
             >
-              아래로 스크롤하면 {visibleItems.length + 1}위 이후 순위를 이어서 표시합니다.
-            </div>
-          ) : null}
+              <span className="text-base text-blue-400">↑</span>
+              TOP
+            </button>
+          </div>
         </section>
       ) : null}
 
@@ -1797,7 +1756,7 @@ function BlacklistManagementModal({
             </p>
             <h3 className="mt-1 text-2xl font-black text-white">제외 목록 관리</h3>
             <p className="mt-2 break-keep text-sm font-bold leading-6 text-slate-400">
-              키워드와 맞지 않는 플레이스를 제외하면 예약 TOP 100 순위에서 빠집니다.
+              키워드와 맞지 않는 플레이스를 제외하면 예약 TOP 30 순위에서 빠집니다.
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -2076,7 +2035,7 @@ function BookingTopBoard({
               Today Booking
             </p>
             <h4 className="mt-1 whitespace-nowrap text-lg font-black text-white sm:text-xl">
-              오늘의 예약 TOP 100
+              오늘의 예약 TOP 30
             </h4>
             <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
               네이버 예약을 사용하는 플레이스 기준입니다.
@@ -2150,7 +2109,7 @@ function BookingTopBoardSkeleton({ date }: { date: string }) {
             Today Booking
           </p>
           <h4 className="mt-1 whitespace-nowrap text-lg font-black text-white sm:text-xl">
-            오늘의 예약 TOP 100
+            오늘의 예약 TOP 30
           </h4>
           <p className="mt-1 break-keep text-sm font-bold leading-6 text-slate-400">
             예약 데이터를 집계하고 있습니다.
@@ -2283,7 +2242,7 @@ function BookingTopAllModal({
   const displayedItems = useMemo(() => {
     return items
       .filter((item) => !appliedBlacklistKeys.has(createPlaceBlacklistKey(item.placeId, item.name)))
-      .slice(0, 100)
+      .slice(0, bookingTopLimit)
   }, [appliedBlacklistKeys, items])
   const pendingExcludeItems = useMemo(() => {
     return displayedItems.filter((item) =>
@@ -2417,7 +2376,7 @@ function BookingTopAllModal({
               Today Booking
             </p>
             <h4 className="mt-1 break-keep text-xl font-black leading-tight text-white">
-              오늘의 예약 TOP 100
+              오늘의 예약 TOP 30
             </h4>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-3 py-1 text-xs font-black text-cyan-100">
@@ -2459,7 +2418,7 @@ function BookingTopAllModal({
 
         <div className="flex flex-col gap-2 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="break-keep text-xs font-bold leading-5 text-slate-500">
-            제외 모드에서 플레이스를 선택한 뒤 순위 재산정을 누르면 TOP100을 다시 채웁니다.
+            제외 모드에서 플레이스를 선택한 뒤 순위 재산정을 누르면 TOP30을 다시 채웁니다.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {pendingExcludeKeys.size > 0 ? (
@@ -2581,7 +2540,7 @@ function BookingTopListSkeleton() {
       <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.055] p-4">
         <p className="text-sm font-black text-cyan-100">오늘의 예약 현황을 분석하고 있습니다.</p>
         <p className="mt-1 break-keep text-xs font-bold leading-5 text-slate-400">
-          네이버 예약 데이터를 집계해 TOP100 순위를 구성하는 중입니다.
+          네이버 예약 데이터를 집계해 TOP30 순위를 구성하는 중입니다.
         </p>
       </div>
       {Array.from({ length: 12 }).map((_, index) => (

@@ -400,101 +400,13 @@ function DiagnosisResult({ result }: { result: AiPlaceDiagnosisResponse }) {
 
       <ClinicalReportPanel result={result} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="항목별 점수">
-          <div className="grid gap-3">
-            {result.scores.map((score) => (
-              <div key={score.key} className="grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-black text-white">{score.label}</p>
-                  <p className="text-sm font-black text-cyan-100">
-                    {score.score}/{score.maxScore}
-                  </p>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full rounded-full bg-cyan-200"
-                    style={{ width: `${(score.score / score.maxScore) * 100}%` }}
-                  />
-                </div>
-                <p className="break-keep text-xs font-semibold leading-5 text-slate-400">
-                  {score.reason}
-                </p>
-              </div>
-            ))}
-          </div>
-        </Panel>
+      <AeoGeoExpressionGuide result={result} />
 
-        <Panel title="부족한 항목 TOP 5">
-          <NumberedList items={result.topGaps} />
-        </Panel>
-      </div>
+      <ImprovementRoadmap result={result} />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="자동 수집 현황">
-          <div className="grid gap-3">
-            {result.target.dataSources.map((source) => (
-              <div
-                key={source.key}
-                className="rounded-md border border-white/10 bg-white/[0.035] p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-black text-white">{source.label}</p>
-                  <span className={getSourceStatusClassName(source.status)}>
-                    {toSourceStatusLabel(source.status)}
-                    {typeof source.count === 'number' ? ` · ${source.count}` : ''}
-                  </span>
-                </div>
-                <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-400">
-                  {source.message}
-                </p>
-              </div>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel title="수집된 플레이스 신호">
-          <div className="grid gap-3">
-            <SignalRow label="소개글" value={summarizeText(result.target.profile.introduction)} />
-            <SignalRow label="홍보 문구" value={result.target.profile.promotion || '수집값 없음'} />
-            <SignalRow label="오시는 길" value={summarizeText(result.target.profile.locationGuide)} />
-            <SignalRow
-              label="편의/서비스"
-              value={
-                result.target.profile.amenities.length
-                  ? result.target.profile.amenities.join(', ')
-                  : '수집값 없음'
-              }
-            />
-            <SignalRow
-              label="이미지"
-              value={`${result.target.profile.imageUrls.length || result.target.metrics.imageCount}개`}
-            />
-          </div>
-        </Panel>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="개선 우선순위">
-          <NumberedList items={result.priorities} />
-        </Panel>
-        <Panel title="잘하고 있는 항목">
-          <BulletList items={result.strengths} />
-        </Panel>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <TextPanel title="소개글 개선안" text={result.introductionExample} />
-        <TextPanel title="메뉴 설명 개선안" text={result.menuDescriptionExample} />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="이미지/콘텐츠 보완 포인트">
-          <BulletList items={result.imageContentActions} />
-        </Panel>
-        <Panel title="예약상품 개선 포인트">
-          <BulletList items={result.bookingProductActions} />
-        </Panel>
+        <ScoreBreakdownPanel result={result} />
+        <DiagnosisEvidencePanel result={result} />
       </div>
 
       {result.target.bookingProducts.length ? (
@@ -643,6 +555,225 @@ function CopyPrescription({ text, title }: { text: string; title: string }) {
       <p className="text-sm font-black text-white">{title}</p>
       <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">{text}</p>
     </div>
+  )
+}
+
+function AeoGeoExpressionGuide({ result }: { result: AiPlaceDiagnosisResponse }) {
+  const guides = createAeoGeoExpressionGuides(result)
+
+  return (
+    <Panel title="AEO/GEO 표현 가이드">
+      <div className="grid gap-4">
+        <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
+          <p className="break-keep text-sm font-black leading-6 text-cyan-50">
+            AI가 매장을 이해하려면 “지역 + 서비스 + 대상 + 결과 + 조건”이 한 문장 안에서
+            연결되어야 합니다.
+          </p>
+          <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-300">
+            막연한 수식어보다 실제 고객이 검색하는 표현, 예약 전 확인할 정보, 선택 이유를
+            분리해 쓰는 쪽이 AEO/GEO 관점에서 해석 가능성이 높습니다.
+          </p>
+        </div>
+
+        <div className="grid gap-3">
+          {guides.map((guide) => (
+            <div key={guide.area} className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-black text-white">{guide.area}</p>
+                <span className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.08] px-2 py-1 text-[11px] font-black text-cyan-100">
+                  {guide.goal}
+                </span>
+              </div>
+              <p className="mt-3 break-keep text-xs font-bold leading-5 text-slate-400">
+                근거: {guide.evidence}
+              </p>
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <ExpressionExample
+                  label="권장 표현"
+                  text={guide.goodExample}
+                  tone="good"
+                  reason={guide.whyGood}
+                />
+                <ExpressionExample
+                  label="피해야 할 표현"
+                  text={guide.badExample}
+                  tone="bad"
+                  reason={guide.whyBad}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
+function ExpressionExample({
+  label,
+  reason,
+  text,
+  tone,
+}: {
+  label: string
+  reason: string
+  text: string
+  tone: 'good' | 'bad'
+}) {
+  const toneClassName =
+    tone === 'good'
+      ? 'border-cyan-300/20 bg-cyan-300/[0.055] text-cyan-50'
+      : 'border-fuchsia-300/20 bg-fuchsia-300/[0.055] text-fuchsia-50'
+
+  return (
+    <div className={`rounded-md border p-4 ${toneClassName}`}>
+      <p className="text-xs font-black uppercase tracking-[0.14em] opacity-80">{label}</p>
+      <p className="mt-3 break-keep text-sm font-black leading-6 text-white">{text}</p>
+      <p className="mt-3 break-keep text-xs font-semibold leading-5 text-slate-300">
+        {reason}
+      </p>
+    </div>
+  )
+}
+
+function ImprovementRoadmap({ result }: { result: AiPlaceDiagnosisResponse }) {
+  const report = result.clinicalReport
+
+  return (
+    <Panel title="개선 실행 순서">
+      <div className="grid gap-4">
+        {report.treatmentPlan.map((item, index) => (
+          <div key={`${item.area}-${index}`} className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-md border border-cyan-200/25 bg-cyan-300/12 px-2 py-1 text-[11px] font-black text-cyan-100">
+                Step {index + 1}
+              </span>
+              <span className="rounded-md border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-black text-slate-300">
+                P{item.priority}
+              </span>
+              <p className="text-sm font-black text-white">{item.area}</p>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+              <div className="grid gap-2">
+                <ReasonBlock label="왜 안 좋은가" text={item.problem} tone="bad" />
+                <ReasonBlock label="판단 근거" text={item.evidence} tone="neutral" />
+              </div>
+              <div className="grid gap-2">
+                <ReasonBlock label="어떻게 고칠까" text={item.direction} tone="good" />
+                <ReasonBlock label="왜 좋아지는가" text={item.expectedImpact} tone="good" />
+              </div>
+            </div>
+            <div className="mt-3 rounded-md border border-cyan-300/18 bg-[#07111f] p-3">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-100/75">
+                바로 쓸 문구
+              </p>
+              <p className="mt-2 break-keep text-sm font-semibold leading-6 text-white">
+                {item.sampleCopy}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
+function ReasonBlock({
+  label,
+  text,
+  tone,
+}: {
+  label: string
+  text: string
+  tone: 'good' | 'bad' | 'neutral'
+}) {
+  const labelClassName =
+    tone === 'good' ? 'text-cyan-100' : tone === 'bad' ? 'text-fuchsia-100' : 'text-slate-300'
+
+  return (
+    <div className="rounded-md border border-white/10 bg-[#080d18]/75 p-3">
+      <p className={`text-xs font-black uppercase tracking-[0.12em] ${labelClassName}`}>{label}</p>
+      <p className="mt-2 break-keep text-sm font-semibold leading-6 text-slate-300">{text}</p>
+    </div>
+  )
+}
+
+function ScoreBreakdownPanel({ result }: { result: AiPlaceDiagnosisResponse }) {
+  return (
+    <Panel title="항목별 점수와 이유">
+      <div className="grid gap-3">
+        {result.scores.map((score) => (
+          <div key={score.key} className="grid gap-2 rounded-md border border-white/10 bg-white/[0.035] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-black text-white">{score.label}</p>
+              <p className="text-sm font-black text-cyan-100">
+                {score.score}/{score.maxScore}
+              </p>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-cyan-200"
+                style={{ width: `${(score.score / score.maxScore) * 100}%` }}
+              />
+            </div>
+            <p className="break-keep text-xs font-semibold leading-5 text-slate-400">
+              {score.reason}
+            </p>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
+function DiagnosisEvidencePanel({ result }: { result: AiPlaceDiagnosisResponse }) {
+  return (
+    <Panel title="진단 근거 데이터">
+      <div className="grid gap-4">
+        <div className="grid gap-3">
+          <SignalRow label="소개글" value={summarizeText(result.target.profile.introduction)} />
+          <SignalRow label="홍보 문구" value={result.target.profile.promotion || '수집값 없음'} />
+          <SignalRow label="오시는 길" value={summarizeText(result.target.profile.locationGuide)} />
+          <SignalRow
+            label="편의/서비스"
+            value={
+              result.target.profile.amenities.length
+                ? result.target.profile.amenities.join(', ')
+                : '수집값 없음'
+            }
+          />
+          <SignalRow
+            label="이미지"
+            value={`${result.target.profile.imageUrls.length || result.target.metrics.imageCount}개`}
+          />
+        </div>
+
+        <details className="rounded-md border border-white/10 bg-white/[0.03]">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-black text-cyan-100">
+            자동 수집 현황 보기
+          </summary>
+          <div className="grid gap-3 border-t border-white/10 p-4">
+            {result.target.dataSources.map((source) => (
+              <div
+                key={source.key}
+                className="rounded-md border border-white/10 bg-white/[0.035] p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-black text-white">{source.label}</p>
+                  <span className={getSourceStatusClassName(source.status)}>
+                    {toSourceStatusLabel(source.status)}
+                    {typeof source.count === 'number' ? ` · ${source.count}` : ''}
+                  </span>
+                </div>
+                <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-400">
+                  {source.message}
+                </p>
+              </div>
+            ))}
+          </div>
+        </details>
+      </div>
+    </Panel>
   )
 }
 
@@ -891,6 +1022,130 @@ function formatTreatmentMenuPrice(
   }
 
   return ''
+}
+
+function createAeoGeoExpressionGuides(result: AiPlaceDiagnosisResponse) {
+  const target = result.target
+  const keyword = result.keyword
+  const region = extractRegionKeyword(keyword, target.address)
+  const service = extractServiceKeyword(keyword, target.category)
+  const productSample = getRepresentativeProductName(result)
+  const locationHint = createLocationHint(target.address)
+
+  return [
+    {
+      area: '소개글 첫 문장',
+      goal: '지역·서비스·대상 연결',
+      evidence: target.profile.introduction
+        ? `현재 소개글 ${target.profile.introduction.length.toLocaleString()}자 수집`
+        : '소개글 수집값이 없어 AI가 대표 서비스와 추천 대상을 직접 판단하기 어렵습니다.',
+      goodExample:
+        result.clinicalReport.copyPrescriptions.introduction ||
+        `${target.name}은 ${region}에서 ${service}을 찾는 고객에게 상담, 시술 과정, 유지 관리까지 안내하는 ${target.category} 매장입니다.`,
+      badExample: `${target.name}은 꼼꼼하고 예쁘게 시술하는 뷰티샵입니다.`,
+      whyGood:
+        '지역명, 서비스명, 고객 의도, 매장 성격이 한 문장에 들어가 AI가 어떤 검색 질문에 답으로 연결할지 판단하기 쉽습니다.',
+      whyBad:
+        '예쁘다, 꼼꼼하다 같은 표현만 있으면 어떤 지역과 어떤 서비스에 강한 매장인지 구분하기 어렵습니다.',
+    },
+    {
+      area: '예약상품명',
+      goal: '검색 의도와 상품 구조 연결',
+      evidence: target.bookingProducts.length
+        ? `예약상품 ${target.bookingProducts.length.toLocaleString()}개, 대표 상품 "${productSample}" 확인`
+        : '예약상품 수집값이 없어 서비스별 선택 기준을 판단하기 어렵습니다.',
+      goodExample: `${region} ${service} | ${productSample} 상담 포함`,
+      badExample: '기본 관리 / 프리미엄 관리 / 이벤트 상품',
+      whyGood:
+        '상품명에 지역, 서비스, 시술 유형이 들어가면 AI와 고객 모두 상품이 어떤 검색 의도를 해결하는지 바로 이해합니다.',
+      whyBad:
+        '내부 운영용 상품명만 있으면 실제 고객이 찾는 서비스명과 연결되지 않아 진단상 서비스 정보 완성도가 낮아집니다.',
+    },
+    {
+      area: '예약상품 설명',
+      goal: '대상·결과·시간·주의사항 명시',
+      evidence: createBookingDescriptionEvidence(result),
+      goodExample:
+        result.clinicalReport.copyPrescriptions.bookingProduct ||
+        `${service}이 처음인 고객에게 추천합니다. 상담 후 눈매와 모질에 맞춰 디자인하고, 예상 소요시간과 유지 관리 방법을 예약 전 안내합니다.`,
+      badExample: '고객님께 잘 어울리게 예쁘게 해드립니다.',
+      whyGood:
+        '추천 대상, 결과 특징, 소요시간, 예약 전 확인사항이 들어가면 AI가 고객 질문에 답할 수 있는 구체 정보로 인식합니다.',
+      whyBad:
+        '추상적인 장점만 쓰면 가격, 시간, 대상, 결과 차이를 비교할 근거가 없어 경쟁 매장 대비 약하게 평가됩니다.',
+    },
+    {
+      area: '오시는 길·지역 엔티티',
+      goal: '위치 신뢰도 강화',
+      evidence: target.profile.locationGuide
+        ? '오시는 길 정보가 수집되어 지역 엔티티 근거로 사용할 수 있습니다.'
+        : '오시는 길 수집값이 없어 역명, 출구, 건물, 층수 같은 방문 근거가 부족합니다.',
+      goodExample: `${locationHint} 기준으로 ${target.name} 위치, 건물명, 층수, 주차 가능 여부를 함께 안내합니다.`,
+      badExample: '자세한 위치는 지도 참고 부탁드립니다.',
+      whyGood:
+        '역명, 출구, 건물, 층수, 주차 정보는 로컬 검색과 AI 답변에서 매장을 실제 장소로 식별하는 데 도움이 됩니다.',
+      whyBad:
+        '지도 참고만 쓰면 지역·방문 맥락이 텍스트 데이터로 남지 않아 AI가 위치 편의성을 설명하기 어렵습니다.',
+    },
+  ]
+}
+
+function extractRegionKeyword(keyword: string, address: string) {
+  const keywordRegion = keyword
+    .split(/\s+/)
+    .find((part) => /(동|구|역|로|길)$/.test(part) && part.length >= 2)
+
+  if (keywordRegion) {
+    return keywordRegion
+  }
+
+  const addressRegion = address.split(/\s+/).find((part) => /(동|구|역)$/.test(part))
+
+  return addressRegion || '지역 고객'
+}
+
+function extractServiceKeyword(keyword: string, category: string) {
+  const serviceTerms = keyword
+    .split(/\s+/)
+    .filter((part) => /속눈썹|펌|연장|왁싱|눈썹|브로우|네일|피부|뷰티/.test(part))
+
+  if (serviceTerms.length) {
+    return serviceTerms.join(' ')
+  }
+
+  return category || '대표 서비스'
+}
+
+function getRepresentativeProductName(result: AiPlaceDiagnosisResponse) {
+  const product = result.target.bookingProducts.find((item) => item.name.trim())
+
+  if (product) {
+    return product.name
+  }
+
+  return `${extractServiceKeyword(result.keyword, result.target.category)} 상품`
+}
+
+function createBookingDescriptionEvidence(result: AiPlaceDiagnosisResponse) {
+  const products = result.target.bookingProducts
+  const treatmentMenus = products.flatMap((product) =>
+    product.treatmentMenuCategories.flatMap((category) => category.menus),
+  )
+  const describedCount =
+    products.filter((product) => product.description.trim()).length +
+    treatmentMenus.filter((menu) => menu.description.trim()).length
+
+  if (!products.length) {
+    return '예약상품 상세 수집값이 없어 상품 설명의 구체성을 평가하기 어렵습니다.'
+  }
+
+  return `예약상품/시술 메뉴 ${products.length + treatmentMenus.length}개 중 설명이 있는 항목 ${describedCount}개 확인`
+}
+
+function createLocationHint(address: string) {
+  const parts = address.split(/\s+/).filter(Boolean)
+
+  return parts.slice(0, 3).join(' ') || '매장 주소'
 }
 
 function NumberedList({ items }: { items: string[] }) {
