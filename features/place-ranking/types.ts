@@ -167,7 +167,8 @@ export type PlaceRankingResponse = {
   totalCollected: number
   hasMore: boolean
   nextLimit: number | null
-  source: 'live' | 'cache'
+  source: 'live' | 'cache' | 'local-fallback'
+  warning?: string
   items: PlaceRankingItem[]
 }
 

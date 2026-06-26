@@ -4,6 +4,8 @@ import type {
   PlaceRankingResponse,
   PlaceReviewImage,
 } from '../types'
+import { searchNaverLocal } from '@/lib/naver'
+import type { NaverLocalSearchItem } from '@/lib/naver'
 
 type CollectedPlaceItem = Omit<PlaceRankingItem, 'rank' | 'displayRank'>
 
@@ -81,6 +83,24 @@ type RawGraphQlVisitorImage = {
   imageUrl?: string
   profileImageUrl?: string
   nickname?: string
+}
+
+class NaverPlaceGraphQlBlockedError extends Error {
+  status: number
+  responseSnippet: string
+
+  constructor({
+    responseSnippet,
+    status,
+  }: {
+    responseSnippet: string
+    status: number
+  }) {
+    super(`Naver Place GraphQL request was blocked with status ${status}.`)
+    this.name = 'NaverPlaceGraphQlBlockedError'
+    this.status = status
+    this.responseSnippet = responseSnippet
+  }
 }
 
 const defaultLimit = 300
@@ -169,6 +189,8 @@ type RankingCacheEntry = {
   collectedAt: string
   expiresAt: number
   items: PlaceRankingItem[]
+  source: PlaceRankingResponse['source']
+  warning?: string
 }
 
 const rankingCache = new Map<string, RankingCacheEntry>()
@@ -196,19 +218,43 @@ export async function collectNaverPlaceRankings({
       collectedAt: cached.collectedAt,
       items: cached.items.slice(0, safeLimit),
       requestedLimit: safeLimit,
-      source: 'cache',
+      source: cached.source === 'local-fallback' ? 'local-fallback' : 'cache',
       availableTotal: cached.items.length,
+      warning: cached.warning,
     })
   }
 
   const collectedAt = new Date().toISOString()
-  const items = await collectRankingItems(safeKeyword, maxLimit)
+  let items: PlaceRankingItem[]
+  let source: PlaceRankingResponse['source'] = 'live'
+  let warning: string | undefined
+
+  try {
+    items = await collectRankingItems(safeKeyword, maxLimit)
+  } catch (error) {
+    if (!(error instanceof NaverPlaceGraphQlBlockedError)) {
+      throw error
+    }
+
+    console.warn('Naver Place GraphQL blocked; falling back to Naver Local Search API', {
+      keyword: safeKeyword,
+      status: error.status,
+      responseSnippet: error.responseSnippet,
+    })
+
+    items = await collectFallbackLocalSearchItems(safeKeyword)
+    source = 'local-fallback'
+    warning =
+      '네이버 플레이스 GraphQL이 일시적으로 요청을 제한해 공식 네이버 지역검색 API 결과로 대체 조회했습니다. 정확한 300위 순위가 아니라 보조 검색 순서입니다.'
+  }
 
   rankingCache.set(cacheKey, {
     keyword: safeKeyword,
     collectedAt,
     expiresAt: Date.now() + cacheTtlMs,
     items,
+    source,
+    warning,
   })
 
   return createResponse({
@@ -216,8 +262,9 @@ export async function collectNaverPlaceRankings({
     collectedAt,
     items: items.slice(0, safeLimit),
     requestedLimit: safeLimit,
-    source: 'live',
+    source,
     availableTotal: items.length,
+    warning,
   })
 }
 
@@ -228,6 +275,7 @@ function createResponse({
   requestedLimit,
   source,
   availableTotal = items.length,
+  warning,
 }: {
   keyword: string
   collectedAt: string
@@ -235,6 +283,7 @@ function createResponse({
   requestedLimit: number
   source: PlaceRankingResponse['source']
   availableTotal?: number
+  warning?: string
 }): PlaceRankingResponse {
   const hasMore = requestedLimit < maxLimit && availableTotal > requestedLimit
   const nextLimit = hasMore
@@ -249,6 +298,7 @@ function createResponse({
     hasMore: nextLimit !== null,
     nextLimit,
     source,
+    warning,
     items,
   }
 }
@@ -258,6 +308,95 @@ async function collectRankingItems(keyword: string, limit: number): Promise<Plac
   const items = await fetchGraphQlRankingItems(searchQuery, limit)
 
   return toRankedItems(items).slice(0, limit)
+}
+
+async function collectFallbackLocalSearchItems(keyword: string): Promise<PlaceRankingItem[]> {
+  const response = await searchNaverLocal({
+    query: keyword,
+    display: 5,
+    sort: 'random',
+  })
+
+  return response.items.map((item, index) => ({
+    ...mapLocalSearchItemToPlace(item, index),
+    rank: index + 1,
+    displayRank: index + 1,
+  }))
+}
+
+function mapLocalSearchItemToPlace(item: NaverLocalSearchItem, index: number): CollectedPlaceItem {
+  const address = item.roadAddress || item.address
+  const rawText = [item.title, item.category, address, item.description].filter(Boolean).join(' ')
+
+  return {
+    id: createFallbackPlaceId(item, index),
+    name: item.title,
+    category: item.category,
+    ad: {
+      isAd: false,
+    },
+    location: {
+      roadAddress: item.roadAddress || undefined,
+      address: item.address || undefined,
+      fullAddress: address || undefined,
+      commonAddress: address || undefined,
+      latitude: parseNaverMapCoordinate(item.mapy),
+      longitude: parseNaverMapCoordinate(item.mapx),
+    },
+    businessHours: {},
+    images: {
+      imageCount: 0,
+      imageUrls: [],
+    },
+    actions: {
+      hasBooking: false,
+      routeUrl: item.link || undefined,
+    },
+    benefits: {
+      couponCount: 0,
+      coupons: [],
+      hasCoupon: false,
+    },
+    options: [],
+    reviews: {
+      blogCafeReviewCount: 0,
+      bookingReviewCount: 0,
+      images: [],
+      snippets: item.description
+        ? [
+            {
+              reviewId: `local-description-${index + 1}`,
+              text: item.description,
+            },
+          ]
+        : [],
+      totalReviewCount: 0,
+    },
+    badges: ['지역검색 대체 결과'],
+    hashtags: [],
+    rawText,
+  }
+}
+
+function createFallbackPlaceId(item: NaverLocalSearchItem, index: number) {
+  const source = [item.link, item.title, item.roadAddress, item.address, index].join('|')
+  let hash = 0
+
+  for (let charIndex = 0; charIndex < source.length; charIndex += 1) {
+    hash = (hash * 31 + source.charCodeAt(charIndex)) >>> 0
+  }
+
+  return `local-${hash.toString(36)}`
+}
+
+function parseNaverMapCoordinate(value: string) {
+  const numberValue = Number(value)
+
+  if (!Number.isFinite(numberValue)) {
+    return 0
+  }
+
+  return numberValue / 10_000_000
 }
 
 async function fetchGraphQlRankingItems(
@@ -319,7 +458,27 @@ async function fetchGraphQlRankingPage(searchQuery: string, start: number) {
       },
     ]),
   })
-  const body = (await response.json()) as GraphQlPlaceResponse
+  const responseText = await response.text()
+  const contentType = response.headers.get('content-type') ?? ''
+
+  if (!contentType.includes('application/json')) {
+    throw new NaverPlaceGraphQlBlockedError({
+      status: response.status,
+      responseSnippet: responseText.slice(0, 240),
+    })
+  }
+
+  let body: GraphQlPlaceResponse
+
+  try {
+    body = JSON.parse(responseText) as GraphQlPlaceResponse
+  } catch (error) {
+    throw new Error(
+      `Naver Place GraphQL returned invalid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+  }
 
   if (!response.ok || body[0]?.errors?.length) {
     throw new Error(

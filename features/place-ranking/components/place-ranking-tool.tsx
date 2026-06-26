@@ -1306,19 +1306,32 @@ export function PlaceRankingTool() {
               <span className="text-xs font-bold text-slate-500">
                 조회 시각: {formatCollectedAt(result.collectedAt)}
                 {result.source === 'cache' ? ' · 캐시 응답' : ''}
+                {result.source === 'local-fallback' ? ' · 지역검색 대체 응답' : ''}
               </span>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
                   onClick={saveTodaySnapshot}
-                  disabled={isSavingSnapshot || result.items.length === 0}
+                  disabled={
+                    isSavingSnapshot || result.items.length === 0 || result.source === 'local-fallback'
+                  }
                   className="min-h-11 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {isSavingSnapshot ? '기록 중' : '오늘 순위 기록'}
+                  {result.source === 'local-fallback'
+                    ? '대체 결과 기록 불가'
+                    : isSavingSnapshot
+                      ? '기록 중'
+                      : '오늘 순위 기록'}
                 </button>
               </div>
             </div>
           </div>
+
+          {result.warning ? (
+            <div className="mt-4 rounded-md border border-fuchsia-300/25 bg-fuchsia-300/[0.08] p-3 text-sm font-bold leading-6 text-fuchsia-50">
+              {result.warning}
+            </div>
+          ) : null}
 
           <BookingTopBoard
             top={visibleBookingTop}
