@@ -73,6 +73,10 @@ type RefreshTarget =
       keywordIds: string[]
     }
 
+function getRefreshTargetKey(target: RefreshTarget) {
+  return target.type === 'all' ? 'all' : `keyword:${target.keywordIds[0]}`
+}
+
 export function AiDiagnosisDataManager({
   isOpen,
   onClose,
@@ -86,7 +90,7 @@ export function AiDiagnosisDataManager({
   const [status, setStatus] = useState<AiDiagnosisDataRefreshStatus | null>(null)
   const [isKeywordLoading, setIsKeywordLoading] = useState(false)
   const [isStatusLoading, setIsStatusLoading] = useState(false)
-  const [isRefreshLoading, setIsRefreshLoading] = useState(false)
+  const [refreshingTargetKeys, setRefreshingTargetKeys] = useState<Set<string>>(() => new Set())
   const [refreshTarget, setRefreshTarget] = useState<RefreshTarget | null>(null)
   const [rankingKeywords, setRankingKeywords] = useState<PlaceRankingBatchKeyword[]>([])
   const [rankingKeywordInput, setRankingKeywordInput] = useState('')
@@ -303,11 +307,13 @@ export function AiDiagnosisDataManager({
   }
 
   const runRefresh = async (target: RefreshTarget) => {
-    if (isRefreshLoading) {
+    const targetKey = getRefreshTargetKey(target)
+
+    if (refreshingTargetKeys.has(targetKey)) {
       return
     }
 
-    setIsRefreshLoading(true)
+    setRefreshingTargetKeys((current) => new Set(current).add(targetKey))
     setMessage({
       type: 'info',
       message:
@@ -341,7 +347,11 @@ export function AiDiagnosisDataManager({
         message: error instanceof Error ? error.message : 'AI 진단 데이터 수집에 실패했습니다.',
       })
     } finally {
-      setIsRefreshLoading(false)
+      setRefreshingTargetKeys((current) => {
+        const next = new Set(current)
+        next.delete(targetKey)
+        return next
+      })
     }
   }
 
@@ -421,17 +431,21 @@ export function AiDiagnosisDataManager({
             className="min-h-0 overflow-y-auto overscroll-contain p-3 [-webkit-overflow-scrolling:touch] [touch-action:pan-y] sm:p-5"
             data-aiva-scroll-lock-allow="true"
           >
+            <p className="mb-2 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+              작업 카테고리
+            </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => setActiveTab('ranking')}
                 className={[
-                  'min-h-20 rounded-md border p-3 text-left transition',
+                  'relative min-h-20 overflow-hidden rounded-md border p-3 pt-4 text-left transition',
                   activeTab === 'ranking'
-                    ? 'border-cyan-300/45 bg-cyan-300/12 text-cyan-50'
-                    : 'border-white/10 bg-white/[0.035] text-slate-300 hover:border-cyan-300/25 hover:bg-white/[0.055]',
+                    ? 'border-cyan-300/55 bg-[#102633] text-cyan-50 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.12)]'
+                    : 'border-white/12 bg-[#101520] text-slate-300 hover:border-cyan-300/30 hover:bg-[#131b27]',
                 ].join(' ')}
               >
+                <span className="absolute inset-x-0 top-0 h-1 bg-cyan-300/80" aria-hidden="true" />
                 <span className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/75">
                   Place Ranking
                 </span>
@@ -453,13 +467,14 @@ export function AiDiagnosisDataManager({
                 type="button"
                 onClick={() => setActiveTab('diagnosis')}
                 className={[
-                  'min-h-20 rounded-md border p-3 text-left transition',
+                  'relative min-h-20 overflow-hidden rounded-md border p-3 pt-4 text-left transition',
                   activeTab === 'diagnosis'
-                    ? 'border-cyan-300/45 bg-cyan-300/12 text-cyan-50'
-                    : 'border-white/10 bg-white/[0.035] text-slate-300 hover:border-cyan-300/25 hover:bg-white/[0.055]',
+                    ? 'border-fuchsia-300/45 bg-[#28152c] text-fuchsia-50 shadow-[inset_0_0_0_1px_rgba(240,171,252,0.1)]'
+                    : 'border-white/12 bg-[#101520] text-slate-300 hover:border-fuchsia-300/30 hover:bg-[#1b1622]',
                 ].join(' ')}
               >
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200/75">
+                <span className="absolute inset-x-0 top-0 h-1 bg-fuchsia-300/75" aria-hidden="true" />
+                <span className="text-xs font-black uppercase tracking-[0.14em] text-fuchsia-200/80">
                   AI Diagnosis
                 </span>
                 <span className="mt-2 flex items-center justify-between gap-3">
@@ -478,7 +493,7 @@ export function AiDiagnosisDataManager({
             </div>
 
             {activeTab === 'ranking' ? (
-              <section className="mt-3 rounded-md border border-white/10 bg-white/[0.035] p-3 sm:p-4">
+              <section className="mt-3 rounded-md border border-cyan-300/18 bg-[#0b141f] p-3 sm:p-4">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="text-base font-black text-white">플레이스 순위 자동 기록</h3>
@@ -538,7 +553,7 @@ export function AiDiagnosisDataManager({
                 </div>
               </section>
             ) : (
-              <section className="mt-3 rounded-md border border-cyan-300/16 bg-cyan-300/[0.035] p-3 sm:p-4">
+              <section className="mt-3 rounded-md border border-fuchsia-300/16 bg-[#150f1b] p-3 sm:p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="text-base font-black text-white">AI 진단 데이터 수집</h3>
@@ -549,10 +564,10 @@ export function AiDiagnosisDataManager({
                   <button
                     type="button"
                     onClick={() => setRefreshTarget({ type: 'all', label: '전체 키워드' })}
-                    disabled={isRefreshLoading || keywords.length === 0}
+                    disabled={refreshingTargetKeys.has('all') || keywords.length === 0}
                     className="min-h-9 shrink-0 rounded-md border border-cyan-300/35 bg-cyan-300/14 px-3 text-xs font-black text-cyan-50 transition hover:bg-cyan-300/22 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isRefreshLoading ? '수집 중...' : '전체 수집'}
+                    {refreshingTargetKeys.has('all') ? '접수 중...' : '전체 수집'}
                   </button>
                 </div>
 
@@ -589,6 +604,7 @@ export function AiDiagnosisDataManager({
                         <KeywordRow
                           key={keyword.id}
                           isKeywordLoading={isKeywordLoading}
+                          isRefreshRequestLoading={refreshingTargetKeys.has(`keyword:${keyword.id}`)}
                           keyword={keyword}
                           onCancelRefresh={cancelRefresh}
                           onRefresh={(targetKeyword) =>
@@ -622,7 +638,7 @@ export function AiDiagnosisDataManager({
 
       {refreshTarget ? (
         <ConfirmRefreshModal
-          isLoading={isRefreshLoading}
+          isLoading={refreshingTargetKeys.has(getRefreshTargetKey(refreshTarget))}
           target={refreshTarget}
           onCancel={() => setRefreshTarget(null)}
           onConfirm={() => {
@@ -638,6 +654,7 @@ export function AiDiagnosisDataManager({
 
 function KeywordRow({
   isKeywordLoading,
+  isRefreshRequestLoading,
   keyword,
   onCancelRefresh,
   onRefresh,
@@ -647,6 +664,7 @@ function KeywordRow({
   keyword: AiDiagnosisBenchmarkKeyword
   status: AiDiagnosisDataRefreshStatus['keywords'][number] | null
   isKeywordLoading: boolean
+  isRefreshRequestLoading: boolean
   onCancelRefresh: (jobId?: string) => void
   onRefresh: (keyword: AiDiagnosisBenchmarkKeyword) => void
   onRemoveKeyword: (id: string) => void
@@ -696,10 +714,10 @@ function KeywordRow({
           <button
             type="button"
             onClick={() => onRefresh(keyword)}
-            disabled={isActive || isKeywordLoading}
+            disabled={isActive || isKeywordLoading || isRefreshRequestLoading}
             className="min-h-8 rounded-md border border-cyan-300/25 bg-cyan-300/10 px-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/18 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            데이터 수집
+            {isRefreshRequestLoading ? '접수 중...' : '데이터 수집'}
           </button>
           {canCancel ? (
             <button

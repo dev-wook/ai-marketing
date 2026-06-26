@@ -505,9 +505,9 @@ function CalendarDayCell({
           <button
             type="button"
             onClick={() => onOpenDay(day)}
-            className="w-fit rounded-full border border-white/[0.08] bg-white/[0.03] px-0.5 py-0 text-[6px] font-bold leading-[10px] text-cyan-100/65 transition hover:bg-cyan-300/10 md:px-1.5 md:py-0.5 md:text-[10px] md:font-black md:leading-none md:text-cyan-100"
+            className="w-fit rounded-full border border-white/[0.08] bg-white/[0.03] px-0.5 py-0 text-[6px] font-bold leading-[10px] text-cyan-100/65 transition hover:bg-cyan-300/10 md:hidden"
           >
-            <span className="md:hidden">+{mobileOverflowCount}</span>
+            +{mobileOverflowCount}
           </button>
         ) : null}
 

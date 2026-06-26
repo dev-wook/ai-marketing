@@ -1130,7 +1130,11 @@ function createBackgroundWorkJobCards({
   return [
     ...createAiDiagnosisRefreshJobCards(aiDiagnosisStatus, now),
     ...createPlaceRankingBatchJobCards(placeRankingKeywords, now),
-  ].sort((a, b) => getWorkJobSortTime(b) - getWorkJobSortTime(a))
+  ].sort((a, b) => {
+    const priorityDifference = getWorkJobSortPriority(b) - getWorkJobSortPriority(a)
+
+    return priorityDifference || getWorkJobSortTime(b) - getWorkJobSortTime(a)
+  })
 }
 
 function createAiDiagnosisRefreshJobCards(
@@ -1414,6 +1418,18 @@ function getWorkJobSortTime(job: BackgroundWorkJobCardModel) {
   const time = new Date(value).getTime()
 
   return Number.isNaN(time) ? 0 : time
+}
+
+function getWorkJobSortPriority(job: BackgroundWorkJobCardModel) {
+  if (job.status === 'UPDATING') {
+    return 2
+  }
+
+  if (job.status === 'QUEUED') {
+    return 1
+  }
+
+  return 0
 }
 
 function countUnreadBackgroundWorkJobs({

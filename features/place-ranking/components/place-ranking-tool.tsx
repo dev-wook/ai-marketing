@@ -1345,55 +1345,14 @@ export function PlaceRankingTool() {
                     <p className="mt-0.5 text-xs font-bold leading-snug text-cyan-100/80 sm:mt-1 sm:text-sm">
                       {item.category}
                     </p>
-                    <div className="relative mt-2 sm:mt-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setOpenedAddressId((current) => (current === item.id ? null : item.id))
-                        }
-                        className="inline-flex max-w-full items-center gap-1 text-left text-xs font-black text-slate-300 transition hover:text-cyan-100 sm:text-sm"
-                        aria-expanded={openedAddressId === item.id}
-                      >
-                        <span className="min-w-0 truncate">{formatShortAddress(item)}</span>
-                        <span
-                          className={`relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-cyan-200/80 transition ${
-                            openedAddressId === item.id ? 'rotate-180' : ''
-                          }`}
-                          aria-hidden="true"
-                        >
-                          <span className="block h-2 w-2 translate-y-[-1px] rotate-45 border-b-2 border-r-2 border-current" />
-                        </span>
-                      </button>
-                      {openedAddressId === item.id ? (
-                        <div className="absolute left-0 z-30 mt-2 w-[min(16rem,100%)] rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.35)] sm:w-[min(22rem,calc(100vw-3rem))]">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
-                              Address
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => setOpenedAddressId(null)}
-                              className="shrink-0 rounded-sm border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.1]"
-                            >
-                              닫기
-                            </button>
-                          </div>
-                          <p className="mt-2">{formatDetailedAddress(item)}</p>
-                          {getUsefulOptions(item).length > 0 ? (
-                            <div className="mt-3 flex flex-wrap gap-1.5">
-                              {getUsefulOptions(item).map((option) => (
-                                <span
-                                  key={option}
-                                  className="rounded-sm bg-white/[0.06] px-2 py-1 text-[10px] text-slate-300"
-                                >
-                                  {option}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
+                    <PlaceAddressDisclosure
+                      isOpen={openedAddressId === item.id}
+                      item={item}
+                      onClose={() => setOpenedAddressId(null)}
+                      onToggle={() =>
+                        setOpenedAddressId((current) => (current === item.id ? null : item.id))
+                      }
+                    />
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-2">
                       {item.badges.map((badge) => (
@@ -1584,6 +1543,96 @@ function PlaceRankingResultFooter({ onTopClick }: { onTopClick: () => void }) {
         <span className="text-base text-blue-400">↑</span>
         TOP
       </button>
+    </div>
+  )
+}
+
+function PlaceAddressDisclosure({
+  isOpen,
+  item,
+  onClose,
+  onToggle,
+}: {
+  isOpen: boolean
+  item: PlaceRankingItem
+  onClose: () => void
+  onToggle: () => void
+}) {
+  const addressRef = useRef<HTMLSpanElement | null>(null)
+  const [isOverflowing, setIsOverflowing] = useState(false)
+
+  useEffect(() => {
+    const addressElement = addressRef.current
+
+    if (!addressElement) {
+      return
+    }
+
+    const updateOverflowState = () => {
+      setIsOverflowing(addressElement.scrollWidth > addressElement.clientWidth + 1)
+    }
+
+    updateOverflowState()
+
+    const resizeObserver = new ResizeObserver(updateOverflowState)
+    resizeObserver.observe(addressElement)
+
+    return () => resizeObserver.disconnect()
+  }, [item.id])
+
+  return (
+    <div className="relative mt-2 min-w-0 sm:mt-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={!isOverflowing}
+        className="flex max-w-full items-center gap-1 text-left text-xs font-black text-slate-300 transition enabled:hover:text-cyan-100 sm:text-sm"
+        aria-expanded={isOverflowing ? isOpen : undefined}
+      >
+        <span ref={addressRef} className="min-w-0 truncate">
+          {formatShortAddress(item)}
+        </span>
+        {isOverflowing ? (
+          <span
+            className={`relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-cyan-200/80 transition ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+            aria-hidden="true"
+          >
+            <span className="block h-2 w-2 translate-y-[-1px] rotate-45 border-b-2 border-r-2 border-current" />
+          </span>
+        ) : null}
+      </button>
+
+      {isOpen && isOverflowing ? (
+        <div className="absolute left-0 z-30 mt-2 w-[min(16rem,100%)] rounded-md border border-cyan-300/20 bg-[#0b1220] p-3 text-xs font-bold leading-5 text-slate-200 shadow-[0_18px_36px_rgba(0,0,0,0.35)] sm:w-[min(22rem,calc(100vw-3rem))]">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
+              Address
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-sm border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.1]"
+            >
+              닫기
+            </button>
+          </div>
+          <p className="mt-2">{formatDetailedAddress(item)}</p>
+          {getUsefulOptions(item).length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {getUsefulOptions(item).map((option) => (
+                <span
+                  key={option}
+                  className="rounded-sm bg-white/[0.06] px-2 py-1 text-[10px] text-slate-300"
+                >
+                  {option}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -2517,16 +2566,19 @@ function BookingTopAllModal({
               표시할 예약 순위 데이터가 없습니다.
             </p>
           )}
+          {!isLoading && displayedItems.length > 0 ? (
+            <div className="mt-2 border-t border-white/10 pt-4">
+              <button
+                type="button"
+                onClick={scrollToTop}
+                className="flex min-h-11 w-full touch-manipulation items-center justify-center gap-1 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] px-4 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.12]"
+              >
+                <span className="text-base text-cyan-300">↑</span>
+                TOP
+              </button>
+            </div>
+          ) : null}
         </div>
-        {!isLoading && displayedItems.length > 0 ? (
-          <button
-            type="button"
-            onClick={scrollToTop}
-            className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-5 z-[10025] inline-flex h-11 min-w-11 touch-manipulation items-center justify-center rounded-full border border-cyan-300/35 bg-[#0d2333]/95 px-4 text-xs font-black text-cyan-50 shadow-[0_14px_34px_rgba(0,0,0,0.35)] transition hover:bg-cyan-300/20 md:absolute md:bottom-4 md:right-4"
-          >
-            TOP
-          </button>
-        ) : null}
         {isCalendarOpen ? (
           <BookingCalendarModal
             selectedDate={date}
