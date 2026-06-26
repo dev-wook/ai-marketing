@@ -22,8 +22,6 @@ export function createNormalizedSnapshot({
   products: AiPlaceDiagnosisBookingProduct[]
 }) {
   const metrics = createMetrics(place)
-  const reviewSnippets = place.reviews.snippets.map((snippet) => snippet.text).filter(Boolean)
-  const reviewImages = place.reviews.images.map((image) => image.imageUrl).filter(Boolean)
   const imageUrls = [place.images.mainImageUrl, ...place.images.imageUrls, ...profile.imageUrls]
     .filter((value): value is string => Boolean(value))
   const websiteUrl = profile.websiteUrl ?? ''
@@ -41,8 +39,6 @@ export function createNormalizedSnapshot({
     profile,
     metrics,
     bookingProducts: products,
-    reviewSnippets,
-    reviewImages,
     imageUrls,
     hashtags: place.hashtags,
     options: place.options,
@@ -102,23 +98,8 @@ export function extractAiPlaceFeatures({
   ].filter(Boolean)
   const productCount = products.length
   const serviceItemCount = Math.max(productCount, treatmentMenus.length)
-  const reviewSnippetTexts = normalized.reviewSnippets
-  const lowerKeyword = keyword.toLowerCase()
-  const reviewSnippetKeywordMentions = reviewSnippetTexts.filter((text) =>
-    text.toLowerCase().includes(lowerKeyword) || keyword.split(/\s+/).some((part) => part && text.includes(part)),
-  ).length
-  const reviewSnippetSpecificityScore = calculateSnippetSpecificity(reviewSnippetTexts)
 
   return {
-    review: {
-      visitorReviewCount: normalized.metrics.totalReviewCount,
-      blogReviewCount: normalized.metrics.blogCafeReviewCount,
-      bookingReviewCount: normalized.metrics.bookingReviewCount,
-      reviewSnippetTexts,
-      reviewSnippetKeywordMentions,
-      reviewSnippetSpecificityScore,
-      reviewImageCount: normalized.reviewImages.length,
-    },
     service: {
       hasIntroduction: Boolean(normalized.profile.introduction),
       introductionLength: normalized.profile.introduction.length,
@@ -197,11 +178,6 @@ export function createFieldStatus(normalized: AiPlaceNormalizedSnapshot): AiPlac
     website: statusForValue(normalized.profile.websiteUrl),
     phone: statusForValue(normalized.profile.phone),
     images: statusForArray(normalized.imageUrls),
-    visitorReviews: normalized.metrics.totalReviewCount > 0 ? 'PRESENT' : 'ABSENT',
-    blogReviews: normalized.metrics.blogCafeReviewCount > 0 ? 'PRESENT' : 'ABSENT',
-    bookingReviews: normalized.metrics.bookingReviewCount > 0 ? 'PRESENT' : 'ABSENT',
-    reviewSnippets: statusForArray(normalized.reviewSnippets),
-    reviewImages: statusForArray(normalized.reviewImages),
     booking: normalized.conversion.hasBooking ? 'PRESENT' : 'ABSENT',
     bookingProducts: normalized.conversion.hasBooking
       ? statusForArray(normalized.bookingProducts)
@@ -238,48 +214,13 @@ export function createSnapshotHash(value: unknown) {
 
 export function createMetrics(place: PlaceRankingItem): AiPlaceDiagnosisMetrics {
   return {
-    totalReviewCount: place.reviews.totalReviewCount,
-    blogCafeReviewCount: place.reviews.blogCafeReviewCount,
-    bookingReviewCount: place.reviews.bookingReviewCount,
     imageCount: place.images.imageCount,
     hashtagCount: place.hashtags.length,
-    reviewSnippetCount: place.reviews.snippets.length,
     hasBooking: place.actions.hasBooking,
     hasTalktalk: Boolean(place.actions.talktalkUrl),
     hasCoupon: place.benefits.hasCoupon,
     hasNPay: place.badges.includes('네이버페이'),
   }
-}
-
-function calculateSnippetSpecificity(snippets: string[]) {
-  if (!snippets.length) {
-    return 0
-  }
-
-  const specificWords = [
-    '속눈썹',
-    '펌',
-    '연장',
-    '자연',
-    '유지',
-    '상담',
-    '눈매',
-    '디자인',
-    '꼼꼼',
-    '재방문',
-    '역',
-    '주차',
-  ]
-  const genericWords = ['좋아요', '친절', '만족', '추천']
-  const scores = snippets.map((snippet) => {
-    const specificCount = specificWords.filter((word) => snippet.includes(word)).length
-    const genericCount = genericWords.filter((word) => snippet.includes(word)).length
-    const lengthScore = Math.min(snippet.length / 60, 1)
-
-    return clamp(specificCount * 0.22 + lengthScore * 0.25 - genericCount * 0.04, 0, 1)
-  })
-
-  return Math.round(average(scores) * 100) / 100
 }
 
 function statusForValue(value: unknown): AiPlaceFieldStatus {

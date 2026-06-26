@@ -27,20 +27,6 @@ type PlaceRankingErrorBody = {
   debug?: unknown
 }
 
-type PlaceReviewCountBatchItem = {
-  placeId: string
-  visitorCount: number | null
-  blogCount: number | null
-  fetchedAt: string
-  cached: boolean
-  warnings: string[]
-}
-
-type PlaceReviewCountBatchResponse = {
-  items: PlaceReviewCountBatchItem[]
-  warnings: string[]
-}
-
 type SnapshotToast = {
   id: number
   type: 'success' | 'error'
@@ -233,31 +219,6 @@ async function requestBookingSummaries({
   }
 
   return body as PlaceBookingSummaryResponse
-}
-
-async function requestReviewCountBatch(placeIds: string[]) {
-  const response = await fetch('/api/naver-place/reviews/batch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      placeIds,
-      types: ['visitor', 'blog'],
-    }),
-  })
-  const body = (await response.json()) as PlaceReviewCountBatchResponse | PlaceRankingErrorBody
-
-  if (!response.ok) {
-    const errorBody = body as PlaceRankingErrorBody
-    const error = new Error(errorBody.message ?? '리뷰 수 조회에 실패했습니다.')
-
-    Object.assign(error, {
-      debug: errorBody.debug,
-    })
-
-    throw error
-  }
-
-  return body as PlaceReviewCountBatchResponse
 }
 
 async function requestBatchKeywords() {
@@ -471,8 +432,6 @@ export function PlaceRankingTool() {
   const [bookingErrorMessage, setBookingErrorMessage] = useState('')
   const [bookingErrorLog, setBookingErrorLog] = useState('')
   const [bookingSummaries, setBookingSummaries] = useState<Record<string, PlaceBookingSummaryItem>>({})
-  const [reviewCounts, setReviewCounts] = useState<Record<string, PlaceReviewCountBatchItem>>({})
-  const [isReviewCountLoading, setIsReviewCountLoading] = useState(false)
   const [bookingSummaryDate, setBookingSummaryDate] = useState(getTodayKstDate())
   const [isBookingSummaryLoading, setIsBookingSummaryLoading] = useState(false)
   const [bookingSummaryError, setBookingSummaryError] = useState('')
@@ -522,11 +481,6 @@ export function PlaceRankingTool() {
     return visibleBookingSummaryList.slice(0, 100)
   }, [visibleBookingSummaryList])
   const visibleItems = result?.items.slice(0, visibleCount) ?? []
-  const visibleReviewPlaceIds = useMemo(
-    () => visibleItems.map((item) => item.id).filter(Boolean),
-    [visibleItems],
-  )
-  const visibleReviewPlaceIdKey = visibleReviewPlaceIds.join('|')
   const filteredItems = useMemo(() => {
     const filterText = appliedPlaceNameFilter.trim().toLocaleLowerCase('ko-KR')
 
@@ -602,65 +556,6 @@ export function PlaceRankingTool() {
     return () => observer.disconnect()
   }, [result, shouldShowLoadMorePrompt])
 
-  useEffect(() => {
-    if (visibleReviewPlaceIds.length === 0) {
-      setReviewCounts({})
-      setIsReviewCountLoading(false)
-      return
-    }
-
-    const missingPlaceIds = visibleReviewPlaceIds.filter((placeId) => !reviewCounts[placeId])
-
-    if (missingPlaceIds.length === 0) {
-      return
-    }
-
-    let ignore = false
-
-    async function loadReviewCounts() {
-      setIsReviewCountLoading(true)
-
-      try {
-        const responses = await Promise.all(
-          chunkItems(missingPlaceIds, 30).map((placeIds) => requestReviewCountBatch(placeIds)),
-        )
-
-        if (ignore) {
-          return
-        }
-
-        setReviewCounts((current) => {
-          const next = { ...current }
-
-          responses
-            .flatMap((response) => response.items)
-            .forEach((item) => {
-              next[item.placeId] = item
-            })
-
-          return next
-        })
-      } catch (error) {
-        if (error instanceof Error) {
-          console.error('Place ranking review count batch skipped', {
-            message: error.message,
-            debug: readErrorDebug(error),
-          })
-        }
-      } finally {
-        if (!ignore) {
-          setIsReviewCountLoading(false)
-        }
-      }
-    }
-
-    void loadReviewCounts()
-
-    return () => {
-      ignore = true
-    }
-  }, [reviewCounts, visibleReviewPlaceIdKey])
-
   const runKeywordSearch = async (nextKeyword: string) => {
     if (!nextKeyword) {
       setErrorMessage('조회할 키워드를 입력해주세요.')
@@ -684,8 +579,6 @@ export function PlaceRankingTool() {
     setBookingErrorMessage('')
     setBookingErrorLog('')
     setBookingSummaries({})
-    setReviewCounts({})
-    setIsReviewCountLoading(false)
     setBookingSummaryDate(getTodayKstDate())
     setBookingSummaryError('')
     setBlacklistEntries([])
@@ -1407,18 +1300,7 @@ export function PlaceRankingTool() {
           <div ref={rankingListStartRef} className="scroll-mt-28" />
 
           <div className="mt-5 grid gap-3">
-            {filteredItems.map((item) => {
-              const reviewCount = reviewCounts[item.id]
-              const isReviewCountLoadingForItem =
-                isReviewCountLoading && !reviewCount && visibleReviewPlaceIds.includes(item.id)
-              const visitorReviewCount = reviewCount
-                ? reviewCount.visitorCount
-                : item.reviews.totalReviewCount || null
-              const blogReviewCount = reviewCount
-                ? reviewCount.blogCount
-                : item.reviews.blogCafeReviewCount || null
-
-              return (
+            {filteredItems.map((item) => (
               <article
                 key={item.id}
                 onClick={(event) => {
@@ -1504,18 +1386,6 @@ export function PlaceRankingTool() {
                         Boolean(item.actions.bookingUrl || item.actions.bookingBusinessId)
                       }
                     />
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <ReviewCountBadge
-                        type="visitor"
-                        count={visitorReviewCount}
-                        loading={isReviewCountLoadingForItem}
-                      />
-                      <ReviewCountBadge
-                        type="blog"
-                        count={blogReviewCount}
-                        loading={isReviewCountLoadingForItem}
-                      />
-                    </div>
                     <p className="mt-0.5 text-xs font-bold leading-snug text-cyan-100/80 sm:mt-1 sm:text-sm">
                       {item.category}
                     </p>
@@ -1655,8 +1525,7 @@ export function PlaceRankingTool() {
                   </div>
                 </div>
               </article>
-              )
-            })}
+            ))}
           </div>
 
           {filteredItems.length === 0 ? (
@@ -2142,32 +2011,6 @@ function BookingCountBadge({
           </strong>
         </>
       )}
-    </span>
-  )
-}
-
-function ReviewCountBadge({
-  type,
-  count,
-  loading = false,
-}: {
-  type: 'visitor' | 'blog'
-  count: number | null
-  loading?: boolean
-}) {
-  const label = type === 'visitor' ? '방문자' : '블로그'
-  const ariaLabel = type === 'visitor' ? '방문자 리뷰 수' : '블로그 리뷰 수'
-
-  return (
-    <span
-      className="inline-flex h-6 items-center gap-1 rounded-md border border-white/10 bg-white/[0.045] px-2 text-[10px] font-black text-slate-300 sm:text-[11px]"
-      aria-label={`${ariaLabel} ${typeof count === 'number' ? `${count}개` : '미확인'}`}
-      title={ariaLabel}
-    >
-      <span className="text-cyan-100/80">{label}</span>
-      <strong className="text-white">
-        {loading ? '확인 중' : typeof count === 'number' ? count.toLocaleString() : '-'}
-      </strong>
     </span>
   )
 }
@@ -3602,16 +3445,6 @@ function readErrorDebug(error: unknown) {
   }
 
   return undefined
-}
-
-function chunkItems<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size))
-  }
-
-  return chunks
 }
 
 function openExternalUrl(url?: string) {

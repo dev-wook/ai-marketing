@@ -4,7 +4,6 @@ import type {
   AiPlaceDiagnosisScoreKey,
   AiPlaceFeatureSet,
   AiPlaceFieldStatusMap,
-  PlaceReviewDiagnosis,
 } from '../types'
 
 export const aiPlaceScoreDefinitions: Array<{
@@ -13,12 +12,11 @@ export const aiPlaceScoreDefinitions: Array<{
   maxScore: number
 }> = [
   { key: 'intentAndService', label: '검색 의도 및 서비스 적합도', maxScore: 20 },
-  { key: 'serviceInformation', label: '서비스 정보 완성도', maxScore: 20 },
+  { key: 'serviceInformation', label: '서비스 정보 완성도', maxScore: 25 },
   { key: 'localEntity', label: '지역·위치·엔티티 명확성', maxScore: 15 },
-  { key: 'reviewTrust', label: '리뷰 및 신뢰 근거', maxScore: 20 },
-  { key: 'contentRichness', label: '콘텐츠 정보량', maxScore: 5 },
+  { key: 'contentRichness', label: '콘텐츠 정보량', maxScore: 15 },
   { key: 'conversion', label: '예약·문의·전환 편의성', maxScore: 10 },
-  { key: 'differentiation', label: '고유 정보 및 차별성', maxScore: 10 },
+  { key: 'differentiation', label: '고유 정보 및 차별성', maxScore: 15 },
 ]
 
 export type SemanticDiagnosisScores = Partial<Record<
@@ -32,7 +30,6 @@ export function scoreAiPlace({
   features,
   fieldStatus,
   keyword,
-  reviewDiagnosis,
   semanticScores = {},
 }: {
   benchmarkProfile: AiPlaceBenchmarkProfileSummary
@@ -40,7 +37,6 @@ export function scoreAiPlace({
   features: AiPlaceFeatureSet
   fieldStatus: AiPlaceFieldStatusMap
   keyword: string
-  reviewDiagnosis?: PlaceReviewDiagnosis
   semanticScores?: SemanticDiagnosisScores
 }) {
   const semantic = normalizeSemanticScores(semanticScores)
@@ -49,20 +45,21 @@ export function scoreAiPlace({
       score:
         boolScore(keywordServiceMentioned({ keyword, features }), 5) +
         boolScore(features.service.bookingProductCount > 0, 3) +
-        ratioScore(features.service.productDescriptionCoverage, 4) +
-        ratioScore(features.review.reviewSnippetSpecificityScore, 3) +
+        ratioScore(features.service.productDescriptionCoverage, 5) +
+        ratioScore(Math.min(features.service.productAverageDescriptionLength / 140, 1), 2) +
+        boolScore(features.service.hasIntroduction, 2) +
         semantic.queryIntentMatch,
-      reason: '키워드 서비스와 예약상품/소개글/리뷰 문구의 연결성을 기준으로 평가했습니다.',
+      reason: '키워드 서비스와 예약상품/소개글의 연결성을 기준으로 평가했습니다.',
     }),
     createScore('serviceInformation', {
       score:
-        boolScore(features.service.hasIntroduction, 3) +
-        ratioScore(Math.min(features.service.introductionLength / 180, 1), 3) +
-        ratioScore(features.service.productDescriptionCoverage, 4) +
-        ratioScore(features.service.priceCoverage, 2) +
-        ratioScore(features.service.durationCoverage, 2) +
-        ratioScore(features.service.precautionCoverage, 2) +
-        Math.min(features.service.productAverageDescriptionLength / 140, 1) * 2 +
+        boolScore(features.service.hasIntroduction, 4) +
+        ratioScore(Math.min(features.service.introductionLength / 180, 1), 4) +
+        ratioScore(features.service.productDescriptionCoverage, 5) +
+        ratioScore(features.service.priceCoverage, 3) +
+        ratioScore(features.service.durationCoverage, 3) +
+        ratioScore(features.service.precautionCoverage, 3) +
+        Math.min(features.service.productAverageDescriptionLength / 140, 1) * 3 +
         semantic.serviceClarity,
       reason: '소개글, 예약상품 설명, 가격, 소요시간, 주의사항의 완성도를 기준으로 평가했습니다.',
     }),
@@ -76,23 +73,15 @@ export function scoreAiPlace({
         semantic.localEntityClarity,
       reason: '주소, 오시는 길, 지역명 연결성, 길찾기 신호를 기준으로 평가했습니다.',
     }),
-    createScore('reviewTrust', {
-      score: reviewDiagnosis
-        ? reviewDiagnosis.score.totalReviewScore
-        : createFallbackReviewTrustScore(features),
-      reason: reviewDiagnosis
-        ? '리뷰 수는 경쟁사 중앙값/상위사분위와 로그 보정으로 비교하고, 확보된 리뷰 문구 품질만 부분 반영했습니다. 미수집된 증가량과 사업자 답변 품질은 0점 처리하지 않았습니다.'
-        : '리뷰 수는 보정하고, 리뷰 스니펫 개수가 아니라 문구의 구체성과 키워드 적합도를 중심으로 평가했습니다.',
-    }),
     createScore('contentRichness', {
       score:
-        ratioScore(Math.min(features.content.imageCount / 30, 1), 1.2) +
-        ratioScore(Math.min(features.service.productImageCount / 8, 1), 1.2) +
-        ratioScore(Math.min(features.content.optionCount / 8, 1), 0.8) +
-        ratioScore(Math.min(features.content.hashtagCount / 8, 1), 0.5) +
-        boolScore(features.content.hasWebsite, 0.4) +
-        boolScore(features.content.hasInstagram, 0.4) +
-        boolScore(features.service.hasPromotion, 0.5),
+        ratioScore(Math.min(features.content.imageCount / 30, 1), 4) +
+        ratioScore(Math.min(features.service.productImageCount / 8, 1), 3) +
+        ratioScore(Math.min(features.content.optionCount / 8, 1), 2) +
+        ratioScore(Math.min(features.content.hashtagCount / 8, 1), 2) +
+        boolScore(features.content.hasWebsite, 1) +
+        boolScore(features.content.hasInstagram, 1) +
+        boolScore(features.service.hasPromotion, 2),
       reason: '이미지 단순 개수는 낮게 보고, 상품 이미지와 소개/홍보/외부 채널 신호를 함께 평가했습니다.',
     }),
     createScore('conversion', {
@@ -110,12 +99,13 @@ export function scoreAiPlace({
     }),
     createScore('differentiation', {
       score:
-        ratioScore(features.review.reviewSnippetSpecificityScore, 3) +
-        boolScore(features.service.productAverageDescriptionLength >= 80, 2) +
-        boolScore(features.service.hasIntroduction && features.service.introductionLength >= 120, 2) +
+        boolScore(features.service.productAverageDescriptionLength >= 80, 4) +
+        boolScore(features.service.hasIntroduction && features.service.introductionLength >= 120, 4) +
+        ratioScore(features.service.productDescriptionCoverage, 3) +
+        ratioScore(Math.min(features.content.imageUrlCount / 8, 1), 2) +
         semantic.differentiation +
         benchmarkSignalBonus(benchmarkProfile),
-      reason: '구체적인 리뷰 문구, 설명 길이, 소개글, AI가 해석한 차별성 신호를 기준으로 평가했습니다.',
+      reason: '설명 길이, 소개글, 상품 설명, 콘텐츠 근거, AI가 해석한 차별성 신호를 기준으로 평가했습니다.',
     }),
   ]
   const totalScore = Math.round(scores.reduce((sum, score) => sum + score.score, 0))
@@ -187,21 +177,6 @@ function ratioScore(value: number, maxScore: number) {
   return clamp(value, 0, 1) * maxScore
 }
 
-function normalizeReviewCount(value: number) {
-  return Math.min(Math.log1p(Math.max(0, value)) / Math.log1p(500), 1)
-}
-
-function createFallbackReviewTrustScore(features: AiPlaceFeatureSet) {
-  return (
-    ratioScore(normalizeReviewCount(features.review.visitorReviewCount), 5) +
-    ratioScore(normalizeReviewCount(features.review.blogReviewCount), 3) +
-    ratioScore(normalizeReviewCount(features.review.bookingReviewCount), 2) +
-    ratioScore(features.review.reviewSnippetSpecificityScore, 5) +
-    ratioScore(Math.min(features.review.reviewSnippetKeywordMentions / 2, 1), 3) +
-    ratioScore(Math.min(features.review.reviewImageCount / 6, 1), 2)
-  )
-}
-
 function keywordServiceMentioned({
   features,
   keyword,
@@ -215,9 +190,7 @@ function keywordServiceMentioned({
     return true
   }
 
-  return features.review.reviewSnippetTexts.some((snippet) =>
-    serviceTerms.some((term) => snippet.includes(term)),
-  )
+  return features.service.hasIntroduction || features.service.bookingProductCount > 0
 }
 
 function benchmarkSignalBonus(benchmarkProfile: AiPlaceBenchmarkProfileSummary) {
@@ -259,10 +232,6 @@ function createDefaultImprovements({
 
   if (features.service.productDescriptionCoverage < 0.8) {
     improvements.push('예약상품 설명에 추천 대상, 결과 특징, 가격, 소요시간, 주의사항을 보강하세요.')
-  }
-
-  if (features.review.reviewSnippetSpecificityScore < 0.45) {
-    improvements.push('리뷰 유도 문구는 자연스러움, 유지력, 상담, 눈매 디자인처럼 구체 경험 중심으로 설계하세요.')
   }
 
   if (!features.local.hasLocationGuide) {

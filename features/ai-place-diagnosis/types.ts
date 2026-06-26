@@ -1,5 +1,4 @@
 import type { PlaceRankingItem } from '@/features/place-ranking/types'
-import type { PlaceReviewMetrics } from '@/features/naver-place-reviews/types'
 
 export type AiPlaceDiagnosisRequest = {
   placeId?: string
@@ -33,7 +32,6 @@ export type AiPlaceDiagnosisScoreKey =
   | 'intentAndService'
   | 'serviceInformation'
   | 'localEntity'
-  | 'reviewTrust'
   | 'contentRichness'
   | 'conversion'
   | 'differentiation'
@@ -54,8 +52,6 @@ export type AiPlaceDiagnosisTarget = {
   address: string
   imageUrl?: string
   metrics: AiPlaceDiagnosisMetrics
-  reviewMetrics: PlaceReviewMetrics
-  reviewDiagnosis: PlaceReviewDiagnosis
   profile: AiPlaceDiagnosisPlaceProfile
   manualContext: {
     hasIntroduction: boolean
@@ -77,60 +73,12 @@ export type AiPlaceDiagnosisPlaceProfile = {
 }
 
 export type AiPlaceDiagnosisMetrics = {
-  totalReviewCount: number
-  blogCafeReviewCount: number
-  bookingReviewCount: number
   imageCount: number
   hashtagCount: number
-  reviewSnippetCount: number
   hasBooking: boolean
   hasTalktalk: boolean
   hasCoupon: boolean
   hasNPay: boolean
-}
-
-export type PlaceReviewDiagnosis = {
-  counts: {
-    visitorReviewCount: number | null
-    blogReviewCount: number | null
-    totalReviewCount: number | null
-  }
-  benchmark: {
-    competitorVisitorMedian: number | null
-    competitorBlogMedian: number | null
-    competitorVisitorTopQuartile: number | null
-    competitorBlogTopQuartile: number | null
-  }
-  growth: {
-    visitorGrowth30d: number | null
-    blogGrowth30d: number | null
-    status: 'unavailable' | 'available'
-  }
-  contentMetrics: {
-    analyzedReviewCount: number
-    specificityScore: number
-    localRelevanceScore: number
-    serviceRelevanceScore: number
-    repeatOrRecommendationSignalScore: number
-  } | null
-  replyMetrics: {
-    replyRate: number | null
-    personalizationScore: number | null
-    informativenessScore: number | null
-    repeatedTemplateRisk: number | null
-  } | null
-  score: {
-    countScore: number
-    growthScore: number | null
-    contentScore: number | null
-    replyScore: number | null
-    totalReviewScore: number
-    maxReviewScore: number
-  }
-  strengths: string[]
-  weaknesses: string[]
-  recommendations: string[]
-  warnings: string[]
 }
 
 export type AiPlaceDiagnosisDataSource = {
@@ -199,8 +147,6 @@ export type AiPlaceNormalizedSnapshot = {
   profile: AiPlaceDiagnosisPlaceProfile
   metrics: AiPlaceDiagnosisMetrics
   bookingProducts: AiPlaceDiagnosisBookingProduct[]
-  reviewSnippets: string[]
-  reviewImages: string[]
   imageUrls: string[]
   hashtags: string[]
   options: string[]
@@ -218,15 +164,6 @@ export type AiPlaceNormalizedSnapshot = {
 }
 
 export type AiPlaceFeatureSet = {
-  review: {
-    visitorReviewCount: number
-    blogReviewCount: number
-    bookingReviewCount: number
-    reviewSnippetTexts: string[]
-    reviewSnippetKeywordMentions: number
-    reviewSnippetSpecificityScore: number
-    reviewImageCount: number
-  }
   service: {
     hasIntroduction: boolean
     introductionLength: number
@@ -292,12 +229,6 @@ export type AiPlaceDiagnosisScoreBreakdown = {
 export type AiPlaceDiagnosisCompetitorSummary = {
   comparedCount: number
   averageRank: number
-  averageReviewCount: number
-  averageBlogReviewCount: number
-  medianReviewCount: number
-  medianBlogReviewCount: number
-  topQuartileReviewCount: number
-  topQuartileBlogReviewCount: number
   averageImageCount: number
   bookingEnabledRate: number
   couponEnabledRate: number
@@ -328,7 +259,6 @@ export type AiPlaceDiagnosisResponse = {
   priorities: string[]
   introductionExample: string
   menuDescriptionExample: string
-  reviewKeywords: string[]
   imageContentActions: string[]
   bookingProductActions: string[]
   versions: {
@@ -351,8 +281,6 @@ export type AiPlaceClinicalReport = {
   copyPrescriptions: {
     introduction: string
     bookingProduct: string
-    reviewRequest: string
-    ownerReply: string
   }
 }
 
