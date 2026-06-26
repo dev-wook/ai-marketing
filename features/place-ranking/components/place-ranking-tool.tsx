@@ -34,7 +34,7 @@ type SnapshotToast = {
 }
 
 const rankingPageSize = 50
-const fetchLimit = 300
+const fetchLimit = 75
 const initialVisibleCount = rankingPageSize
 const recentPlaceRankingStorageKey = 'aiva:recent-place-ranking-keywords'
 const maxRecentKeywords = 5

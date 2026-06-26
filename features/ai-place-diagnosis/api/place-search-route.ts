@@ -56,7 +56,7 @@ export async function POST(request: Request) {
         debug:
           error instanceof Error
             ? {
-                provider: 'naver-place-graphql',
+                provider: 'naver-mobile-fusion-search',
                 message: error.message,
                 createdAt: new Date().toISOString(),
               }

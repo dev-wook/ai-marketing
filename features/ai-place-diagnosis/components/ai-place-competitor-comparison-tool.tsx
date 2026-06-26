@@ -1048,11 +1048,11 @@ function createDiagnosisDataNotice(
 }
 
 function reverseRankScore(rank: number) {
-  return Math.max(0, 301 - rank)
+  return Math.max(0, 76 - rank)
 }
 
 function formatRankLabel(rank: number) {
-  return rank > 300 ? '300위 밖' : `${rank}위`
+  return rank > 75 ? '75위 밖' : `${rank}위`
 }
 
 function toWinner(leftScore: number, rightScore: number): ComparisonRowModel['winner'] {

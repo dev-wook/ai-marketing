@@ -78,7 +78,7 @@ type GeminiRealtimeDiagnosisPayload = {
   bookingProductActions?: string[]
 }
 
-const rankingLimit = 300
+const rankingLimit = 75
 const defaultComparisonLimit = 30
 const benchmarkConcurrency = 2
 const scoreDefinitions: Array<Pick<AiPlaceDiagnosisScore, 'key' | 'label' | 'maxScore'>> = [
@@ -111,7 +111,7 @@ export async function diagnoseAiPlace(
     })
 
   if (!collectedTargetPlace) {
-    throw new Error('해당 플레이스를 키워드 상위 300개 결과에서 찾지 못했습니다.')
+    throw new Error('해당 플레이스를 키워드 상위 75개 결과에서 찾지 못했습니다.')
   }
 
   const targetPlace = collectedTargetPlace

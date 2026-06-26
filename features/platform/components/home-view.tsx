@@ -112,7 +112,7 @@ export function HomeView({
           </p>
           <h2 className="mt-2 text-xl font-black text-white md:text-2xl">플레이스 기능 점검 중</h2>
           <p className="mt-2 break-keep text-sm font-semibold leading-6 text-amber-50/80">
-            네이버 플레이스 조회 차단 해제 전까지 예약 수요 캘린더만 라솝뷰티 고정 모드로 제공합니다.
+            네이버 플레이스 조회가 안정화되면 순위조회, AI진단, 경쟁사비교 기능을 다시 제공합니다.
           </p>
         </section>
       ) : (

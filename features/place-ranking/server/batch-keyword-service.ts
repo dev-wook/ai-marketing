@@ -69,7 +69,7 @@ async function runSingleKeyword(
   try {
     const ranking = await collectNaverPlaceRankings({
       keyword: item.keyword,
-      limit: 300,
+      limit: 75,
     })
     const snapshot = await recordPlaceRankingSnapshots({
       keyword: ranking.keyword,

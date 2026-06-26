@@ -62,7 +62,7 @@ function toDashboardPlace(
 async function collectKeywordRanking(keyword: string) {
   const result = await collectNaverPlaceRankings({
     keyword,
-    limit: 300,
+    limit: 75,
   })
 
   try {
