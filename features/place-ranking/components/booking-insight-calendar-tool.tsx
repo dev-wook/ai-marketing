@@ -164,7 +164,7 @@ export function BookingInsightCalendarTool() {
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               aria-label="플레이스 검색어"
-              placeholder="예: 노원 속눈썹"
+              placeholder="예: 라솝뷰티"
               className="min-h-13 w-full rounded-md border border-white/10 bg-[#090d18] px-4 pr-12 text-base font-bold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/70 focus:ring-4 focus:ring-cyan-300/10"
             />
           </div>
