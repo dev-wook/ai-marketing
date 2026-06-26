@@ -1492,19 +1492,7 @@ export function PlaceRankingTool() {
             </div>
           ) : null}
 
-          <div className="mt-6 border-t border-white/10 pt-4">
-            <p className="text-sm font-bold text-slate-400">
-              ⓘ 최대 75개의 검색결과를 제공합니다.
-            </p>
-            <button
-              type="button"
-              onClick={scrollToPageTop}
-              className="mx-auto mt-5 flex min-h-10 items-center justify-center gap-1 rounded-md px-4 text-sm font-black text-slate-200 transition hover:bg-white/[0.06] hover:text-white"
-            >
-              <span className="text-base text-blue-400">↑</span>
-              TOP
-            </button>
-          </div>
+          <PlaceRankingResultFooter onTopClick={scrollToPageTop} />
         </section>
       ) : null}
 
@@ -1578,6 +1566,24 @@ export function PlaceRankingTool() {
             document.body,
           )
         : null}
+    </div>
+  )
+}
+
+function PlaceRankingResultFooter({ onTopClick }: { onTopClick: () => void }) {
+  return (
+    <div className="mt-6 border-t border-white/10 pt-4">
+      <p className="text-sm font-bold text-slate-400">
+        ⓘ 최대 75개의 검색결과를 제공합니다.
+      </p>
+      <button
+        type="button"
+        onClick={onTopClick}
+        className="mx-auto mt-5 flex min-h-10 items-center justify-center gap-1 rounded-md px-4 text-sm font-black text-slate-200 transition hover:bg-white/[0.06] hover:text-white"
+      >
+        <span className="text-base text-blue-400">↑</span>
+        TOP
+      </button>
     </div>
   )
 }
