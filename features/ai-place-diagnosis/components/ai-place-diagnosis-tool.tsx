@@ -405,6 +405,8 @@ function DiagnosisResult({ result }: { result: AiPlaceDiagnosisResponse }) {
         </div>
       </div>
 
+      <ClinicalReportPanel result={result} />
+
       <ReviewDiagnosisPanel diagnosis={result.target.reviewDiagnosis} />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -645,6 +647,130 @@ function ReviewDiagnosisPanel({ diagnosis }: { diagnosis: PlaceReviewDiagnosis }
         </div>
       </div>
     </Panel>
+  )
+}
+
+function ClinicalReportPanel({ result }: { result: AiPlaceDiagnosisResponse }) {
+  const report = result.clinicalReport
+
+  return (
+    <Panel title="AEO/GEO 플레이스 개선 리포트">
+      <div className="grid gap-5">
+        <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[0.07] p-4">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-100/80">
+              종합 평가
+            </p>
+            <p className="mt-2 break-keep text-base font-black leading-7 text-white">
+              {report.verdict}
+            </p>
+            <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">
+              {report.scoreInterpretation}
+            </p>
+          </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+              평가 기준
+            </p>
+            <p className="mt-2 break-keep text-sm font-semibold leading-6 text-slate-300">
+              {report.diagnosisPrinciple}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ClinicalSignalList title="잘하고 있는 점" items={report.strongSignals} tone="good" />
+          <ClinicalSignalList title="부족한 점" items={report.weakSignals} tone="bad" />
+        </div>
+
+        <div className="grid gap-3">
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-100/80">
+            100점 접근 개선 우선순위
+          </p>
+          {report.treatmentPlan.map((item, index) => (
+            <div key={`${item.area}-${index}`} className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md border border-cyan-200/25 bg-cyan-300/12 px-2 py-1 text-[11px] font-black text-cyan-100">
+                  P{item.priority}
+                </span>
+                <p className="text-sm font-black text-white">{item.area}</p>
+              </div>
+              <div className="mt-3 grid gap-2 text-sm font-semibold leading-6 text-slate-300">
+                <p className="break-keep">
+                  <span className="font-black text-fuchsia-100">문제: </span>
+                  {item.problem}
+                </p>
+                <p className="break-keep">
+                  <span className="font-black text-cyan-100">판단 근거: </span>
+                  {item.evidence}
+                </p>
+                <p className="break-keep">
+                  <span className="font-black text-cyan-100">개선 방향: </span>
+                  {item.direction}
+                </p>
+                <p className="break-keep">
+                  <span className="font-black text-cyan-100">기대 효과: </span>
+                  {item.expectedImpact}
+                </p>
+              </div>
+              <p className="mt-3 break-keep rounded-md border border-white/10 bg-[#080d18] p-3 text-sm font-semibold leading-6 text-white">
+                {item.sampleCopy}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <CopyPrescription title="소개글 개선 문구" text={report.copyPrescriptions.introduction} />
+          <CopyPrescription title="예약상품 개선 문구" text={report.copyPrescriptions.bookingProduct} />
+          <CopyPrescription title="리뷰 유도 문구" text={report.copyPrescriptions.reviewRequest} />
+          <CopyPrescription title="사업자 답변 예시" text={report.copyPrescriptions.ownerReply} />
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
+function ClinicalSignalList({
+  items,
+  title,
+  tone,
+}: {
+  items: AiPlaceDiagnosisResponse['clinicalReport']['strongSignals']
+  title: string
+  tone: 'good' | 'bad'
+}) {
+  const titleClassName = tone === 'good' ? 'text-cyan-100/80' : 'text-fuchsia-100/80'
+
+  return (
+    <div className="grid gap-3">
+      <p className={`text-xs font-black uppercase tracking-[0.14em] ${titleClassName}`}>
+        {title}
+      </p>
+      {items.map((item, index) => (
+        <div key={`${item.area}-${index}`} className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+          <p className="text-sm font-black text-white">{item.area}</p>
+          <p className="mt-2 break-keep text-sm font-semibold leading-6 text-slate-300">
+            {item.finding}
+          </p>
+          <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-400">
+            근거: {item.evidence}
+          </p>
+          <p className="mt-1 break-keep text-xs font-semibold leading-5 text-slate-400">
+            영향: {item.impact}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CopyPrescription({ text, title }: { text: string; title: string }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+      <p className="text-sm font-black text-white">{title}</p>
+      <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">{text}</p>
+    </div>
   )
 }
 

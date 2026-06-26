@@ -322,6 +322,7 @@ export type AiPlaceDiagnosisResponse = {
   }
   scores: AiPlaceDiagnosisScore[]
   categories: Record<AiPlaceDiagnosisScoreKey, number>
+  clinicalReport: AiPlaceClinicalReport
   topGaps: string[]
   strengths: string[]
   priorities: string[]
@@ -338,4 +339,36 @@ export type AiPlaceDiagnosisResponse = {
     modelName: string
     benchmarkProfileId?: string
   }
+}
+
+export type AiPlaceClinicalReport = {
+  verdict: string
+  scoreInterpretation: string
+  diagnosisPrinciple: string
+  strongSignals: AiPlaceClinicalSignal[]
+  weakSignals: AiPlaceClinicalSignal[]
+  treatmentPlan: AiPlaceTreatmentPlanItem[]
+  copyPrescriptions: {
+    introduction: string
+    bookingProduct: string
+    reviewRequest: string
+    ownerReply: string
+  }
+}
+
+export type AiPlaceClinicalSignal = {
+  area: string
+  finding: string
+  evidence: string
+  impact: string
+}
+
+export type AiPlaceTreatmentPlanItem = {
+  priority: 1 | 2 | 3
+  area: string
+  problem: string
+  evidence: string
+  direction: string
+  expectedImpact: string
+  sampleCopy: string
 }
