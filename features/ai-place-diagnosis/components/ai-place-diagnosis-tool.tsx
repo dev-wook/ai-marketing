@@ -287,10 +287,6 @@ export function AiPlaceDiagnosisTool() {
           </div>
         ) : null}
 
-        {selectedPlace ? (
-          <SelectedPlaceSummary place={selectedPlace} />
-        ) : null}
-
         <form
           className="grid gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3 md:grid-cols-[1fr_auto]"
           onSubmit={handleSubmit}
@@ -515,18 +511,8 @@ function DiagnosisResult({ result }: { result: AiPlaceDiagnosisResponse }) {
       </div>
 
       {result.target.bookingProducts.length ? (
-        <Panel title="자동 수집된 예약상품">
-          <div className="grid gap-3">
-            {result.target.bookingProducts.map((product) => (
-              <div key={product.id} className="rounded-md border border-white/10 bg-white/[0.035] p-4">
-                <p className="text-sm font-black text-white">{product.name}</p>
-                <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">
-                  {product.description || '상품 설명 없음'}
-                </p>
-                <TreatmentMenuPreview product={product} />
-              </div>
-            ))}
-          </div>
+        <Panel title="예약상품 수집 요약">
+          <BookingProductInsightSummary products={result.target.bookingProducts} />
         </Panel>
       ) : null}
 
@@ -608,27 +594,6 @@ function PlaceSearchCard({
   )
 }
 
-function SelectedPlaceSummary({ place }: { place: AiPlaceDiagnosisPlaceSearchItem }) {
-  return (
-    <div className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
-      <span className="block h-16 w-16 overflow-hidden rounded-md border border-white/10 bg-white/[0.04]">
-        {place.imageUrl ? (
-          <img src={place.imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-        ) : null}
-      </span>
-      <span className="grid min-w-0 content-center gap-1">
-        <span className="truncate text-sm font-black text-white">{place.name}</span>
-        <span className="truncate text-xs font-bold text-cyan-100/75">
-          {place.category || '업종 정보 없음'}
-        </span>
-        <span className="truncate text-xs font-bold text-slate-400">
-          {place.address || '주소 정보 없음'}
-        </span>
-      </span>
-    </div>
-  )
-}
-
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
@@ -664,6 +629,99 @@ function SignalRow({ label, value }: { label: string; value: string }) {
       <p className="break-keep text-sm font-semibold leading-6 text-slate-300">{value}</p>
     </div>
   )
+}
+
+function BookingProductInsightSummary({
+  products,
+}: {
+  products: AiPlaceDiagnosisResponse['target']['bookingProducts']
+}) {
+  const summary = summarizeBookingProductSignals(products)
+
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SignalMetric label="예약상품" value={`${summary.productCount}개`} />
+        <SignalMetric label="시술 메뉴" value={`${summary.treatmentMenuCount}개`} />
+        <SignalMetric label="가격 확인" value={`${summary.pricedItemCount}개`} />
+        <SignalMetric label="설명 등록" value={`${summary.describedItemCount}개`} />
+      </div>
+
+      <div className="grid gap-3 rounded-md border border-cyan-300/18 bg-cyan-300/[0.06] p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+        <div>
+          <p className="text-sm font-black text-cyan-50">예약상품은 진단 점수 계산에 반영됩니다.</p>
+          <p className="mt-2 break-keep text-xs font-semibold leading-5 text-slate-300">
+            상품명, 설명, 가격, 소요시간, 예약금/취소 안내, 시술 메뉴 구조를 요약해 서비스 정보와 전환 신뢰도 평가에 사용합니다.
+          </p>
+        </div>
+        <span className="w-fit rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-black text-slate-200">
+          필수 안내 {summary.policyNoticeCount}개
+        </span>
+      </div>
+
+      <details className="rounded-md border border-white/10 bg-white/[0.03]">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-black text-cyan-100">
+          수집된 예약상품 상세 보기
+        </summary>
+        <div className="grid gap-3 border-t border-white/10 p-4">
+          {products.map((product) => (
+            <div key={product.id} className="rounded-md border border-white/10 bg-[#080f1d]/75 p-4">
+              <p className="text-sm font-black text-white">{product.name}</p>
+              <p className="mt-3 break-keep text-sm font-semibold leading-6 text-slate-300">
+                {product.description || '상품 설명 없음'}
+              </p>
+              <TreatmentMenuPreview product={product} />
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
+  )
+}
+
+function SignalMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+      <p className="text-xs font-black text-cyan-100/70">{label}</p>
+      <p className="mt-2 text-2xl font-black text-white">{value}</p>
+    </div>
+  )
+}
+
+function summarizeBookingProductSignals(
+  products: AiPlaceDiagnosisResponse['target']['bookingProducts'],
+) {
+  const treatmentMenus = products.flatMap((product) =>
+    product.treatmentMenuCategories
+      .filter((category) => category.categoryTypeCode !== 'REQUIRED')
+      .flatMap((category) => category.menus),
+  )
+  const policyNoticeCount = products.reduce(
+    (count, product) =>
+      count +
+      product.precautions.length +
+      product.treatmentMenuCategories.filter(
+        (category) => category.categoryTypeCode === 'REQUIRED',
+      ).length,
+    0,
+  )
+  const pricedItemCount =
+    products.filter(
+      (product) =>
+        product.price !== null || product.minPrice !== null || product.maxPrice !== null,
+    ).length +
+    treatmentMenus.filter((menu) => menu.price !== null || menu.normalPrice !== null).length
+  const describedItemCount =
+    products.filter((product) => product.description.trim().length > 0).length +
+    treatmentMenus.filter((menu) => menu.description.trim().length > 0).length
+
+  return {
+    productCount: products.length,
+    treatmentMenuCount: treatmentMenus.length,
+    pricedItemCount,
+    describedItemCount,
+    policyNoticeCount,
+  }
 }
 
 function TreatmentMenuPreview({

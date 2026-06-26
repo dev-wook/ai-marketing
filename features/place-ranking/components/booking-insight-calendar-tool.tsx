@@ -206,7 +206,14 @@ export function BookingInsightCalendarTool() {
                   ) : null}
                 </span>
                 <span className="grid min-w-0 content-center gap-1">
-                  <span className="truncate text-sm font-black text-white">{place.name}</span>
+                  <span className="flex min-w-0 items-start justify-between gap-2">
+                    <span className="min-w-0 truncate text-sm font-black text-white">{place.name}</span>
+                    {selectedPlace?.id === place.id ? (
+                      <span className="shrink-0 rounded-md bg-cyan-100 px-2 py-1 text-[10px] font-black text-[#071018]">
+                        선택
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="truncate text-xs font-bold text-cyan-100/75">{place.category}</span>
                   <span className="truncate text-xs font-bold text-slate-400">
                     {formatPlaceAddress(place)}

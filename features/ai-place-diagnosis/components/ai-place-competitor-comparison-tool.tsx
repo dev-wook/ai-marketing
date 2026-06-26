@@ -386,10 +386,6 @@ function PlaceSearchColumn({
         </p>
       ) : null}
 
-      {selection.selected ? (
-        <SelectedPlaceSummary place={selection.selected} />
-      ) : null}
-
       {selection.items.length ? (
         <div className="grid gap-2">
           {selection.items.map((place) => (
@@ -731,27 +727,6 @@ function PlaceSearchCard({
         </span>
       </span>
     </button>
-  )
-}
-
-function SelectedPlaceSummary({ place }: { place: AiPlaceDiagnosisPlaceSearchItem }) {
-  return (
-    <div className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
-      <span className="block h-16 w-16 overflow-hidden rounded-md border border-white/10 bg-white/[0.04]">
-        {place.imageUrl ? (
-          <img src={place.imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-        ) : null}
-      </span>
-      <span className="grid min-w-0 content-center gap-1">
-        <span className="truncate text-sm font-black text-white">{place.name}</span>
-        <span className="truncate text-xs font-bold text-cyan-100/75">
-          {place.category || '업종 정보 없음'}
-        </span>
-        <span className="truncate text-xs font-bold text-slate-400">
-          {place.address || '주소 정보 없음'}
-        </span>
-      </span>
-    </div>
   )
 }
 
