@@ -1663,7 +1663,7 @@ function BatchKeywordModal({
 }: BatchKeywordModalProps) {
   return (
     <div
-      className="fixed inset-0 z-[10020] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[10020] grid place-items-center bg-black/70 p-2 backdrop-blur-sm sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="자동 기록 키워드 관리"
@@ -3007,10 +3007,10 @@ function PlaceHistoryModal({ place, rows, isLoading, onClose }: PlaceHistoryModa
       onClick={onClose}
     >
       <div
-        className="relative z-10 max-h-[82vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+        className="relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-5xl flex-col overflow-hidden rounded-md border border-white/10 bg-[#070b15] shadow-[0_24px_80px_rgba(0,0,0,0.5)] sm:max-h-[88dvh]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5 sm:py-5">
           <div className="min-w-0">
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
               Ranking History
@@ -3028,7 +3028,7 @@ function PlaceHistoryModal({ place, rows, isLoading, onClose }: PlaceHistoryModa
         </div>
 
         <div
-          className="max-h-[calc(82vh-7rem)] overflow-y-auto p-5"
+          className="min-h-0 overflow-x-hidden overflow-y-auto p-3 sm:p-5"
           data-aiva-scroll-lock-allow="true"
         >
           {isOutsideStoredRange ? (
@@ -3041,27 +3041,9 @@ function PlaceHistoryModal({ place, rows, isLoading, onClose }: PlaceHistoryModa
               순위 이력을 불러오고 있습니다.
             </div>
           ) : rows.length > 0 ? (
-            <div className="overflow-hidden rounded-md border border-white/10">
-              <table className="w-full border-collapse text-left text-sm">
-                <thead className="bg-white/[0.06] text-xs font-black uppercase tracking-[0.12em] text-cyan-100/75">
-                  <tr>
-                    <th className="px-4 py-3">날짜</th>
-                    <th className="px-4 py-3">순위</th>
-                    <th className="px-4 py-3">변화</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/10">
-                  {rows.map((row) => (
-                    <tr key={row.snapshotDate} className="text-slate-200">
-                      <td className="px-4 py-3 font-bold">{formatSnapshotDate(row.snapshotDate)}</td>
-                      <td className="px-4 py-3 font-black">{formatRankLabel(row.rank)}</td>
-                      <td className="px-4 py-3">
-                        <RankChangeText change={row.change} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)] lg:items-start">
+              <RankingHistoryChart rows={rows} />
+              <RankingHistoryTable rows={rows} />
             </div>
           ) : (
             <div className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-300">
@@ -3072,6 +3054,342 @@ function PlaceHistoryModal({ place, rows, isLoading, onClose }: PlaceHistoryModa
       </div>
     </div>
   )
+}
+
+function RankingHistoryChart({
+  rows,
+}: {
+  rows: PlaceRankingSnapshotHistoryResponse['history']
+}) {
+  const [activePointIndex, setActivePointIndex] = useState<number | null>(null)
+  const latestSnapshotTime = parseSnapshotDate(rows[0].snapshotDate)
+  const chartRangeStartTime = latestSnapshotTime - 29 * 24 * 60 * 60 * 1000
+  const chartRows = rows.filter((row) => parseSnapshotDate(row.snapshotDate) >= chartRangeStartTime)
+  const chronologicalRows = [...chartRows].reverse()
+  const ranks = chronologicalRows.map((row) => row.rank)
+  const latest = rows[0]
+  const oldest = rows[rows.length - 1]
+  const bestRank = Math.min(...ranks)
+  const bestRankIndex = ranks.lastIndexOf(bestRank)
+  const worstRank = Math.max(...ranks)
+  const chartMinRank = Math.max(1, bestRank - 2)
+  const chartMaxRank = Math.max(chartMinRank + 4, worstRank + 2)
+  const chartWidth = 720
+  const chartHeight = 330
+  const padding = { top: 34, right: 24, bottom: 48, left: 44 }
+  const plotWidth = chartWidth - padding.left - padding.right
+  const plotHeight = chartHeight - padding.top - padding.bottom
+  const getX = (index: number) =>
+    padding.left + (chronologicalRows.length === 1 ? plotWidth / 2 : (index / (chronologicalRows.length - 1)) * plotWidth)
+  const getY = (rank: number) =>
+    padding.top + ((rank - chartMinRank) / (chartMaxRank - chartMinRank)) * plotHeight
+  const points = chronologicalRows.map((row, index) => `${getX(index)},${getY(row.rank)}`).join(' ')
+  const areaPoints = `${padding.left},${padding.top + plotHeight} ${points} ${padding.left + plotWidth},${padding.top + plotHeight}`
+  const guideRanks = [chartMinRank, Math.round((chartMinRank + chartMaxRank) / 2), chartMaxRank]
+  const dateLabelIndexes = Array.from(
+    new Set([0, Math.floor((chronologicalRows.length - 1) / 2), chronologicalRows.length - 1]),
+  )
+  const periodDelta = oldest.rank - latest.rank
+
+  useEffect(() => {
+    if (activePointIndex === null) {
+      return
+    }
+
+    const clearActivePoint = () => setActivePointIndex(null)
+
+    document.addEventListener('click', clearActivePoint)
+
+    return () => document.removeEventListener('click', clearActivePoint)
+  }, [activePointIndex])
+
+  return (
+    <section className="min-w-0 overflow-hidden rounded-md border border-cyan-300/18 bg-[#08111e] p-3 sm:p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-200/70">
+            Ranking Trend
+          </p>
+          <h4 className="mt-1 text-base font-black text-white">최근 한 달 순위 변화</h4>
+          <p className="mt-1 text-[11px] font-bold text-slate-500">
+            최근 기록일 기준 30일 이내이며, 그래프가 위로 갈수록 상위 순위입니다.
+          </p>
+        </div>
+        <span className="rounded-md border border-cyan-300/25 bg-cyan-300/[0.08] px-3 py-2 text-sm font-black text-cyan-50">
+          현재 {formatRankLabel(latest.rank)}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-1.5 sm:gap-2">
+        <RankingHistoryMetric label="현재" value={formatRankLabel(latest.rank)} />
+        <RankingHistoryMetric label="한 달 최고" value={formatRankLabel(bestRank)} />
+        <RankingHistoryMetric
+          label="한 달 변화"
+          value={periodDelta > 0 ? `${periodDelta}위 상승` : periodDelta < 0 ? `${Math.abs(periodDelta)}위 하락` : '변화 없음'}
+          tone={periodDelta > 0 ? 'up' : periodDelta < 0 ? 'down' : 'same'}
+        />
+      </div>
+
+      <div className="mt-3 aspect-[4/3] w-full overflow-hidden rounded-md border border-white/[0.07] bg-[#060b14] sm:aspect-[16/9]">
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          className="h-full w-full"
+          role="img"
+          aria-label={`${chronologicalRows[0].snapshotDate}부터 ${latest.snapshotDate}까지의 플레이스 순위 변화`}
+          onClick={() => setActivePointIndex(null)}
+        >
+          <defs>
+            <linearGradient id="ranking-history-area" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="#67e8f9" stopOpacity="0.01" />
+            </linearGradient>
+          </defs>
+
+          {guideRanks.map((rank) => {
+            const y = getY(rank)
+
+            return (
+              <g key={rank}>
+                <line
+                  x1={padding.left}
+                  x2={padding.left + plotWidth}
+                  y1={y}
+                  y2={y}
+                  stroke="rgba(148,163,184,0.18)"
+                  strokeWidth="1"
+                />
+                <text
+                  x={padding.left - 10}
+                  y={y + 4}
+                  textAnchor="end"
+                  fill="#64748b"
+                  fontSize="12"
+                  fontWeight="700"
+                >
+                  {rank}위
+                </text>
+              </g>
+            )
+          })}
+
+          {chronologicalRows.length > 1 ? (
+            <polygon points={areaPoints} fill="url(#ranking-history-area)" />
+          ) : null}
+          <polyline
+            points={points}
+            fill="none"
+            stroke="#67e8f9"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {chronologicalRows.map((row, index) => {
+            const x = getX(index)
+            const y = getY(row.rank)
+            const isLatest = index === chronologicalRows.length - 1
+            const isActive = activePointIndex === index
+
+            return (
+              <g
+                key={row.snapshotDate}
+                className="cursor-pointer outline-none"
+                role="button"
+                tabIndex={0}
+                aria-label={`${formatSnapshotDate(row.snapshotDate)} ${formatRankLabel(row.rank)}`}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setActivePointIndex(index)
+                }}
+                onFocus={() => setActivePointIndex(index)}
+                onBlur={() => setActivePointIndex(null)}
+                onMouseEnter={() => setActivePointIndex(index)}
+                onMouseLeave={() => setActivePointIndex(null)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setActivePointIndex(index)
+                  }
+                }}
+              >
+                <circle cx={x} cy={y} r="15" fill="transparent" />
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={isActive ? 7 : isLatest ? 7 : 4.5}
+                  fill={isLatest ? '#f0abfc' : '#07111d'}
+                  stroke={isLatest ? '#f0abfc' : '#67e8f9'}
+                  strokeWidth="3"
+                />
+                {isLatest || index === bestRankIndex || chronologicalRows.length <= 8 ? (
+                  <text
+                    x={x}
+                    y={Math.max(y - 12, 18)}
+                    textAnchor="middle"
+                    fill={isLatest ? '#f5d0fe' : '#cffafe'}
+                    fontSize="13"
+                    fontWeight="900"
+                    paintOrder="stroke"
+                    stroke="#060b14"
+                    strokeWidth="5"
+                  >
+                    {row.rank}
+                  </text>
+                ) : null}
+              </g>
+            )
+          })}
+
+          {activePointIndex !== null ? (
+            <RankingChartTooltip
+              date={chronologicalRows[activePointIndex].snapshotDate}
+              rank={chronologicalRows[activePointIndex].rank}
+              x={getX(activePointIndex)}
+              y={getY(chronologicalRows[activePointIndex].rank)}
+            />
+          ) : null}
+
+          {dateLabelIndexes.map((index) => {
+            const row = chronologicalRows[index]
+
+            return (
+              <text
+                key={row.snapshotDate}
+                x={getX(index)}
+                y={chartHeight - 18}
+                textAnchor={index === 0 ? 'start' : index === chronologicalRows.length - 1 ? 'end' : 'middle'}
+                fill="#94a3b8"
+                fontSize="12"
+                fontWeight="700"
+              >
+                {formatChartDate(row.snapshotDate)}
+              </text>
+            )
+          })}
+        </svg>
+      </div>
+    </section>
+  )
+}
+
+function RankingChartTooltip({
+  date,
+  rank,
+  x,
+  y,
+}: {
+  date: string
+  rank: number
+  x: number
+  y: number
+}) {
+  const width = 132
+  const height = 50
+  const left = Math.min(Math.max(x - width / 2, 4), 720 - width - 4)
+  const top = y > 88 ? y - height - 14 : y + 14
+
+  return (
+    <g pointerEvents="none" aria-hidden="true">
+      <rect
+        x={left}
+        y={top}
+        width={width}
+        height={height}
+        rx="6"
+        fill="#111827"
+        stroke="rgba(103,232,249,0.45)"
+      />
+      <text x={left + 12} y={top + 19} fill="#94a3b8" fontSize="11" fontWeight="700">
+        {formatSnapshotDate(date)}
+      </text>
+      <text x={left + 12} y={top + 38} fill="#ecfeff" fontSize="15" fontWeight="900">
+        {formatRankLabel(rank)}
+      </text>
+    </g>
+  )
+}
+
+function RankingHistoryMetric({
+  label,
+  tone = 'same',
+  value,
+}: {
+  label: string
+  value: string
+  tone?: 'up' | 'down' | 'same'
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-white/[0.07] bg-white/[0.035] px-2 py-2.5 sm:px-2.5">
+      <p className="break-keep text-[9px] font-black text-slate-500 sm:text-[10px]">{label}</p>
+      <p
+        className={`mt-1 break-keep text-[11px] font-black sm:text-sm ${
+          tone === 'up' ? 'text-rose-300' : tone === 'down' ? 'text-blue-300' : 'text-slate-100'
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function RankingHistoryTable({
+  rows,
+}: {
+  rows: PlaceRankingSnapshotHistoryResponse['history']
+}) {
+  return (
+    <section className="overflow-hidden rounded-md border border-white/10 bg-[#080c16]">
+      <div className="border-b border-white/10 px-4 py-3">
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-cyan-200/70">
+          Daily Ranking
+        </p>
+        <h4 className="mt-1 text-sm font-black text-white">일자별 순위</h4>
+      </div>
+      <div className="lg:max-h-[28rem] lg:overflow-y-auto" data-aiva-scroll-lock-allow="true">
+        <table className="w-full table-fixed border-collapse text-left text-xs sm:text-sm">
+          <colgroup>
+            <col className="w-[52%]" />
+            <col className="w-[23%]" />
+            <col className="w-[25%]" />
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-[#151925] text-[11px] font-black text-cyan-100/75">
+            <tr>
+              <th className="px-2.5 py-3 sm:px-4">날짜</th>
+              <th className="px-2 py-3 sm:px-4">순위</th>
+              <th className="px-2 py-3 text-right sm:px-4 sm:text-left">변화</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/10">
+            {rows.map((row) => (
+              <tr key={row.snapshotDate} className="text-slate-200">
+                <td className="whitespace-nowrap px-2.5 py-3 font-bold sm:px-4">
+                  {formatSnapshotDate(row.snapshotDate)}
+                </td>
+                <td className="whitespace-nowrap px-2 py-3 font-black sm:px-4">
+                  {formatRankLabel(row.rank)}
+                </td>
+                <td className="whitespace-nowrap px-2 py-3 text-right sm:px-4 sm:text-left">
+                  <RankChangeText change={row.change} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function formatChartDate(value: string) {
+  const [, month, day] = value.split('-')
+
+  return month && day ? `${Number(month)}/${Number(day)}` : value
+}
+
+function parseSnapshotDate(value: string) {
+  const time = Date.parse(`${value}T00:00:00Z`)
+
+  return Number.isNaN(time) ? 0 : time
 }
 
 type ReviewBottomSheetProps = {
