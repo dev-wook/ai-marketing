@@ -784,8 +784,10 @@ function MonthlyFlowComparison({ items }: { items: ReservationDashboardData['wee
   )
 
   return (
-    <div className="grid gap-2.5">
-      {items.map((item) => {
+    <div>
+      <DemandCompositionLegend />
+      <div className="mt-2 grid gap-2.5">
+        {items.map((item) => {
         const currentTotal = item.currentActual + item.currentExpected
         const currentDailyAverage = calculateDailyAverage(currentTotal, item.currentOperatingDays)
         const previousDailyAverage = calculateDailyAverage(item.previous, item.previousOperatingDays)
@@ -822,7 +824,8 @@ function MonthlyFlowComparison({ items }: { items: ReservationDashboardData['wee
             </div>
           </div>
         )
-      })}
+        })}
+      </div>
     </div>
   )
 }
@@ -1033,34 +1036,89 @@ function DemandCompositionBar({
 }
 
 function GoalAchievement({ data }: { data: ReservationDashboardData['goal'] }) {
-  const currentPercent = Math.min(120, Math.round((data.currentActual / data.target) * 100))
-  const expectedPercent = Math.min(120, Math.round((data.aiExpected / data.target) * 100))
-  const actualWidth = Math.min(100, currentPercent)
-  const expectedAdditionalWidth = Math.max(0, Math.min(100 - actualWidth, expectedPercent - currentPercent))
+  const currentPercent = Math.round((data.currentActual / data.target) * 100)
+  const expectedPercent = Math.round((data.aiExpected / data.target) * 100)
+  const scaleMax = Math.max(100, Math.ceil(Math.max(currentPercent, expectedPercent) / 10) * 10)
 
   return (
     <div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        <GoalStat label="목표" value={`${data.target}건`} />
-        <GoalStat label="실예약" value={`${data.currentActual}건`} />
-        <GoalStat label="AI예상" value={`${data.aiExpected}건`} />
+        <GoalStat label="전월 기준" value={`${data.target}건`} />
+        <GoalStat label="현재 실예약" value={`${data.currentActual}건`} />
+        <GoalStat label="AI 월말 예상" value={`${data.aiExpected}건`} />
       </div>
+
       <div className="mt-4">
-        <div className="flex items-center justify-between text-[11px] font-black text-slate-400">
-          <span>0</span>
-          <span className="text-cyan-100">{expectedPercent}%</span>
-          <span>100%</span>
+        <DemandCompositionLegend />
+        <div className="mt-3 grid gap-3">
+          <AchievementProgressRow
+            actual={data.currentActual}
+            expected={0}
+            label="현재 실예약 달성"
+            percent={currentPercent}
+            scaleMax={scaleMax}
+            target={data.target}
+          />
+          <AchievementProgressRow
+            actual={data.currentActual}
+            expected={Math.max(0, data.aiExpected - data.currentActual)}
+            label="AI 월말 예상 달성"
+            percent={expectedPercent}
+            scaleMax={scaleMax}
+            target={data.target}
+          />
         </div>
-        <div className="relative mt-2 flex h-3 overflow-hidden rounded-full bg-white/10">
-          <span className="h-full bg-cyan-300" style={{ width: `${actualWidth}%` }} />
-          {expectedAdditionalWidth > 0 ? (
-            <span className="h-full bg-fuchsia-300" style={{ width: `${expectedAdditionalWidth}%` }} />
-          ) : null}
-          <span className="absolute inset-y-[-0.2rem] left-[83.33%] w-px bg-white/70" />
-        </div>
-        <p className="mt-2 text-xs font-bold text-slate-400">
-          현재 {currentPercent}% · AI 예상 {expectedPercent}%
+        <p className="mt-3 break-keep text-[11px] font-bold leading-5 text-slate-500">
+          전월 예약 건수를 100% 기준으로 현재 실예약과 AI가 예측한 월말 예약 수준을 비교합니다.
         </p>
+      </div>
+    </div>
+  )
+}
+
+function AchievementProgressRow({
+  actual,
+  expected,
+  label,
+  percent,
+  scaleMax,
+  target,
+}: {
+  actual: number
+  expected: number
+  label: string
+  percent: number
+  scaleMax: number
+  target: number
+}) {
+  const actualWidth = Math.min(100, ((actual / target) * 100 * 100) / scaleMax)
+  const expectedWidth = Math.min(
+    100 - actualWidth,
+    ((expected / target) * 100 * 100) / scaleMax,
+  )
+  const targetPosition = Math.min(100, (100 / scaleMax) * 100)
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 text-[11px] font-black">
+        <span className="text-slate-300">{label}</span>
+        <span className={expected > 0 ? 'text-fuchsia-100' : 'text-cyan-100'}>{percent}%</span>
+      </div>
+      <div className="relative mt-1.5 flex h-2.5 overflow-hidden rounded-full bg-white/10">
+        <span className="h-full bg-cyan-300" style={{ width: `${actualWidth}%` }} />
+        {expectedWidth > 0 ? (
+          <span className="h-full bg-fuchsia-300" style={{ width: `${expectedWidth}%` }} />
+        ) : null}
+        <span
+          className="absolute inset-y-0 w-px bg-white/80"
+          style={{ left: `${targetPosition}%` }}
+          aria-hidden="true"
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between text-[9px] font-bold text-slate-600">
+        <span>0%</span>
+        <span>목표 100%</span>
+        <span>{scaleMax}%</span>
       </div>
     </div>
   )
