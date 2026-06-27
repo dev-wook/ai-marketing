@@ -1355,7 +1355,7 @@ export function PlaceRankingTool() {
                     />
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-2">
-                      {item.badges.map((badge) => (
+                      {item.badges.filter((badge) => badge !== '메뉴').map((badge) => (
                         <span
                           key={badge}
                           className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-black text-slate-300 sm:px-2 sm:py-1 sm:text-[11px]"
@@ -1586,7 +1586,7 @@ function PlaceAddressDisclosure({
         type="button"
         onClick={onToggle}
         disabled={!isOverflowing}
-        className="flex max-w-full items-center gap-1 text-left text-xs font-black text-slate-300 transition enabled:hover:text-cyan-100 sm:text-sm"
+        className="flex max-w-full items-center gap-1 text-left text-[10px] font-bold leading-snug text-slate-300 transition enabled:hover:text-cyan-100 sm:text-sm"
         aria-expanded={isOverflowing ? isOpen : undefined}
       >
         <span ref={addressRef} className="min-w-0 truncate">
@@ -1594,12 +1594,12 @@ function PlaceAddressDisclosure({
         </span>
         {isOverflowing ? (
           <span
-            className={`relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-cyan-200/80 transition ${
+            className={`relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-cyan-200/80 transition sm:h-5 sm:w-5 ${
               isOpen ? 'rotate-180' : ''
             }`}
             aria-hidden="true"
           >
-            <span className="block h-2 w-2 translate-y-[-1px] rotate-45 border-b-2 border-r-2 border-current" />
+            <span className="block h-1.5 w-1.5 translate-y-[-1px] rotate-45 border-b-2 border-r-2 border-current sm:h-2 sm:w-2" />
           </span>
         ) : null}
       </button>
