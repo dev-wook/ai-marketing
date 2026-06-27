@@ -378,10 +378,26 @@ export type PlaceBookingInsightResponse = {
       startDate: string
       endDate: string
       actualBookings: number
+      previousActualBookings: number
+      currentOperatingDays: number
+      previousOperatingDays: number
+      isPeriodAdjusted: boolean
       expectedAdditionalDemandMin: number
       expectedAdditionalDemandMax: number
       expectedBookingsMin: number
       expectedBookingsMax: number
+    }>
+    hourlyDeltas: Array<{
+      current: number
+      expected: number
+      hour: string
+      previous: number
+    }>
+    weekdayDeltas: Array<{
+      current: number
+      day: string
+      expected: number
+      previous: number
     }>
     busyDates: string[]
     quietDates: string[]

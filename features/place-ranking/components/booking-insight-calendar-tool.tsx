@@ -104,6 +104,7 @@ export function BookingInsightCalendarTool() {
 
     setIsLoadingInsight(true)
     setErrorMessage('')
+    setInsight(null)
 
     try {
       const data = await requestBookingInsight(place, product, nextYearMonth)
@@ -325,8 +326,6 @@ export function BookingInsightCalendarTool() {
           ))}
         </div>
       </section>
-
-      {isLoadingInsight ? <InsightSkeleton /> : null}
 
       {insight ? <InsightAnalysisPanel insight={insight} /> : null}
 
@@ -570,7 +569,7 @@ function InsightAnalysisPanel({ insight }: { insight: PlaceBookingInsightRespons
     insight.accuracy.recent4Weeks,
     insight.accuracy.monthToDate,
   ]
-  const reservationDashboard = createReservationDashboardMock(insight)
+  const reservationDashboard = createReservationDashboardData(insight)
 
   return (
     <section className="grid gap-4 rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 shadow-[0_0_34px_rgba(34,211,238,0.08)] md:p-5">
@@ -694,18 +693,6 @@ function AiBlockDetailModal({
   )
 }
 
-function InsightSkeleton() {
-  return (
-    <section className="rounded-md border border-cyan-300/18 bg-[#0b1727]/82 p-4 md:p-5">
-      <div className="grid gap-3 md:grid-cols-4">
-        {[0, 1, 2, 3].map((item) => (
-          <div key={item} className="h-24 animate-pulse rounded-md border border-white/10 bg-white/[0.05]" />
-        ))}
-      </div>
-    </section>
-  )
-}
-
 function MetricCard({
   label,
   tone = 'default',
@@ -741,19 +728,24 @@ type ReservationDashboardData = {
   }
   hourlyDeltas: Array<{
     current: number
+    expected: number
     hour: string
     previous: number
   }>
   weekdayDeltas: Array<{
     current: number
     day: string
+    expected: number
     previous: number
   }>
   weeklyComparison: Array<{
     currentActual: number
     currentExpected: number
+    currentOperatingDays: number
+    isPeriodAdjusted: boolean
     label: string
     previous: number
+    previousOperatingDays: number
   }>
 }
 
@@ -795,12 +787,29 @@ function MonthlyFlowComparison({ items }: { items: ReservationDashboardData['wee
     <div className="grid gap-2.5">
       {items.map((item) => {
         const currentTotal = item.currentActual + item.currentExpected
-        const delta = calculateDeltaPercent(currentTotal, item.previous)
+        const currentDailyAverage = calculateDailyAverage(currentTotal, item.currentOperatingDays)
+        const previousDailyAverage = calculateDailyAverage(item.previous, item.previousOperatingDays)
+        const delta =
+          currentDailyAverage === null || previousDailyAverage === null
+            ? null
+            : calculateDeltaPercent(currentDailyAverage, previousDailyAverage)
 
         return (
           <div key={item.label} className="grid gap-1">
             <div className="flex items-center justify-between gap-2 text-[11px] font-black">
-              <span className="text-slate-300">{item.label}</span>
+              <span className="flex items-center gap-1.5 text-slate-300">
+                {item.label}
+                {item.isPeriodAdjusted ? (
+                  <PeriodAdjustmentBadge
+                    currentDailyAverage={currentDailyAverage}
+                    currentOperatingDays={item.currentOperatingDays}
+                    currentTotal={currentTotal}
+                    previousDailyAverage={previousDailyAverage}
+                    previousOperatingDays={item.previousOperatingDays}
+                    previousTotal={item.previous}
+                  />
+                ) : null}
+              </span>
               <DeltaBadge value={delta} />
             </div>
             <div className="grid gap-1">
@@ -816,6 +825,54 @@ function MonthlyFlowComparison({ items }: { items: ReservationDashboardData['wee
       })}
     </div>
   )
+}
+
+function PeriodAdjustmentBadge({
+  currentDailyAverage,
+  currentOperatingDays,
+  currentTotal,
+  previousDailyAverage,
+  previousOperatingDays,
+  previousTotal,
+}: {
+  currentDailyAverage: number | null
+  currentOperatingDays: number
+  currentTotal: number
+  previousDailyAverage: number | null
+  previousOperatingDays: number
+  previousTotal: number
+}) {
+  return (
+    <span
+      className="group relative inline-flex cursor-help rounded-sm border border-fuchsia-300/25 bg-fuchsia-300/[0.08] px-1.5 py-0.5 text-[9px] font-black text-fuchsia-100 outline-none"
+      tabIndex={0}
+    >
+      기간 보정
+      <span className="pointer-events-none absolute left-0 top-[calc(100%+0.35rem)] z-20 hidden w-56 rounded-md border border-fuchsia-300/20 bg-[#090d18] p-2.5 text-[10px] font-bold leading-4 text-slate-300 shadow-[0_14px_34px_rgba(0,0,0,0.45)] group-hover:block group-focus:block">
+        월 경계의 영업일 차이를 보정해 일평균 예약으로 비교합니다.
+        <span className="mt-1 block text-slate-400">
+          지난달 {formatComparisonCount(previousTotal)} ÷ {previousOperatingDays}일 ={' '}
+          {formatDailyAverage(previousDailyAverage)}
+        </span>
+        <span className="block text-slate-400">
+          이번달 {formatComparisonCount(currentTotal)} ÷ {currentOperatingDays}일 ={' '}
+          {formatDailyAverage(currentDailyAverage)}
+        </span>
+      </span>
+    </span>
+  )
+}
+
+function calculateDailyAverage(total: number, operatingDays: number) {
+  return operatingDays > 0 ? total / operatingDays : null
+}
+
+function formatDailyAverage(value: number | null) {
+  return value === null ? '비교 불가' : `일평균 ${value.toFixed(1)}건`
+}
+
+function formatComparisonCount(value: number) {
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}건`
 }
 
 function CurrentMonthComparisonBar({
@@ -875,45 +932,103 @@ function DeltaCompactList({
 }: {
   items: Array<{
     current: number
+    expected: number
     label: string
     previous: number
   }>
 }) {
+  if (items.length === 0) {
+    return <EmptyComparisonMessage />
+  }
+
+  const maxCurrentTotal = Math.max(...items.map((item) => item.current + item.expected), 1)
+
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div>
+      <DemandCompositionLegend />
+      <div className="mt-2 grid grid-cols-3 gap-2">
       {items.map((item) => (
         <div key={item.label} className="rounded border border-white/10 bg-white/[0.035] px-2 py-1.5">
           <p className="text-[11px] font-black text-slate-300">{item.label}</p>
-          <DeltaBadge value={calculateDeltaPercent(item.current, item.previous)} />
+          <DeltaBadge value={calculateDeltaPercent(item.current + item.expected, item.previous)} />
+          <DemandCompositionBar
+            actual={item.current}
+            expected={item.expected}
+            maxValue={maxCurrentTotal}
+          />
         </div>
       ))}
+      </div>
     </div>
   )
 }
 
 function WeekdayDeltaBars({ items }: { items: ReservationDashboardData['weekdayDeltas'] }) {
-  const maxAbsDelta = Math.max(
-    ...items.map((item) => Math.abs(calculateDeltaPercent(item.current, item.previous) ?? 0)),
+  if (items.length === 0) {
+    return <EmptyComparisonMessage />
+  }
+
+  const maxCurrentTotal = Math.max(
+    ...items.map((item) => item.current + item.expected),
     1,
   )
 
   return (
-    <div className="grid gap-2">
+    <div>
+      <DemandCompositionLegend />
+      <div className="mt-2 grid gap-2">
       {items.map((item) => {
-        const delta = calculateDeltaPercent(item.current, item.previous)
-        const width = delta === null ? 0 : Math.min(100, (Math.abs(delta) / maxAbsDelta) * 100)
+        const delta = calculateDeltaPercent(item.current + item.expected, item.previous)
 
         return (
           <div key={item.day} className="grid grid-cols-[1.5rem_minmax(0,1fr)_3.25rem] items-center gap-2 text-[11px] font-black">
             <span className="text-slate-300">{item.day}</span>
-            <span className="h-2 overflow-hidden rounded-full bg-white/10">
-              <span className={`block h-full rounded-full ${getDeltaColorClass(delta)}`} style={{ width: `${width}%` }} />
-            </span>
+            <DemandCompositionBar
+              actual={item.current}
+              expected={item.expected}
+              maxValue={maxCurrentTotal}
+            />
             <span className={getDeltaTextClass(delta)}>{formatDeltaPercent(delta)}</span>
           </div>
         )
       })}
+      </div>
     </div>
+  )
+}
+
+function DemandCompositionLegend() {
+  return (
+    <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500">
+      <span className="inline-flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+        실예약
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-300" />
+        AI 예상
+      </span>
+    </div>
+  )
+}
+
+function DemandCompositionBar({
+  actual,
+  expected,
+  maxValue,
+}: {
+  actual: number
+  expected: number
+  maxValue: number
+}) {
+  const actualWidth = Math.min(100, (actual / maxValue) * 100)
+  const expectedWidth = Math.min(100 - actualWidth, (expected / maxValue) * 100)
+
+  return (
+    <span className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-white/10">
+      <span className="h-full bg-cyan-300" style={{ width: `${actualWidth}%` }} />
+      <span className="h-full bg-fuchsia-300" style={{ width: `${expectedWidth}%` }} />
+    </span>
   )
 }
 
@@ -992,48 +1107,33 @@ function getDeltaTextClass(value: number | null) {
   return value > 0 ? 'text-rose-300' : 'text-blue-300'
 }
 
-function getDeltaColorClass(value: number | null) {
-  if (value === null || value === 0) {
-    return 'bg-slate-500'
-  }
-
-  return value > 0 ? 'bg-rose-300' : 'bg-blue-300'
+function EmptyComparisonMessage() {
+  return (
+    <p className="rounded-md border border-white/10 bg-white/[0.035] p-3 text-xs font-bold leading-5 text-slate-500">
+      비교할 이번 달·전월 예약 데이터가 없습니다.
+    </p>
+  )
 }
 
-function createReservationDashboardMock(insight: PlaceBookingInsightResponse): ReservationDashboardData {
-  const goalTarget = Math.max(90, insight.summary.previousMonthActualBookings || 90)
-  const aiExpected = Math.max(goalTarget, insight.summary.monthExpectedFinalBookingsMax)
+function createReservationDashboardData(insight: PlaceBookingInsightResponse): ReservationDashboardData {
+  const goalTarget = Math.max(insight.summary.previousMonthActualBookings, 1)
 
   return {
     goal: {
-      aiExpected,
+      aiExpected: insight.summary.monthExpectedFinalBookingsMax,
       currentActual: insight.summary.monthActualBookings,
       target: goalTarget,
     },
-    hourlyDeltas: [
-      { hour: '10시', previous: 17, current: 19 },
-      { hour: '11시', previous: 13, current: 12 },
-      { hour: '12시', previous: 13, current: 17 },
-      { hour: '13시', previous: 24, current: 25 },
-      { hour: '14시', previous: 22, current: 18 },
-      { hour: '15시', previous: 13, current: 15 },
-      { hour: '16시', previous: 14, current: 15 },
-      { hour: '17시', previous: 11, current: 12 },
-      { hour: '18시', previous: 18, current: 22 },
-    ],
-    weekdayDeltas: [
-      { day: '월', previous: 25, current: 27 },
-      { day: '화', previous: 31, current: 30 },
-      { day: '수', previous: 27, current: 31 },
-      { day: '목', previous: 43, current: 44 },
-      { day: '금', previous: 25, current: 31 },
-      { day: '토', previous: 32, current: 30 },
-    ],
-    weeklyComparison: insight.summary.weeklyTrend.map((item, index) => ({
+    hourlyDeltas: insight.summary.hourlyDeltas ?? [],
+    weekdayDeltas: insight.summary.weekdayDeltas ?? [],
+    weeklyComparison: insight.summary.weeklyTrend.map((item) => ({
       currentActual: item.actualBookings,
       currentExpected: item.expectedAdditionalDemandMax,
+      currentOperatingDays: item.currentOperatingDays ?? 0,
+      isPeriodAdjusted: item.isPeriodAdjusted ?? false,
       label: item.label,
-      previous: [18, 19, 21, 20, 8][index] ?? Math.max(0, item.actualBookings - 1),
+      previous: item.previousActualBookings ?? 0,
+      previousOperatingDays: item.previousOperatingDays ?? 0,
     })),
   }
 }

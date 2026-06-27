@@ -10,6 +10,10 @@ import type {
 } from '../types'
 import { collectNaverBookingStatus } from '../server/naver-booking-status'
 import {
+  createBookingDashboardComparison,
+  type BookingDashboardSignal,
+} from '../server/booking-dashboard-comparison'
+import {
   applyGeminiRepeatDemandPredictions,
   createFallbackRepeatDemandPredictions,
   createRepeatDemandAiBlocks,
@@ -704,7 +708,13 @@ function createInsightSummary({
     collectedMap,
     days,
     monthDates,
+    previousMonthDates,
     productFilter,
+  })
+  const bookingDashboardComparison = createBookingDashboardComparison({
+    currentSignals: createActualBookingSignals(monthDates, collectedMap, productFilter),
+    expectedSignals: createExpectedBookingSignals(dayList),
+    previousSignals: createActualBookingSignals(previousMonthDates, collectedMap, productFilter),
   })
   const recentEightWeekAverage = roundToOne(
     Array.from(patterns.values()).reduce(
@@ -756,6 +766,8 @@ function createInsightSummary({
     comparisonRate,
     statusLabel,
     weeklyTrend,
+    hourlyDeltas: bookingDashboardComparison.hourlyDeltas,
+    weekdayDeltas: bookingDashboardComparison.weekdayDeltas,
     busyDates,
     quietDates,
     busyTimes,
@@ -1148,16 +1160,77 @@ function createWeeklyTrend({
   collectedMap,
   days,
   monthDates,
+  previousMonthDates,
   productFilter,
 }: {
   collectedMap: Map<string, CollectedStatus>
   days: Record<string, PlaceBookingInsightDay>
   monthDates: string[]
+  previousMonthDates: string[]
   productFilter: ProductFilter
 }): PlaceBookingInsightResponse['summary']['weeklyTrend'] {
+  const weeks = splitDatesIntoWeeks(monthDates)
+  const previousWeeks = splitDatesIntoWeeks(previousMonthDates)
+
+  return weeks.map((weekDates, index) => {
+    const previousWeekDates = previousWeeks[index] ?? []
+    const actualBookings = calculateActualBookingsForDates(weekDates, collectedMap, productFilter)
+    const previousActualBookings = calculateActualBookingsForDates(
+      previousWeekDates,
+      collectedMap,
+      productFilter,
+    )
+    const currentOperatingDays = calculateOperatingDayCount(weekDates, collectedMap, productFilter)
+    const previousOperatingDays = calculateOperatingDayCount(
+      previousWeekDates,
+      collectedMap,
+      productFilter,
+    )
+    const expectedAdditionalDemand = calculateDemandRangeFromBlocks(
+      weekDates.flatMap((date) => days[date]?.aiBlocks ?? []),
+    )
+
+    return {
+      label: `${index + 1}주차`,
+      startDate: weekDates[0],
+      endDate: weekDates[weekDates.length - 1],
+      actualBookings,
+      previousActualBookings,
+      currentOperatingDays,
+      previousOperatingDays,
+      isPeriodAdjusted: weekDates.length < 7 || previousWeekDates.length < 7,
+      expectedAdditionalDemandMin: expectedAdditionalDemand.min,
+      expectedAdditionalDemandMax: expectedAdditionalDemand.max,
+      expectedBookingsMin: actualBookings + expectedAdditionalDemand.min,
+      expectedBookingsMax: actualBookings + expectedAdditionalDemand.max,
+    }
+  })
+}
+
+function calculateOperatingDayCount(
+  dates: string[],
+  collectedMap: Map<string, CollectedStatus>,
+  productFilter: ProductFilter,
+) {
+  return dates.reduce((count, date) => {
+    const response = collectedMap.get(date)?.response
+
+    if (!response) {
+      return count
+    }
+
+    const isOperatingDay = filterProducts(response.products, productFilter).some((product) =>
+      product.slots.some((slot) => slot.status === 'available' || slot.status === 'booked'),
+    )
+
+    return count + (isOperatingDay ? 1 : 0)
+  }, 0)
+}
+
+function splitDatesIntoWeeks(dates: string[]) {
   const weeks: string[][] = []
 
-  monthDates.forEach((date) => {
+  dates.forEach((date) => {
     const currentWeek = weeks[weeks.length - 1]
     const weekday = createLocalDate(date).getDay()
 
@@ -1169,23 +1242,34 @@ function createWeeklyTrend({
     currentWeek.push(date)
   })
 
-  return weeks.map((weekDates, index) => {
-    const actualBookings = calculateActualBookingsForDates(weekDates, collectedMap, productFilter)
-    const expectedAdditionalDemand = calculateDemandRangeFromBlocks(
-      weekDates.flatMap((date) => days[date]?.aiBlocks ?? []),
-    )
+  return weeks
+}
 
-    return {
-      label: `${index + 1}주차`,
-      startDate: weekDates[0],
-      endDate: weekDates[weekDates.length - 1],
-      actualBookings,
-      expectedAdditionalDemandMin: expectedAdditionalDemand.min,
-      expectedAdditionalDemandMax: expectedAdditionalDemand.max,
-      expectedBookingsMin: actualBookings + expectedAdditionalDemand.min,
-      expectedBookingsMax: actualBookings + expectedAdditionalDemand.max,
-    }
+function createActualBookingSignals(
+  dates: string[],
+  collectedMap: Map<string, CollectedStatus>,
+  productFilter: ProductFilter,
+): BookingDashboardSignal[] {
+  return dates.flatMap((date) => {
+    const response = collectedMap.get(date)?.response
+
+    return response
+      ? createActualBlocks(response, productFilter).map((block) => ({
+          date,
+          time: block.time,
+        }))
+      : []
   })
+}
+
+function createExpectedBookingSignals(days: PlaceBookingInsightDay[]): BookingDashboardSignal[] {
+  return days.flatMap((day) =>
+    day.aiBlocks.map((block) => ({
+      amount: Math.max(0, block.expectedDemand ?? 0),
+      date: day.date,
+      time: block.time,
+    })),
+  )
 }
 
 function countRemainingCapacity(products: PlaceBookingProduct[]) {
