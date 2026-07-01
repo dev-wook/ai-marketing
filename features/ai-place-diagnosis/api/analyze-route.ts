@@ -8,7 +8,7 @@ import type { AiPlaceDiagnosisRequest } from '../types'
 import { diagnoseAiPlace } from '../server/diagnose-place'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300
 
 export async function POST(request: Request) {
   try {

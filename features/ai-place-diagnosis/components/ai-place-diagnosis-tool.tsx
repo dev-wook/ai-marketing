@@ -34,7 +34,7 @@ async function requestPlaceSearch(query: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),
   })
-  const body = (await response.json()) as AiPlaceDiagnosisPlaceSearchResponse | DiagnosisErrorBody
+  const body = await readDiagnosisResponse<AiPlaceDiagnosisPlaceSearchResponse>(response)
 
   if (!response.ok) {
     const errorBody = body as DiagnosisErrorBody
@@ -67,7 +67,7 @@ async function requestDiagnosis({
       keyword,
     }),
   })
-  const body = (await response.json()) as AiPlaceDiagnosisResponse | DiagnosisErrorBody
+  const body = await readDiagnosisResponse<AiPlaceDiagnosisResponse>(response)
 
   if (!response.ok) {
     const errorBody = body as DiagnosisErrorBody
@@ -83,6 +83,37 @@ async function requestDiagnosis({
   }
 
   return body as AiPlaceDiagnosisResponse
+}
+
+async function readDiagnosisResponse<T>(response: Response) {
+  const responseText = await response.text()
+
+  if (responseText) {
+    try {
+      return JSON.parse(responseText) as T | DiagnosisErrorBody
+    } catch {
+      // Vercel may return an HTML or plain-text gateway response after a function timeout.
+    }
+  }
+
+  const timedOut = response.status === 408 || response.status === 504
+
+  const error = new Error(
+    timedOut
+      ? '진단 데이터 수집 시간이 길어 요청이 종료되었습니다. 잠시 후 다시 시도해주세요.'
+      : '서버 응답을 확인할 수 없습니다. 잠시 후 다시 시도해주세요.',
+  )
+
+  Object.assign(error, {
+    debug: {
+      provider: 'ai-place-diagnosis-http',
+      status: response.status,
+      statusText: response.statusText,
+      createdAt: new Date().toISOString(),
+    },
+  })
+
+  throw error
 }
 
 export function AiPlaceDiagnosisTool() {
