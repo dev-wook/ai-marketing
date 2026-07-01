@@ -8,10 +8,6 @@
     {
       "path": "/api/ai-place-diagnosis/benchmark/daily",
       "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/ai-place-diagnosis/harness/worker",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
