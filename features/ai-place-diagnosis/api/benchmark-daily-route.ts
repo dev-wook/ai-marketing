@@ -7,7 +7,6 @@ import {
   createAiPlaceHarnessRun,
   listAiPlaceKeywords,
 } from '../server/repository'
-import { scheduleAiPlaceHarnessWorkerRun } from '../server/harness-worker-scheduler'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -88,13 +87,6 @@ async function handleBenchmarkDailyRun(
       runId,
       skippedCount,
     })
-    const shouldStartWorker = queuedCount > 0 || skippedCount > 0
-    const backgroundWorkerScheduled = shouldStartWorker
-      ? scheduleAiPlaceHarnessWorkerRun({
-          origin: request.nextUrl.origin,
-        })
-      : false
-
     return NextResponse.json({
       runId,
       ranAt: new Date().toISOString(),
@@ -103,7 +95,7 @@ async function handleBenchmarkDailyRun(
       queuedCount,
       skippedCount,
       failureCount,
-      backgroundWorkerScheduled,
+      workerMode: 'CRON',
       results,
     })
   } catch (error) {
@@ -134,11 +126,8 @@ async function handleBenchmarkDailyRun(
 function isCronRequestAuthorized(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   const authHeader = request.headers.get('authorization')
-  const cronSchedule = request.headers.get('x-vercel-cron-schedule')
-  const isVercelCronRequest = Boolean(cronSchedule)
-  const isSecretAuthorized = Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`)
 
-  return isVercelCronRequest || isSecretAuthorized
+  return Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`)
 }
 
 function isManualRequestAuthorized(request: NextRequest) {

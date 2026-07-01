@@ -4,7 +4,8 @@ import type {
   AiPlaceDiagnosisResponse,
 } from '../types'
 
-const aiPlaceHarnessBatchDelayMs = 75_000
+const aiPlaceHarnessLeaseMs = 6 * 60 * 1000
+const aiPlaceHarnessMaxRetryCount = 5
 
 type KeywordRow = {
   id: string
@@ -68,8 +69,11 @@ export type AiPlaceHarnessJobRow = {
   batch_size: number
   total_count: number
   evaluated_count: number
-  retry_count?: number
-  next_attempt_at?: string
+  retry_count: number
+  next_attempt_at: string
+  lease_token: string | null
+  lease_expires_at: string | null
+  processing_stage: 'QUEUED' | 'EVALUATING_PLACES' | 'FINALIZING_PROFILE' | 'COMPLETED'
 }
 
 export type AiPlaceBenchmarkRefreshStatusRow = {
@@ -89,6 +93,8 @@ export type AiPlaceBenchmarkRefreshStatusRow = {
   job_error_message: string | null
   job_retry_count: number | null
   job_next_attempt_at: string | null
+  job_lease_expires_at: string | null
+  job_processing_stage: AiPlaceHarnessJobRow['processing_stage'] | null
 }
 
 export type AiPlaceHarnessSnapshotRow = {
@@ -832,7 +838,8 @@ export async function completeAiPlaceHarnessRun({
   skippedCount: number
   failureCount: number
 }) {
-  const status = failureCount > 0 ? (queuedCount > 0 ? 'PARTIAL' : 'FAILED') : 'COMPLETED'
+  const status =
+    queuedCount > 0 ? 'RUNNING' : failureCount > 0 ? 'FAILED' : 'COMPLETED'
   const pool = getPostgresPool()
 
   await pool.query(
@@ -842,7 +849,7 @@ export async function completeAiPlaceHarnessRun({
           queued_count = $3,
           skipped_count = $4,
           failure_count = $5,
-          completed_at = now()
+          completed_at = case when $2 = 'RUNNING' then null else now() end
       where id = $1
     `,
     [runId, status, queuedCount, skippedCount, failureCount],
@@ -863,7 +870,10 @@ export async function findActiveAiPlaceHarnessJob(keywordId: string) {
         total_count,
         evaluated_count,
         retry_count,
-        next_attempt_at
+        next_attempt_at,
+        lease_token,
+        lease_expires_at,
+        processing_stage
       from public.ai_place_harness_jobs
       where keyword_id = $1
         and status in ('PENDING', 'RUNNING', 'RETRY_WAIT')
@@ -904,20 +914,15 @@ export async function claimNextAiPlaceHarnessJob() {
           total_count,
           evaluated_count,
           retry_count,
-          next_attempt_at
+          next_attempt_at,
+          lease_token,
+          lease_expires_at,
+          processing_stage
         from public.ai_place_harness_jobs
         where status in ('PENDING', 'RUNNING', 'RETRY_WAIT')
           and collection_run_id is not null
           and next_attempt_at <= now()
-          and (locked_at is null or locked_at < now() - interval '2 minutes')
-          and (
-            status = 'RUNNING'
-            or not exists (
-              select 1
-              from public.ai_place_harness_jobs running_job
-              where running_job.status = 'RUNNING'
-            )
-          )
+          and (lease_expires_at is null or lease_expires_at <= now())
         order by
           case when status = 'RUNNING' then 0 else 1 end,
           created_at asc
@@ -932,22 +937,42 @@ export async function claimNextAiPlaceHarnessJob() {
       return null
     }
 
-    await client.query(
+    const claimedResult = await client.query<AiPlaceHarnessJobRow>(
       `
         update public.ai_place_harness_jobs
         set status = 'RUNNING',
             batch_size = least(batch_size, 10),
             locked_at = now(),
+            lease_token = gen_random_uuid(),
+            lease_expires_at = now() + ($2::text || ' milliseconds')::interval,
+            processing_stage = case
+              when next_rank_start > total_count then 'FINALIZING_PROFILE'
+              else 'EVALUATING_PLACES'
+            end,
             started_at = coalesce(started_at, now()),
             error_message = null
         where id = $1
+        returning
+          id,
+          keyword_id,
+          collection_run_id,
+          status,
+          next_rank_start,
+          batch_size,
+          total_count,
+          evaluated_count,
+          retry_count,
+          next_attempt_at,
+          lease_token,
+          lease_expires_at,
+          processing_stage
       `,
-      [job.id],
+      [job.id, aiPlaceHarnessLeaseMs],
     )
 
     await client.query('commit')
 
-    return job
+    return claimedResult.rows[0] ?? null
   } catch (error) {
     await client.query('rollback')
     throw error
@@ -1084,12 +1109,16 @@ export async function advanceAiPlaceHarnessJob({
   nextRankStart,
   status,
   errorMessage,
+  leaseToken,
+  processingStage,
 }: {
   jobId: string
   nextRankStart: number
   evaluatedCount: number
   status: 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED'
   errorMessage?: string
+  leaseToken: string
+  processingStage?: AiPlaceHarnessJobRow['processing_stage']
 }) {
   const pool = getPostgresPool()
 
@@ -1100,13 +1129,56 @@ export async function advanceAiPlaceHarnessJob({
           evaluated_count = evaluated_count + $3,
           status = $4,
           locked_at = null,
-          next_attempt_at = case when $4 = 'RUNNING' then now() + ($6::text || ' milliseconds')::interval else next_attempt_at end,
+          lease_token = null,
+          lease_expires_at = null,
+          processing_stage = coalesce($6, processing_stage),
+          next_attempt_at = case when $4 = 'RUNNING' then now() else next_attempt_at end,
           completed_at = case when $4 in ('COMPLETED', 'PARTIAL', 'FAILED') then now() else completed_at end,
           error_message = $5
       where id = $1
         and status = 'RUNNING'
+        and lease_token = $7::uuid
     `,
-    [jobId, nextRankStart, evaluatedCount, status, errorMessage ?? null, aiPlaceHarnessBatchDelayMs],
+    [
+      jobId,
+      nextRankStart,
+      evaluatedCount,
+      status,
+      errorMessage ?? null,
+      processingStage ?? null,
+      leaseToken,
+    ],
+  )
+
+  if (status === 'COMPLETED' || status === 'PARTIAL' || status === 'FAILED') {
+    await reconcileAiPlaceHarnessRun(jobId)
+  }
+}
+
+export async function prepareAiPlaceHarnessJobFinalization({
+  evaluatedCount,
+  jobId,
+  leaseToken,
+  nextRankStart,
+}: {
+  jobId: string
+  leaseToken: string
+  nextRankStart: number
+  evaluatedCount: number
+}) {
+  const pool = getPostgresPool()
+
+  await pool.query(
+    `
+      update public.ai_place_harness_jobs
+      set next_rank_start = $2,
+          evaluated_count = evaluated_count + $3,
+          processing_stage = 'FINALIZING_PROFILE'
+      where id = $1
+        and status = 'RUNNING'
+        and lease_token = $4::uuid
+    `,
+    [jobId, nextRankStart, evaluatedCount, leaseToken],
   )
 }
 
@@ -1114,25 +1186,85 @@ export async function scheduleAiPlaceHarnessJobRetry({
   errorMessage,
   jobId,
   retryAfterMs,
+  leaseToken,
 }: {
   jobId: string
   retryAfterMs: number
   errorMessage: string
+  leaseToken: string
 }) {
+  const pool = getPostgresPool()
+  const result = await pool.query<{ status: 'RETRY_WAIT' | 'FAILED'; retry_count: number }>(
+    `
+      update public.ai_place_harness_jobs
+      set status = case
+            when retry_count + 1 >= $4 then 'FAILED'
+            else 'RETRY_WAIT'
+          end,
+          retry_count = retry_count + 1,
+          next_attempt_at = now() + ($2::text || ' milliseconds')::interval,
+          locked_at = null,
+          lease_token = null,
+          lease_expires_at = null,
+          completed_at = case when retry_count + 1 >= $4 then now() else completed_at end,
+          error_message = $3
+      where id = $1
+        and status = 'RUNNING'
+        and lease_token = $5::uuid
+      returning status, retry_count
+    `,
+    [
+      jobId,
+      Math.max(1000, retryAfterMs),
+      errorMessage,
+      aiPlaceHarnessMaxRetryCount,
+      leaseToken,
+    ],
+  )
+
+  const outcome = result.rows[0] ?? null
+
+  if (outcome?.status === 'FAILED') {
+    await reconcileAiPlaceHarnessRun(jobId)
+  }
+
+  return outcome
+}
+
+async function reconcileAiPlaceHarnessRun(jobId: string) {
   const pool = getPostgresPool()
 
   await pool.query(
     `
-      update public.ai_place_harness_jobs
-      set status = 'RETRY_WAIT',
-          retry_count = retry_count + 1,
-          next_attempt_at = now() + ($2::text || ' milliseconds')::interval,
-          locked_at = null,
-          error_message = $3
-      where id = $1
-        and status = 'RUNNING'
+      with target_run as (
+        select run_id
+        from public.ai_place_harness_jobs
+        where id = $1
+          and run_id is not null
+      ),
+      job_counts as (
+        select
+          job.run_id,
+          count(*) filter (where job.status in ('PENDING', 'RUNNING', 'RETRY_WAIT')) as active_count,
+          count(*) filter (where job.status = 'COMPLETED') as completed_count,
+          count(*) filter (where job.status in ('PARTIAL', 'FAILED')) as failure_count
+        from public.ai_place_harness_jobs job
+        join target_run target on target.run_id = job.run_id
+        group by job.run_id
+      )
+      update public.ai_place_harness_runs run
+      set status = case
+            when counts.active_count > 0 then 'RUNNING'
+            when counts.failure_count = 0 then 'COMPLETED'
+            when counts.completed_count > 0 then 'PARTIAL'
+            else 'FAILED'
+          end,
+          completed_at = case when counts.active_count = 0 then now() else null end,
+          failure_count = counts.failure_count
+      from job_counts counts
+      where run.id = counts.run_id
     `,
-    [jobId, Math.max(1000, retryAfterMs), errorMessage],
+    [jobId],
   )
 }
 
@@ -1143,6 +1275,8 @@ export async function cancelAiPlaceHarnessJobs({ jobId }: { jobId?: string } = {
       update public.ai_place_harness_jobs
       set status = 'FAILED',
           locked_at = null,
+          lease_token = null,
+          lease_expires_at = null,
           completed_at = now(),
           error_message = '사용자 요청으로 중도취소했습니다.'
       where status in ('PENDING', 'RUNNING', 'RETRY_WAIT')
@@ -1151,6 +1285,8 @@ export async function cancelAiPlaceHarnessJobs({ jobId }: { jobId?: string } = {
     `,
     [jobId ?? null],
   )
+
+  await Promise.all(result.rows.map((job) => reconcileAiPlaceHarnessRun(job.id)))
 
   return result.rowCount ?? 0
 }
@@ -1201,7 +1337,9 @@ export async function listAiPlaceBenchmarkRefreshStatuses() {
         job.completed_at as job_completed_at,
         job.error_message as job_error_message,
         job.retry_count as job_retry_count,
-        job.next_attempt_at as job_next_attempt_at
+        job.next_attempt_at as job_next_attempt_at,
+        job.lease_expires_at as job_lease_expires_at,
+        job.processing_stage as job_processing_stage
       from public.ai_place_keywords keyword
       left join lateral (
         select
@@ -1212,6 +1350,8 @@ export async function listAiPlaceBenchmarkRefreshStatuses() {
           evaluated_count,
           retry_count,
           next_attempt_at,
+          lease_expires_at,
+          processing_stage,
           created_at,
           completed_at,
           error_message

@@ -330,14 +330,12 @@ export function AiDiagnosisDataManager({
       const message =
         failureCount > 0
           ? `일부 키워드는 접수되지 않았습니다. 작업 알림에서 상세 상태를 확인해 주세요.`
-          : refreshResult.backgroundWorkerScheduled === false
-            ? '데이터 수집은 시작됐지만 백그라운드 작업 예약에 실패했습니다. 운영 설정을 확인해 주세요.'
-            : target.type === 'all'
-              ? `등록 키워드 ${successCount || totalKeywords}개의 데이터 수집을 접수했습니다.`
-              : `${target.label} 데이터 수집이 시작되었습니다.`
+          : target.type === 'all'
+            ? `등록 키워드 ${successCount || totalKeywords}개의 데이터 수집을 접수했습니다.`
+            : `${target.label} 데이터 수집이 시작되었습니다.`
 
       setMessage({
-        type: failureCount > 0 || refreshResult.backgroundWorkerScheduled === false ? 'warning' : 'success',
+        type: failureCount > 0 ? 'warning' : 'success',
         message,
       })
       await loadStatus()
@@ -949,7 +947,7 @@ async function requestAiPlaceBenchmarkDailyRun(keywordIds?: string[]) {
         totalKeywords?: number
         successCount?: number
         failureCount?: number
-        backgroundWorkerScheduled?: boolean
+        workerMode?: 'CRON'
       }
     | DiagnosisErrorBody
 
@@ -962,7 +960,7 @@ async function requestAiPlaceBenchmarkDailyRun(keywordIds?: string[]) {
     totalKeywords?: number
     successCount?: number
     failureCount?: number
-    backgroundWorkerScheduled?: boolean
+    workerMode?: 'CRON'
   }
 }
 

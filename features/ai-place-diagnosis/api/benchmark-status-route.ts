@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getAuthUserFromRequest } from '@/features/auth/server/session'
 import { listAiPlaceBenchmarkRefreshStatuses } from '../server/repository'
-import { scheduleAiPlaceHarnessWorkerRun } from '../server/harness-worker-scheduler'
 
 export const runtime = 'nodejs'
 
@@ -65,31 +64,18 @@ export async function GET(request: NextRequest) {
               errorMessage: row.job_error_message,
               retryCount: row.job_retry_count ?? 0,
               nextAttemptAt: row.job_next_attempt_at,
+              leaseExpiresAt: row.job_lease_expires_at,
+              processingStage: row.job_processing_stage,
             }
           : null,
       }
     })
-    const shouldWakeWorker = keywords.some((keyword) => {
-      const run = keyword.latestRun
-
-      if (!run || (keyword.status !== 'QUEUED' && keyword.status !== 'UPDATING')) {
-        return false
-      }
-
-      return !run.nextAttemptAt || new Date(run.nextAttemptAt).getTime() <= now
-    })
-    const backgroundWorkerScheduled = shouldWakeWorker
-      ? scheduleAiPlaceHarnessWorkerRun({
-          origin: request.nextUrl.origin,
-        })
-      : false
-
     return NextResponse.json({
       checkedAt: new Date(now).toISOString(),
       hasUpdatingKeyword: keywords.some(
         (keyword) => keyword.status === 'QUEUED' || keyword.status === 'UPDATING',
       ),
-      backgroundWorkerScheduled,
+      workerMode: 'CRON',
       keywords,
     })
   } catch (error) {

@@ -2,12 +2,9 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getAuthUserFromRequest } from '@/features/auth/server/session'
 import { runNextAiPlaceHarnessWorkerBatch } from '../server/benchmark-profile-service'
-import { scheduleAiPlaceHarnessWorkerRun } from '../server/harness-worker-scheduler'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
-
-const stableGeminiBatchDelayMs = 75_000
 
 export async function GET(request: NextRequest) {
   if (!isCronRequestAuthorized(request)) {
@@ -28,19 +25,10 @@ export async function POST(request: NextRequest) {
 async function handleHarnessWorkerRun(request: NextRequest) {
   try {
     const result = await runNextAiPlaceHarnessWorkerBatch()
-    const nextDelayMs = getNextWorkerDelayMs(result)
-    const backgroundWorkerScheduled =
-      typeof nextDelayMs === 'number'
-        ? scheduleAiPlaceHarnessWorkerRun({
-            delayMs: nextDelayMs,
-            origin: request.nextUrl.origin,
-          })
-        : false
 
     return NextResponse.json({
       ...result,
-      backgroundWorkerScheduled,
-      nextWorkerDelayMs: nextDelayMs,
+      workerMode: 'CRON',
     })
   } catch (error) {
     if (error instanceof Error) {
@@ -67,34 +55,11 @@ async function handleHarnessWorkerRun(request: NextRequest) {
   }
 }
 
-function getNextWorkerDelayMs(result: Awaited<ReturnType<typeof runNextAiPlaceHarnessWorkerBatch>>) {
-  if (!('jobId' in result) || !result.jobId) {
-    return null
-  }
-
-  if ('retryWait' in result && result.retryWait) {
-    return Math.max(stableGeminiBatchDelayMs, result.retryAfterMs ?? stableGeminiBatchDelayMs)
-  }
-
-  if ('fatalQuota' in result && result.fatalQuota) {
-    return null
-  }
-
-  if ('completed' in result && result.completed) {
-    return stableGeminiBatchDelayMs
-  }
-
-  return stableGeminiBatchDelayMs
-}
-
 function isCronRequestAuthorized(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   const authHeader = request.headers.get('authorization')
-  const cronSchedule = request.headers.get('x-vercel-cron-schedule')
-  const isVercelCronRequest = Boolean(cronSchedule)
-  const isSecretAuthorized = Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`)
 
-  return isVercelCronRequest || isSecretAuthorized
+  return Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`)
 }
 
 function isManualRequestAuthorized(request: NextRequest) {

@@ -25,6 +25,7 @@ import {
 } from './constants'
 import { createNormalizedSnapshot } from './feature-extractor'
 import {
+  type AiPlaceHarnessJobRow,
   advanceAiPlaceHarnessJob,
   claimNextAiPlaceHarnessJob,
   completeAiPlaceCollectionRun,
@@ -36,6 +37,7 @@ import {
   listAiPlaceDiagnosisCalibrationSamples,
   listAiPlaceHarnessScores,
   listAiPlaceHarnessSnapshotsForBatch,
+  prepareAiPlaceHarnessJobFinalization,
   saveAiPlaceSnapshot,
   saveAiPlaceHarnessPlaceScore,
   saveAndActivateBenchmarkProfile,
@@ -207,12 +209,58 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
       processedCount: 0,
     }
   }
+  const leaseToken = job.lease_token
 
+  if (!leaseToken) {
+    throw new Error(`AI 진단 워커 Job lease를 발급하지 못했습니다: ${job.id}`)
+  }
+
+  try {
+    return await processAiPlaceHarnessWorkerBatch({
+      collectionRunId: job.collection_run_id,
+      job,
+      leaseToken,
+    })
+  } catch (error) {
+    const retryAfterMs = getUnexpectedWorkerRetryAfterMs(job.retry_count)
+    const retryResult = await scheduleAiPlaceHarnessJobRetry({
+      jobId: job.id,
+      leaseToken,
+      retryAfterMs,
+      errorMessage:
+        error instanceof Error ? error.message : 'AI 진단 워커 처리 중 알 수 없는 오류가 발생했습니다.',
+    })
+
+    return {
+      ok: false,
+      jobId: job.id,
+      processedCount: 0,
+      completed: false,
+      failed: retryResult?.status === 'FAILED',
+      retryWait: retryResult?.status === 'RETRY_WAIT',
+      retryAfterMs,
+      message:
+        retryResult?.status === 'FAILED'
+          ? 'AI 진단 워커가 최대 재시도 횟수를 초과해 실패 처리되었습니다.'
+          : 'AI 진단 워커 오류를 저장했으며 다음 Cron에서 재시도합니다.',
+    }
+  }
+}
+
+async function processAiPlaceHarnessWorkerBatch({
+  collectionRunId,
+  job,
+  leaseToken,
+}: {
+  collectionRunId: string
+  job: AiPlaceHarnessJobRow
+  leaseToken: string
+}) {
   const rankStart = job.next_rank_start
   const effectiveBatchSize = Math.min(job.batch_size, 10)
   const rankEnd = Math.min(rankStart + effectiveBatchSize - 1, job.total_count)
   const snapshots = await listAiPlaceHarnessSnapshotsForBatch({
-    collectionRunId: job.collection_run_id,
+    collectionRunId,
     rankStart,
     rankEnd,
   })
@@ -260,7 +308,7 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
       await saveAiPlaceHarnessPlaceScore({
         jobId: job.id,
         keywordId: job.keyword_id,
-        collectionRunId: job.collection_run_id,
+        collectionRunId,
         snapshotId: snapshot.id,
         placeId: snapshot.place_id,
         rank: snapshot.rank,
@@ -282,9 +330,11 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
       if (isFatalGeminiQuotaError(error)) {
         await advanceAiPlaceHarnessJob({
           jobId: job.id,
+          leaseToken,
           nextRankStart: rankStart,
           evaluatedCount: processedCount,
           status: 'FAILED',
+          processingStage: 'EVALUATING_PLACES',
           errorMessage: createFatalGeminiQuotaMessage(error),
         })
 
@@ -304,6 +354,7 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
 
         await scheduleAiPlaceHarnessJobRetry({
           jobId: job.id,
+          leaseToken,
           retryAfterMs,
           errorMessage:
             error instanceof Error
@@ -326,7 +377,7 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
       await saveAiPlaceHarnessPlaceScore({
         jobId: job.id,
         keywordId: job.keyword_id,
-        collectionRunId: job.collection_run_id,
+        collectionRunId,
         snapshotId: snapshot.id,
         placeId: snapshot.place_id,
         rank: snapshot.rank,
@@ -347,19 +398,19 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
   const nextRankStart = rankEnd + 1
   const isComplete = nextRankStart > job.total_count
 
-  await advanceAiPlaceHarnessJob({
-    jobId: job.id,
-    nextRankStart,
-    evaluatedCount: processedCount,
-    status: 'RUNNING',
-  })
-
   let profileResult = null
 
   if (isComplete) {
+    await prepareAiPlaceHarnessJobFinalization({
+      jobId: job.id,
+      leaseToken,
+      nextRankStart,
+      evaluatedCount: processedCount,
+    })
+
     try {
       profileResult = await finalizeAiPlaceHarnessJobProfile({
-        collectionRunId: job.collection_run_id,
+        collectionRunId,
         jobId: job.id,
         keywordId: job.keyword_id,
       })
@@ -367,9 +418,11 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
       if (isFatalGeminiQuotaError(error)) {
         await advanceAiPlaceHarnessJob({
           jobId: job.id,
+          leaseToken,
           nextRankStart,
           evaluatedCount: 0,
           status: 'FAILED',
+          processingStage: 'FINALIZING_PROFILE',
           errorMessage: createFatalGeminiQuotaMessage(error),
         })
 
@@ -389,6 +442,7 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
 
         await scheduleAiPlaceHarnessJobRetry({
           jobId: job.id,
+          leaseToken,
           retryAfterMs,
           errorMessage:
             error instanceof Error
@@ -410,21 +464,42 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
 
       await advanceAiPlaceHarnessJob({
         jobId: job.id,
+        leaseToken,
         nextRankStart,
         evaluatedCount: 0,
         status: 'FAILED',
+        processingStage: 'FINALIZING_PROFILE',
         errorMessage:
           error instanceof Error ? error.message : 'AI 진단 기준 프로필 생성에 실패했습니다.',
       })
 
-        throw error
+      return {
+        ok: false,
+        jobId: job.id,
+        processedCount,
+        rankStart,
+        rankEnd,
+        completed: false,
+        failed: true,
+      }
     }
 
     await advanceAiPlaceHarnessJob({
       jobId: job.id,
+      leaseToken,
       nextRankStart,
       evaluatedCount: 0,
       status: 'COMPLETED',
+      processingStage: 'COMPLETED',
+    })
+  } else {
+    await advanceAiPlaceHarnessJob({
+      jobId: job.id,
+      leaseToken,
+      nextRankStart,
+      evaluatedCount: processedCount,
+      status: 'RUNNING',
+      processingStage: 'EVALUATING_PLACES',
     })
   }
 
@@ -437,6 +512,12 @@ export async function runNextAiPlaceHarnessWorkerBatch() {
     completed: isComplete,
     profileResult,
   }
+}
+
+function getUnexpectedWorkerRetryAfterMs(retryCount: number) {
+  const retryDelaysMs = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000, 60 * 60_000]
+
+  return retryDelaysMs[Math.min(Math.max(0, retryCount), retryDelaysMs.length - 1)]
 }
 
 async function finalizeAiPlaceHarnessJobProfile({
