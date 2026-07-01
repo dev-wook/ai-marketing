@@ -10,7 +10,7 @@ select cron.schedule(
   '*/5 * * * *',
   $worker$
     select net.http_post(
-      url := 'https://ai-marketing-git-main-aiva-platform.vercel.app/api/ai-place-diagnosis/harness/worker',
+      url := 'https://aiva-ai-marketing.vercel.app/api/ai-place-diagnosis/harness/worker',
       headers := jsonb_build_object(
         'Content-Type',
         'application/json',
@@ -23,7 +23,8 @@ select cron.schedule(
           limit 1
         )
       ),
-      body := '{}'::jsonb
+      body := '{}'::jsonb,
+      timeout_milliseconds := 300000
     );
   $worker$
 );
