@@ -6,6 +6,7 @@ import { AiDiagnosisDataManager } from '@/features/ai-place-diagnosis/components
 import { AiPlaceDiagnosisTool } from '@/features/ai-place-diagnosis/components/ai-place-diagnosis-tool'
 import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
 import { AiImageGenerationTool } from '@/features/ai-image-generation/components/ai-image-generation-tool'
+import { AiImageUsageCard } from '@/features/ai-image-generation/components/ai-image-usage-card'
 import type { AuthUser } from '@/features/auth/types'
 import { KeywordTool } from '@/features/keyword-analysis/components/keyword-tool'
 import { BookingInsightCalendarTool } from '@/features/place-ranking/components/booking-insight-calendar-tool'
@@ -805,6 +806,8 @@ function MyView({
           </div>
         </div>
       </section>
+
+      <AiImageUsageCard />
 
       <section className="grid gap-3 rounded-md border border-white/10 bg-[#0b1220]/88 p-4 md:p-5">
         <button

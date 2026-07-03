@@ -6,12 +6,15 @@ import {
   AiImageGenerationError,
   generateEyelashImage,
 } from '../server/gemini-image'
+import { recordSuccessfulGeneration } from '../server/usage'
 
 const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const maxUploadBytes = 3.5 * 1024 * 1024
 
 export async function POST(request: NextRequest) {
-  if (!getAuthUserFromRequest(request)) {
+  const user = getAuthUserFromRequest(request)
+
+  if (!user) {
     return NextResponse.json({ message: '로그인이 필요합니다.' }, { status: 401 })
   }
 
@@ -53,13 +56,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: '올바른 이미지 파일이 아닙니다.' }, { status: 400 })
     }
 
-    const imageDataUrl = await generateEyelashImage({
+    const generation = await generateEyelashImage({
       bytes,
       mimeType: image.type,
       modelId,
     })
 
-    return NextResponse.json({ imageDataUrl })
+    try {
+      await recordSuccessfulGeneration({
+        memberId: user.id,
+        designModelId: modelId,
+        providerModel: generation.providerModel,
+      })
+    } catch (usageError) {
+      console.error('AI image usage tracking failed', {
+        memberId: user.id,
+        error: usageError instanceof Error ? usageError.message : String(usageError),
+      })
+    }
+
+    return NextResponse.json({ imageDataUrl: generation.imageDataUrl })
   } catch (error) {
     const generationError =
       error instanceof AiImageGenerationError

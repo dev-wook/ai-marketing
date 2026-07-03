@@ -13,3 +13,17 @@ export type AiImageDesignModel = {
 export type AiImageGenerationResponse = {
   imageDataUrl: string
 }
+
+export type AiImageUsageResponse = {
+  trackingAvailable: boolean
+  periodLabel: string
+  generationCount: number
+  estimatedCostKrw: number
+  monthlyBudgetKrw: number
+  usageRate: number
+  modelUsage: Array<{
+    model: 'primary' | 'fallback'
+    count: number
+  }>
+  billingConsoleUrl: string
+}

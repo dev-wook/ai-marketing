@@ -70,7 +70,7 @@ export async function generateEyelashImage(input: {
 
   for (const model of models) {
     try {
-      return await requestImage({
+      const imageDataUrl = await requestImage({
         apiKey,
         model,
         prompt: buildEyelashGenerationPrompt(input.modelId),
@@ -78,6 +78,11 @@ export async function generateEyelashImage(input: {
         bytes: input.bytes,
         mimeType: input.mimeType,
       })
+
+      return {
+        imageDataUrl,
+        providerModel: model,
+      }
     } catch (error) {
       lastError = error
 
