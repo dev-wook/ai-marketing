@@ -2,33 +2,14 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { aiImageDesignModels } from '../catalog'
 import type { AiImageDesignModelId } from '../types'
+import { createGeminiDeveloperProvider } from './gemini-developer-provider'
+import {
+  ImageProviderRequestError,
+  type AiImageProviderId,
+  type ImageProvider,
+} from './image-provider'
 import { buildEyelashGenerationPrompt } from './model-prompts'
-
-type GeminiImagePart = {
-  text?: string
-  inlineData?: {
-    data?: string
-    mimeType?: string
-  }
-}
-
-type GeminiImageResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: GeminiImagePart[]
-    }
-  }>
-}
-
-type GeminiFailureBody = {
-  error?: {
-    message?: string
-    status?: string
-  }
-}
-
-const defaultModels = ['gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image']
-const retryableStatuses = new Set([429, 500, 502, 503, 504])
+import { createVertexAiProvider } from './vertex-ai-provider'
 
 export class AiImageGenerationError extends Error {
   constructor(
@@ -46,17 +27,13 @@ export async function generateEyelashImage(input: {
   mimeType: string
   modelId: AiImageDesignModelId
 }) {
-  const apiKey = process.env.GEMINI_API_KEY
-
-  if (!apiKey) {
-    throw new AiImageGenerationError(
-      'AI 이미지 생성 기능이 설정되지 않았습니다.',
-      503,
-      'GEMINI_API_KEY is not configured.',
-    )
-  }
-
-  const models = parseModelCandidates(process.env.GEMINI_IMAGE_MODELS)
+  const provider = getConfiguredProvider()
+  const models = parseModelCandidates(
+    provider.id === 'vertex-ai'
+      ? process.env.VERTEX_AI_IMAGE_MODELS
+      : process.env.GEMINI_IMAGE_MODELS,
+    provider.defaultModels,
+  )
   const designModel = aiImageDesignModels.find((model) => model.id === input.modelId)
 
   if (!designModel) {
@@ -70,27 +47,28 @@ export async function generateEyelashImage(input: {
 
   for (const model of models) {
     try {
-      const imageDataUrl = await requestImage({
-        apiKey,
+      const imageDataUrl = await provider.requestImage({
         model,
         prompt: buildEyelashGenerationPrompt(input.modelId),
         referenceBytes,
-        bytes: input.bytes,
-        mimeType: input.mimeType,
+        sourceBytes: input.bytes,
+        sourceMimeType: input.mimeType,
       })
 
       return {
         imageDataUrl,
+        provider: provider.id,
         providerModel: model,
       }
     } catch (error) {
       lastError = error
 
-      if (!(error instanceof GeminiImageRequestError) || !error.canFallback) {
+      if (!(error instanceof ImageProviderRequestError) || !error.canFallback) {
         throw toGenerationError(error)
       }
 
-      console.warn('Gemini image model failed, trying fallback', {
+      console.warn('AI image model failed, trying fallback', {
+        provider: provider.id,
         model,
         status: error.status,
       })
@@ -100,122 +78,39 @@ export async function generateEyelashImage(input: {
   throw toGenerationError(lastError)
 }
 
-async function requestImage(input: {
-  apiKey: string
-  model: string
-  prompt: string
-  referenceBytes: Uint8Array
-  bytes: Uint8Array
-  mimeType: string
-}) {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${input.model}:generateContent`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': input.apiKey,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: input.prompt },
-              {
-                text: 'IMAGE 1 — MODEL IMAGE. Use this image as the base for the final result.',
-              },
-              {
-                inlineData: {
-                  mimeType: 'image/jpeg',
-                  data: Buffer.from(input.referenceBytes).toString('base64'),
-                },
-              },
-              {
-                text: 'IMAGE 2 — TREATMENT SOURCE IMAGE. Copy only the upper-eyelash treatment characteristics from this image.',
-              },
-              {
-                inlineData: {
-                  mimeType: input.mimeType,
-                  data: Buffer.from(input.bytes).toString('base64'),
-                },
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          responseModalities: ['IMAGE'],
-        },
-      }),
-    },
+function getConfiguredProvider(): ImageProvider {
+  const provider = (process.env.AI_IMAGE_PROVIDER || 'vertex-ai') as AiImageProviderId
+
+  try {
+    if (provider === 'vertex-ai') {
+      return createVertexAiProvider()
+    }
+
+    if (provider === 'gemini-developer') {
+      return createGeminiDeveloperProvider()
+    }
+  } catch (error) {
+    throw new AiImageGenerationError(
+      'AI 이미지 생성 기능이 설정되지 않았습니다.',
+      503,
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+
+  throw new AiImageGenerationError(
+    'AI 이미지 생성 기능이 설정되지 않았습니다.',
+    503,
+    `Unsupported AI_IMAGE_PROVIDER: ${provider}`,
   )
-
-  if (!response.ok) {
-    const body = await response.text()
-
-    console.error('Gemini image API error', {
-      model: input.model,
-      status: response.status,
-      body: safelyParseFailure(body),
-    })
-
-    throw new GeminiImageRequestError({
-      model: input.model,
-      status: response.status,
-      body,
-      canFallback: retryableStatuses.has(response.status) || response.status === 404,
-    })
-  }
-
-  const data = (await response.json()) as GeminiImageResponse
-  const imagePart = data.candidates
-    ?.flatMap((candidate) => candidate.content?.parts ?? [])
-    .find((part) => part.inlineData?.data && part.inlineData.mimeType?.startsWith('image/'))
-
-  if (!imagePart?.inlineData?.data || !imagePart.inlineData.mimeType) {
-    console.error('Gemini image response did not include an image', {
-      model: input.model,
-      response: data,
-    })
-
-    throw new GeminiImageRequestError({
-      model: input.model,
-      status: 502,
-      body: 'Image response part was missing.',
-      canFallback: true,
-    })
-  }
-
-  return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`
 }
 
-class GeminiImageRequestError extends Error {
-  readonly model: string
-  readonly status: number
-  readonly body: string
-  readonly canFallback: boolean
-
-  constructor(input: {
-    model: string
-    status: number
-    body: string
-    canFallback: boolean
-  }) {
-    super(`Gemini image request failed with status ${input.status}`)
-    this.name = 'GeminiImageRequestError'
-    this.model = input.model
-    this.status = input.status
-    this.body = input.body
-    this.canFallback = input.canFallback
-  }
-}
-
-function parseModelCandidates(value?: string) {
+function parseModelCandidates(value: string | undefined, defaults: string[]) {
   const models = value
     ?.split(',')
     .map((model) => model.trim())
     .filter(Boolean)
 
-  return Array.from(new Set(models?.length ? models : defaultModels))
+  return Array.from(new Set(models?.length ? models : defaults))
 }
 
 function toGenerationError(error: unknown) {
@@ -223,11 +118,11 @@ function toGenerationError(error: unknown) {
     return error
   }
 
-  if (error instanceof GeminiImageRequestError) {
+  if (error instanceof ImageProviderRequestError) {
     return new AiImageGenerationError(
       'AI 이미지 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
       error.status === 429 ? 429 : 502,
-      `${error.model}: ${error.status} ${error.body}`,
+      `${error.provider}/${error.model}: ${error.status} ${error.debug}`,
     )
   }
 
@@ -236,12 +131,4 @@ function toGenerationError(error: unknown) {
     500,
     error instanceof Error ? error.message : String(error),
   )
-}
-
-function safelyParseFailure(body: string) {
-  try {
-    return JSON.parse(body) as GeminiFailureBody
-  } catch {
-    return body.slice(0, 1000)
-  }
 }

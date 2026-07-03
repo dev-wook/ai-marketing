@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
+    "@vercel/oidc": "^3.8.0",
+    "google-auth-library": "^10.9.0",
     "next": "latest",
     "pg": "^8.21.0",
     "react": "latest",

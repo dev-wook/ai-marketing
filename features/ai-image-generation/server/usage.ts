@@ -1,16 +1,15 @@
 import { getPostgresPool } from '@/lib/postgres/server'
 import type { AiImageDesignModelId, AiImageUsageResponse } from '../types'
 
-const primaryModel = 'gemini-3.1-flash-lite-image'
-const fallbackModel = 'gemini-2.5-flash-image'
 const defaultMonthlyBudgetKrw = 15_000
 const defaultUsdKrwRate = 1_400
 const estimatedUsdPerGeneration: Record<string, number> = {
-  [primaryModel]: 0.036,
-  [fallbackModel]: 0.042,
+  'vertex-ai/gemini-3.1-flash-image': 0.07,
+  'vertex-ai/gemini-2.5-flash-image': 0.042,
+  'gemini-developer/gemini-3.1-flash-lite-image': 0.036,
+  'gemini-developer/gemini-2.5-flash-image': 0.042,
 }
-const billingConsoleUrl =
-  'https://console.cloud.google.com/billing/012C97-64B52F-9CDC36/budgets'
+const billingConsoleUrl = 'https://console.cloud.google.com/billing'
 
 type UsageSummaryRow = {
   generation_count: string | number
@@ -22,9 +21,11 @@ type UsageSummaryRow = {
 export async function recordSuccessfulGeneration(input: {
   memberId: number
   designModelId: AiImageDesignModelId
+  provider: 'vertex-ai' | 'gemini-developer'
   providerModel: string
 }) {
-  const estimatedCostUsd = estimatedUsdPerGeneration[input.providerModel] ?? 0
+  const estimatedCostUsd =
+    estimatedUsdPerGeneration[`${input.provider}/${input.providerModel}`] ?? 0
   const pool = getPostgresPool()
 
   await pool.query(
@@ -47,10 +48,10 @@ export async function recordSuccessfulGeneration(input: {
         design_model.id,
         design_model.version,
         'SUCCEEDED',
-        'gemini',
         $3,
-        jsonb_build_object('designModelId', $2::text),
         $4,
+        jsonb_build_object('designModelId', $2::text),
+        $5,
         now()
       from public.ai_image_categories category
       join public.ai_image_design_models design_model
@@ -59,7 +60,13 @@ export async function recordSuccessfulGeneration(input: {
       where category.code = 'eyelash'
       limit 1
     `,
-    [input.memberId, input.designModelId, input.providerModel, estimatedCostUsd],
+    [
+      input.memberId,
+      input.designModelId,
+      input.provider,
+      input.providerModel,
+      estimatedCostUsd,
+    ],
   )
 }
 
@@ -70,8 +77,10 @@ export async function getMonthlyUsage(memberId: number): Promise<AiImageUsageRes
       select
         count(*)::integer as generation_count,
         coalesce(sum(estimated_cost_usd), 0)::numeric as estimated_cost_usd,
-        count(*) filter (where provider_model = $2)::integer as primary_count,
-        count(*) filter (where provider_model = $3)::integer as fallback_count
+        count(*) filter (where provider_model like 'gemini-3.1%')::integer
+          as primary_count,
+        count(*) filter (where provider_model like 'gemini-2.5%')::integer
+          as fallback_count
       from public.ai_image_generations
       where member_id = $1
         and status = 'SUCCEEDED'
@@ -81,7 +90,7 @@ export async function getMonthlyUsage(memberId: number): Promise<AiImageUsageRes
           date_trunc('month', now() at time zone 'Asia/Seoul') + interval '1 month'
         ) at time zone 'Asia/Seoul'
     `,
-    [memberId, primaryModel, fallbackModel],
+    [memberId],
   )
   const row = result.rows[0]
   const generationCount = Number(row?.generation_count ?? 0)

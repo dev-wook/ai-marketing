@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
       await recordSuccessfulGeneration({
         memberId: user.id,
         designModelId: modelId,
+        provider: generation.provider,
         providerModel: generation.providerModel,
       })
     } catch (usageError) {
@@ -94,11 +95,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         message: generationError.message,
-        debug: process.env.NODE_ENV === 'development' ? generationError.debug : undefined,
+        debug: sanitizeDebugLog(generationError.debug),
       },
       { status: generationError.status },
     )
   }
+}
+
+function sanitizeDebugLog(debug: string) {
+  if (!debug) {
+    return undefined
+  }
+
+  return debug
+    .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REDACTED]')
+    .replace(/AIza[A-Za-z0-9_-]{20,}/g, '[REDACTED_API_KEY]')
+    .slice(0, 8_000)
 }
 
 function isDesignModelId(value: FormDataEntryValue | null): value is AiImageDesignModelId {
