@@ -26,6 +26,7 @@ export function HomeView({
   onOpenPlaceCompetitor,
   onOpenPlaceDiagnosis,
   onOpenBookingInsight,
+  onOpenImageGeneration,
   onOpenPlaceRanking,
   onOpenPlaceTracking,
 }: {
@@ -34,6 +35,7 @@ export function HomeView({
   onOpenPlaceCompetitor: () => void
   onOpenPlaceDiagnosis: () => void
   onOpenBookingInsight: () => void
+  onOpenImageGeneration: () => void
   onOpenPlaceRanking: () => void
   onOpenPlaceTracking: () => void
 }) {
@@ -97,9 +99,10 @@ export function HomeView({
     {
       title: 'AI 모델 이미지 생성',
       shortTitle: '이미지',
-      description: '캠페인용 이미지를 제작합니다.',
-      status: 'soon',
+      description: '고객 사진에 속눈썹 디자인을 적용합니다.',
+      status: 'open',
       icon: 'image',
+      action: onOpenImageGeneration,
     },
   ]
 

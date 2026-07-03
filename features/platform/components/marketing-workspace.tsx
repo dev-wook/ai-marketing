@@ -5,6 +5,7 @@ import { AiPlaceCompetitorComparisonTool } from '@/features/ai-place-diagnosis/c
 import { AiDiagnosisDataManager } from '@/features/ai-place-diagnosis/components/ai-diagnosis-data-manager'
 import { AiPlaceDiagnosisTool } from '@/features/ai-place-diagnosis/components/ai-place-diagnosis-tool'
 import { BlogPostingTool } from '@/features/blog-posting/components/blog-posting-tool'
+import { AiImageGenerationTool } from '@/features/ai-image-generation/components/ai-image-generation-tool'
 import type { AuthUser } from '@/features/auth/types'
 import { KeywordTool } from '@/features/keyword-analysis/components/keyword-tool'
 import { BookingInsightCalendarTool } from '@/features/place-ranking/components/booking-insight-calendar-tool'
@@ -19,7 +20,7 @@ import { BrandHeader } from './brand-header'
 import { HomeView } from './home-view'
 import { useBodyScrollLock } from './use-body-scroll-lock'
 
-type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'bookingInsight' | 'diagnosis' | 'competitor' | 'tracking' | 'my'
+type ViewKey = 'home' | 'keyword' | 'blog' | 'place' | 'bookingInsight' | 'diagnosis' | 'competitor' | 'tracking' | 'imageGeneration' | 'my'
 type AiDiagnosisDataRefreshStatus = {
   checkedAt: string
   hasUpdatingKeyword: boolean
@@ -59,6 +60,7 @@ const viewTitles: Record<Exclude<ViewKey, 'home'>, string> = {
   diagnosis: 'AI 플레이스 진단',
   competitor: 'AI 플레이스 경쟁사 비교',
   tracking: '플레이스 관리',
+  imageGeneration: 'AI 이미지 생성',
   my: '마이페이지',
 }
 
@@ -533,6 +535,7 @@ export function MarketingWorkspace() {
                 onOpenPlaceCompetitor={() => openView('competitor')}
                 onOpenPlaceDiagnosis={() => openView('diagnosis')}
                 onOpenKeyword={() => openView('keyword')}
+                onOpenImageGeneration={() => openView('imageGeneration')}
                 onOpenPlaceRanking={() => openView('place')}
                 onOpenPlaceTracking={openPlaceTrackingManager}
               />
@@ -553,6 +556,7 @@ export function MarketingWorkspace() {
             {view === 'diagnosis' ? <AiPlaceDiagnosisTool /> : null}
             {view === 'competitor' ? <AiPlaceCompetitorComparisonTool /> : null}
             {view === 'tracking' ? <PlaceTrackingDashboard mode="manager" /> : null}
+            {view === 'imageGeneration' ? <AiImageGenerationTool /> : null}
             {view === 'my' ? (
               <MyView
                 isLoggingOut={isLoggingOut}
