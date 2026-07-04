@@ -1,15 +1,31 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getAuthUserFromRequest } from '@/features/auth/server/session'
-import type { AiImageDesignModelId } from '../types'
+import type {
+  AiImageAspectRatio,
+  AiImageDesignModelId,
+  AiImageEditTarget,
+  AiImageGenerationMode,
+} from '../types'
 import { aiImageDesignModels } from '../catalog'
 import {
   AiImageGenerationError,
-  generateEyelashImage,
+  generateBeautyImage,
 } from '../server/gemini-image'
 import { recordSuccessfulGeneration } from '../server/usage'
 
 const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const maxUploadBytes = 3.5 * 1024 * 1024
+const maxPromptLength = 600
+const modes = new Set<AiImageGenerationMode>(['prompt', 'partial'])
+const targets = new Set<AiImageEditTarget>([
+  'eyelashes',
+  'eyebrows',
+  'eye-makeup',
+  'hair',
+  'lips',
+  'overall',
+])
+const aspectRatios = new Set<AiImageAspectRatio>(['1:1', '3:4', '4:5'])
 
 export async function POST(request: NextRequest) {
   const user = getAuthUserFromRequest(request)
@@ -23,49 +39,78 @@ export async function POST(request: NextRequest) {
     const category = formData.get('category')
     const modelId = formData.get('modelId')
     const image = formData.get('image')
+    const mode = formData.get('mode')
+    const target = formData.get('target')
+    const aspectRatio = formData.get('aspectRatio')
+    const customPrompt = getString(formData.get('prompt')).trim()
 
     if (category !== 'eyelash') {
       return NextResponse.json({ message: '지원하지 않는 카테고리입니다.' }, { status: 400 })
     }
 
-    if (!isDesignModelId(modelId)) {
+    if (!isSetValue(modes, mode)) {
+      return NextResponse.json({ message: '생성 방식을 다시 선택해주세요.' }, { status: 400 })
+    }
+
+    if (mode === 'partial' && !isDesignModelId(modelId)) {
       return NextResponse.json({ message: '결과 모델을 선택해주세요.' }, { status: 400 })
     }
 
-    if (!(image instanceof File)) {
+    if (mode === 'partial' && !isSetValue(targets, target)) {
+      return NextResponse.json({ message: '적용할 영역을 선택해주세요.' }, { status: 400 })
+    }
+
+    if (!isSetValue(aspectRatios, aspectRatio)) {
+      return NextResponse.json({ message: '이미지 비율을 선택해주세요.' }, { status: 400 })
+    }
+
+    if (customPrompt.length > maxPromptLength) {
+      return NextResponse.json({ message: '프롬프트는 600자 이하로 입력해주세요.' }, { status: 400 })
+    }
+
+    if (mode === 'prompt' && customPrompt.length < 3) {
+      return NextResponse.json({ message: '생성할 이미지를 설명해주세요.' }, { status: 400 })
+    }
+
+    if (mode === 'partial' && !(image instanceof File)) {
       return NextResponse.json({ message: '원본 이미지를 업로드해주세요.' }, { status: 400 })
     }
 
-    if (!allowedMimeTypes.has(image.type)) {
+    if (image instanceof File && !allowedMimeTypes.has(image.type)) {
       return NextResponse.json(
         { message: 'JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.' },
         { status: 415 },
       )
     }
 
-    if (image.size === 0 || image.size > maxUploadBytes) {
+    if (image instanceof File && (image.size === 0 || image.size > maxUploadBytes)) {
       return NextResponse.json(
         { message: '이미지 크기를 줄인 뒤 다시 업로드해주세요.' },
         { status: 413 },
       )
     }
 
-    const bytes = new Uint8Array(await image.arrayBuffer())
+    const bytes = image instanceof File ? new Uint8Array(await image.arrayBuffer()) : undefined
 
-    if (!hasValidImageSignature(bytes, image.type)) {
+    if (image instanceof File && bytes && !hasValidImageSignature(bytes, image.type)) {
       return NextResponse.json({ message: '올바른 이미지 파일이 아닙니다.' }, { status: 400 })
     }
 
-    const generation = await generateEyelashImage({
+    const generation = await generateBeautyImage({
       bytes,
-      mimeType: image.type,
-      modelId,
+      mimeType: image instanceof File ? image.type : undefined,
+      modelId: isDesignModelId(modelId) ? modelId : undefined,
+      mode,
+      target: isSetValue(targets, target) ? target : 'overall',
+      aspectRatio,
+      customPrompt,
     })
 
     try {
       await recordSuccessfulGeneration({
         memberId: user.id,
-        designModelId: modelId,
+        designModelId: isDesignModelId(modelId) ? modelId : undefined,
+        mode,
         provider: generation.provider,
         providerModel: generation.providerModel,
       })
@@ -100,6 +145,17 @@ export async function POST(request: NextRequest) {
       { status: generationError.status },
     )
   }
+}
+
+function getString(value: FormDataEntryValue | null) {
+  return typeof value === 'string' ? value : ''
+}
+
+function isSetValue<T extends string>(
+  values: Set<T>,
+  value: FormDataEntryValue | null,
+): value is T {
+  return typeof value === 'string' && values.has(value as T)
 }
 
 function sanitizeDebugLog(debug: string) {

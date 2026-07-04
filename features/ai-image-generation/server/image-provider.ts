@@ -3,9 +3,10 @@ export type AiImageProviderId = 'vertex-ai' | 'gemini-developer'
 export type ImageProviderRequest = {
   model: string
   prompt: string
-  referenceBytes: Uint8Array
-  sourceBytes: Uint8Array
-  sourceMimeType: string
+  referenceBytes?: Uint8Array
+  sourceBytes?: Uint8Array
+  sourceMimeType?: string
+  aspectRatio: string
 }
 
 export type ImageProvider = {
@@ -44,27 +45,39 @@ export class ImageProviderRequestError extends Error {
 }
 
 export function buildImageRequestParts(input: ImageProviderRequest) {
-  return [
-    { text: input.prompt },
-    {
-      text: 'IMAGE 1 — MODEL IMAGE. Use this image as the base for the final result.',
-    },
-    {
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: Buffer.from(input.referenceBytes).toString('base64'),
+  const parts: ImageResponsePart[] = [{ text: input.prompt }]
+
+  if (input.referenceBytes) {
+    parts.push(
+      {
+        text: 'IMAGE 1 — MODEL IMAGE. Use this image as the base for the final result.',
       },
-    },
-    {
-      text: 'IMAGE 2 — TREATMENT SOURCE IMAGE. Copy only the upper-eyelash treatment characteristics from this image.',
-    },
-    {
-      inlineData: {
-        mimeType: input.sourceMimeType,
-        data: Buffer.from(input.sourceBytes).toString('base64'),
+      {
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: Buffer.from(input.referenceBytes).toString('base64'),
+        },
       },
-    },
-  ]
+    )
+  }
+
+  if (input.sourceBytes && input.sourceMimeType) {
+    parts.push(
+      {
+        text: input.referenceBytes
+          ? 'IMAGE 2 — SOURCE IMAGE. Use it only for the target explicitly specified in the prompt.'
+          : 'INPUT IMAGE — Use this as the current image to edit according to the prompt.',
+      },
+      {
+        inlineData: {
+          mimeType: input.sourceMimeType,
+          data: Buffer.from(input.sourceBytes).toString('base64'),
+        },
+      },
+    )
+  }
+
+  return parts
 }
 
 export function extractImageDataUrl(response: ImageResponse) {

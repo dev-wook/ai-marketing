@@ -1,5 +1,9 @@
 import { getPostgresPool } from '@/lib/postgres/server'
-import type { AiImageDesignModelId, AiImageUsageResponse } from '../types'
+import type {
+  AiImageDesignModelId,
+  AiImageGenerationMode,
+  AiImageUsageResponse,
+} from '../types'
 
 const defaultMonthlyBudgetKrw = 15_000
 const defaultUsdKrwRate = 1_400
@@ -20,7 +24,8 @@ type UsageSummaryRow = {
 
 export async function recordSuccessfulGeneration(input: {
   memberId: number
-  designModelId: AiImageDesignModelId
+  designModelId?: AiImageDesignModelId
+  mode: AiImageGenerationMode
   provider: 'vertex-ai' | 'gemini-developer'
   providerModel: string
 }) {
@@ -46,23 +51,27 @@ export async function recordSuccessfulGeneration(input: {
         $1,
         category.id,
         design_model.id,
-        design_model.version,
+        coalesce(design_model.version, 0),
         'SUCCEEDED',
-        $3,
         $4,
-        jsonb_build_object('designModelId', $2::text),
         $5,
+        jsonb_build_object(
+          'mode', $2::text,
+          'designModelId', $3::text
+        ),
+        $6,
         now()
       from public.ai_image_categories category
-      join public.ai_image_design_models design_model
+      left join public.ai_image_design_models design_model
         on design_model.category_id = category.id
-       and design_model.code = $2
+       and design_model.code = $3
       where category.code = 'eyelash'
       limit 1
     `,
     [
       input.memberId,
-      input.designModelId,
+      input.mode,
+      input.designModelId ?? null,
       input.provider,
       input.providerModel,
       estimatedCostUsd,

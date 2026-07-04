@@ -30,7 +30,10 @@ export function createGeminiDeveloperProvider(): ImageProvider {
           body: JSON.stringify({
             contents: [{ parts: buildImageRequestParts(input) }],
             generationConfig: {
-              responseModalities: ['IMAGE'],
+              responseModalities: ['TEXT', 'IMAGE'],
+              imageConfig: {
+                aspectRatio: input.aspectRatio,
+              },
             },
           }),
         },

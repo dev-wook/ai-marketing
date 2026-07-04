@@ -50,7 +50,10 @@ export function createVertexAiProvider(): ImageProvider {
             body: JSON.stringify({
               contents: [{ role: 'user', parts: buildImageRequestParts(input) }],
               generationConfig: {
-                responseModalities: ['IMAGE'],
+                responseModalities: ['TEXT', 'IMAGE'],
+                imageConfig: {
+                  aspectRatio: input.aspectRatio,
+                },
               },
             }),
           },

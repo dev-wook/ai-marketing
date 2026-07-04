@@ -1,14 +1,19 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { aiImageDesignModels } from '../catalog'
-import type { AiImageDesignModelId } from '../types'
+import type {
+  AiImageAspectRatio,
+  AiImageDesignModelId,
+  AiImageEditTarget,
+  AiImageGenerationMode,
+} from '../types'
 import { createGeminiDeveloperProvider } from './gemini-developer-provider'
 import {
   ImageProviderRequestError,
   type AiImageProviderId,
   type ImageProvider,
 } from './image-provider'
-import { buildEyelashGenerationPrompt } from './model-prompts'
+import { buildAiImageGenerationPrompt } from './model-prompts'
 import { createVertexAiProvider } from './vertex-ai-provider'
 
 export class AiImageGenerationError extends Error {
@@ -22,10 +27,14 @@ export class AiImageGenerationError extends Error {
   }
 }
 
-export async function generateEyelashImage(input: {
-  bytes: Uint8Array
-  mimeType: string
-  modelId: AiImageDesignModelId
+export async function generateBeautyImage(input: {
+  bytes?: Uint8Array
+  mimeType?: string
+  modelId?: AiImageDesignModelId
+  mode: AiImageGenerationMode
+  target: AiImageEditTarget
+  aspectRatio: AiImageAspectRatio
+  customPrompt: string
 }) {
   const provider = getConfiguredProvider()
   const models = parseModelCandidates(
@@ -34,25 +43,37 @@ export async function generateEyelashImage(input: {
       : process.env.GEMINI_IMAGE_MODELS,
     provider.defaultModels,
   )
-  const designModel = aiImageDesignModels.find((model) => model.id === input.modelId)
+  const designModel = input.modelId
+    ? aiImageDesignModels.find((model) => model.id === input.modelId)
+    : undefined
 
-  if (!designModel) {
+  if (input.mode === 'partial' && !designModel) {
     throw new AiImageGenerationError('모델을 찾을 수 없습니다.', 400)
   }
 
-  const referenceBytes = await readFile(
-    join(process.cwd(), 'public', designModel.thumbnailPath.replace(/^\//, '')),
-  )
+  const referenceBytes = designModel
+    ? await readFile(
+        join(process.cwd(), 'public', designModel.thumbnailPath.replace(/^\//, '')),
+      )
+    : undefined
   let lastError: unknown
 
   for (const model of models) {
     try {
       const imageDataUrl = await provider.requestImage({
         model,
-        prompt: buildEyelashGenerationPrompt(input.modelId),
+        prompt: buildAiImageGenerationPrompt({
+          modelId: input.modelId,
+          mode: input.mode,
+          target: input.target,
+          aspectRatio: input.aspectRatio,
+          customPrompt: input.customPrompt,
+          hasSourceImage: Boolean(input.bytes),
+        }),
         referenceBytes,
         sourceBytes: input.bytes,
         sourceMimeType: input.mimeType,
+        aspectRatio: input.aspectRatio,
       })
 
       return {
