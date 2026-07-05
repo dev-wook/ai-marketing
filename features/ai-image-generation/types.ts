@@ -14,6 +14,35 @@ export type AiImageEditTarget =
 
 export type AiImageAspectRatio = '1:1' | '3:4' | '4:5'
 
+export type AiImageCompositionId =
+  | 'front'
+  | 'left-angle'
+  | 'right-angle'
+  | 'bed-front'
+  | 'bed-angle'
+  | 'eyes-closeup'
+  | 'single-eye-closeup'
+
+export type AiImageMaskOption = 'none' | 'white' | 'black'
+
+export type AiImageEyeState = 'open' | 'closed'
+
+export type AiImageHandPose = 'none' | 'forehead' | 'temple'
+
+export type AiImageBackground = 'bright-studio' | 'beauty-salon' | 'treatment-bed'
+
+export type AiImageComposition = {
+  id: AiImageCompositionId
+  name: string
+  description: string
+  thumbnailPath: string
+  prompt: string
+  supportsMask: boolean
+  supportsEyeState: boolean
+  supportsHandPose: boolean
+  allowedBackgrounds: AiImageBackground[]
+}
+
 export type AiImageDesignModel = {
   id: AiImageDesignModelId
   categoryCode: AiImageCategoryCode

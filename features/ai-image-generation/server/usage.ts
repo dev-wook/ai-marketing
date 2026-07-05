@@ -1,6 +1,8 @@
 import { getPostgresPool } from '@/lib/postgres/server'
 import type {
+  AiImageCompositionId,
   AiImageDesignModelId,
+  AiImageEditTarget,
   AiImageGenerationMode,
   AiImageUsageResponse,
 } from '../types'
@@ -28,6 +30,8 @@ export async function recordSuccessfulGeneration(input: {
   mode: AiImageGenerationMode
   provider: 'vertex-ai' | 'gemini-developer'
   providerModel: string
+  compositionId?: AiImageCompositionId
+  target?: AiImageEditTarget
 }) {
   const estimatedCostUsd =
     estimatedUsdPerGeneration[`${input.provider}/${input.providerModel}`] ?? 0
@@ -57,7 +61,9 @@ export async function recordSuccessfulGeneration(input: {
         $5,
         jsonb_build_object(
           'mode', $2::text,
-          'designModelId', $3::text
+          'designModelId', $3::text,
+          'compositionId', $7::text,
+          'target', $8::text
         ),
         $6,
         now()
@@ -75,6 +81,8 @@ export async function recordSuccessfulGeneration(input: {
       input.provider,
       input.providerModel,
       estimatedCostUsd,
+      input.compositionId ?? null,
+      input.target ?? null,
     ],
   )
 }

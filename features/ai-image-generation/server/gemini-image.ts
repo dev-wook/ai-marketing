@@ -3,9 +3,14 @@ import { join } from 'node:path'
 import { aiImageDesignModels } from '../catalog'
 import type {
   AiImageAspectRatio,
+  AiImageBackground,
+  AiImageCompositionId,
   AiImageDesignModelId,
   AiImageEditTarget,
+  AiImageEyeState,
   AiImageGenerationMode,
+  AiImageHandPose,
+  AiImageMaskOption,
 } from '../types'
 import { createGeminiDeveloperProvider } from './gemini-developer-provider'
 import {
@@ -35,6 +40,11 @@ export async function generateBeautyImage(input: {
   target: AiImageEditTarget
   aspectRatio: AiImageAspectRatio
   customPrompt: string
+  compositionId: AiImageCompositionId
+  maskOption: AiImageMaskOption
+  eyeState: AiImageEyeState
+  handPose: AiImageHandPose
+  background: AiImageBackground
 }) {
   const provider = getConfiguredProvider()
   const models = parseModelCandidates(
@@ -69,8 +79,16 @@ export async function generateBeautyImage(input: {
           aspectRatio: input.aspectRatio,
           customPrompt: input.customPrompt,
           hasSourceImage: Boolean(input.bytes),
+          compositionId: input.compositionId,
+          maskOption: input.maskOption,
+          eyeState: input.eyeState,
+          handPose: input.handPose,
+          background: input.background,
         }),
         referenceBytes,
+        referenceMimeType: designModel?.thumbnailPath.endsWith('.png')
+          ? 'image/png'
+          : 'image/jpeg',
         sourceBytes: input.bytes,
         sourceMimeType: input.mimeType,
         aspectRatio: input.aspectRatio,

@@ -4,6 +4,7 @@ export type ImageProviderRequest = {
   model: string
   prompt: string
   referenceBytes?: Uint8Array
+  referenceMimeType?: string
   sourceBytes?: Uint8Array
   sourceMimeType?: string
   aspectRatio: string
@@ -54,7 +55,7 @@ export function buildImageRequestParts(input: ImageProviderRequest) {
       },
       {
         inlineData: {
-          mimeType: 'image/jpeg',
+          mimeType: input.referenceMimeType ?? 'image/jpeg',
           data: Buffer.from(input.referenceBytes).toString('base64'),
         },
       },

@@ -2,11 +2,17 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getAuthUserFromRequest } from '@/features/auth/server/session'
 import type {
   AiImageAspectRatio,
+  AiImageBackground,
+  AiImageCompositionId,
   AiImageDesignModelId,
   AiImageEditTarget,
+  AiImageEyeState,
   AiImageGenerationMode,
+  AiImageHandPose,
+  AiImageMaskOption,
 } from '../types'
 import { aiImageDesignModels } from '../catalog'
+import { aiImageCompositions } from '../generation-options'
 import {
   AiImageGenerationError,
   generateBeautyImage,
@@ -26,6 +32,17 @@ const targets = new Set<AiImageEditTarget>([
   'overall',
 ])
 const aspectRatios = new Set<AiImageAspectRatio>(['1:1', '3:4', '4:5'])
+const compositionIds = new Set<AiImageCompositionId>(
+  aiImageCompositions.map((composition) => composition.id),
+)
+const maskOptions = new Set<AiImageMaskOption>(['none', 'white', 'black'])
+const eyeStates = new Set<AiImageEyeState>(['open', 'closed'])
+const handPoses = new Set<AiImageHandPose>(['none', 'forehead', 'temple'])
+const backgrounds = new Set<AiImageBackground>([
+  'bright-studio',
+  'beauty-salon',
+  'treatment-bed',
+])
 
 export async function POST(request: NextRequest) {
   const user = getAuthUserFromRequest(request)
@@ -43,6 +60,11 @@ export async function POST(request: NextRequest) {
     const target = formData.get('target')
     const aspectRatio = formData.get('aspectRatio')
     const customPrompt = getString(formData.get('prompt')).trim()
+    const compositionId = formData.get('compositionId')
+    const maskOption = formData.get('maskOption')
+    const eyeState = formData.get('eyeState')
+    const handPose = formData.get('handPose')
+    const background = formData.get('background')
 
     if (category !== 'eyelash') {
       return NextResponse.json({ message: '지원하지 않는 카테고리입니다.' }, { status: 400 })
@@ -58,6 +80,42 @@ export async function POST(request: NextRequest) {
 
     if (mode === 'partial' && !isSetValue(targets, target)) {
       return NextResponse.json({ message: '적용할 영역을 선택해주세요.' }, { status: 400 })
+    }
+
+    if (mode === 'partial' && !isSetValue(compositionIds, compositionId)) {
+      return NextResponse.json({ message: '촬영 구도를 선택해주세요.' }, { status: 400 })
+    }
+
+    if (
+      mode === 'partial' &&
+      (!isSetValue(maskOptions, maskOption) ||
+        !isSetValue(eyeStates, eyeState) ||
+        !isSetValue(handPoses, handPose) ||
+        !isSetValue(backgrounds, background))
+    ) {
+      return NextResponse.json({ message: '촬영 옵션을 다시 선택해주세요.' }, { status: 400 })
+    }
+
+    if (
+      mode === 'partial' &&
+      isSetValue(compositionIds, compositionId) &&
+      isSetValue(maskOptions, maskOption) &&
+      isSetValue(handPoses, handPose) &&
+      isSetValue(backgrounds, background)
+    ) {
+      const composition = aiImageCompositions.find((item) => item.id === compositionId)
+      const hasInvalidCombination =
+        !composition ||
+        (!composition.supportsMask && maskOption !== 'none') ||
+        (!composition.supportsHandPose && handPose !== 'none') ||
+        !composition.allowedBackgrounds.includes(background)
+
+      if (hasInvalidCombination) {
+        return NextResponse.json(
+          { message: '선택한 구도에서 사용할 수 없는 촬영 옵션입니다.' },
+          { status: 400 },
+        )
+      }
     }
 
     if (!isSetValue(aspectRatios, aspectRatio)) {
@@ -104,6 +162,13 @@ export async function POST(request: NextRequest) {
       target: isSetValue(targets, target) ? target : 'overall',
       aspectRatio,
       customPrompt,
+      compositionId: isSetValue(compositionIds, compositionId)
+        ? compositionId
+        : 'front',
+      maskOption: isSetValue(maskOptions, maskOption) ? maskOption : 'none',
+      eyeState: isSetValue(eyeStates, eyeState) ? eyeState : 'open',
+      handPose: isSetValue(handPoses, handPose) ? handPose : 'none',
+      background: isSetValue(backgrounds, background) ? background : 'bright-studio',
     })
 
     try {
@@ -111,6 +176,10 @@ export async function POST(request: NextRequest) {
         memberId: user.id,
         designModelId: isDesignModelId(modelId) ? modelId : undefined,
         mode,
+        compositionId: isSetValue(compositionIds, compositionId)
+          ? compositionId
+          : undefined,
+        target: isSetValue(targets, target) ? target : undefined,
         provider: generation.provider,
         providerModel: generation.providerModel,
       })

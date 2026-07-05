@@ -11,12 +11,24 @@ import {
 } from 'react'
 import { ToolErrorMessage } from '@/features/platform/components/tool-ui'
 import { aiImageDesignModels } from '../catalog'
+import {
+  aiImageCompositions,
+  backgroundOptions,
+  eyeStateOptions,
+  handPoseOptions,
+  maskOptions,
+} from '../generation-options'
 import type {
   AiImageAspectRatio,
+  AiImageBackground,
+  AiImageCompositionId,
   AiImageDesignModelId,
   AiImageEditTarget,
+  AiImageEyeState,
   AiImageGenerationMode,
   AiImageGenerationResponse,
+  AiImageHandPose,
+  AiImageMaskOption,
 } from '../types'
 
 const acceptedFileTypes = ['image/jpeg', 'image/png', 'image/webp']
@@ -38,9 +50,9 @@ const targets: Array<{
 ]
 
 const promptSuggestions = [
-  '밝은 자연광의 고급 뷰티 화보',
-  '정면 구도와 밝은 스튜디오 배경',
-  '피부 질감은 자연스럽고 선명하게',
+  '20대 한국인 여성이 밝은 스튜디오에서 정면을 바라보는 자연스러운 뷰티 화보',
+  '화이트 배경에 투명한 향수병이 놓인 고급 화장품 광고 이미지',
+  '창가에서 책을 바라보는 갈색 푸들, 따뜻한 자연광의 사진',
 ]
 
 type SourceImage = {
@@ -53,6 +65,12 @@ export function AiImageGenerationTool() {
   const [mode, setMode] = useState<AiImageGenerationMode>('partial')
   const [selectedModelId, setSelectedModelId] =
     useState<AiImageDesignModelId>('model-a')
+  const [compositionId, setCompositionId] = useState<AiImageCompositionId>('front')
+  const [maskOption, setMaskOption] = useState<AiImageMaskOption>('none')
+  const [eyeState, setEyeState] = useState<AiImageEyeState>('open')
+  const [handPose, setHandPose] = useState<AiImageHandPose>('none')
+  const [background, setBackground] =
+    useState<AiImageBackground>('bright-studio')
   const [target, setTarget] = useState<AiImageEditTarget>('eyelashes')
   const [aspectRatio, setAspectRatio] = useState<AiImageAspectRatio>('1:1')
   const [prompt, setPrompt] = useState('')
@@ -66,6 +84,9 @@ export function AiImageGenerationTool() {
   const selectedModel =
     aiImageDesignModels.find((model) => model.id === selectedModelId) ??
     aiImageDesignModels[0]
+  const selectedComposition =
+    aiImageCompositions.find((composition) => composition.id === compositionId) ??
+    aiImageCompositions[0]
   const requiresImage = mode === 'partial'
   const canGenerate =
     !isGenerating &&
@@ -89,6 +110,28 @@ export function AiImageGenerationTool() {
   const clearError = () => {
     setErrorMessage('')
     setDebugLog('')
+  }
+
+  const selectComposition = (nextId: AiImageCompositionId) => {
+    const nextComposition = aiImageCompositions.find(
+      (composition) => composition.id === nextId,
+    )
+
+    if (!nextComposition) {
+      return
+    }
+
+    setCompositionId(nextId)
+    if (!nextComposition.supportsMask) {
+      setMaskOption('none')
+    }
+    if (!nextComposition.supportsHandPose) {
+      setHandPose('none')
+    }
+    if (!nextComposition.allowedBackgrounds.includes(background)) {
+      setBackground(nextComposition.allowedBackgrounds[0])
+    }
+    clearFeedback()
   }
 
   const selectFile = async (file?: File) => {
@@ -140,6 +183,11 @@ export function AiImageGenerationTool() {
   const resetEditor = () => {
     setMode('partial')
     setSelectedModelId('model-a')
+    setCompositionId('front')
+    setMaskOption('none')
+    setEyeState('open')
+    setHandPose('none')
+    setBackground('bright-studio')
     setTarget('eyelashes')
     setAspectRatio('1:1')
     setPrompt('')
@@ -165,6 +213,11 @@ export function AiImageGenerationTool() {
       if (mode === 'partial') {
         formData.append('modelId', selectedModelId)
         formData.append('target', target)
+        formData.append('compositionId', compositionId)
+        formData.append('maskOption', maskOption)
+        formData.append('eyeState', eyeState)
+        formData.append('handPose', handPose)
+        formData.append('background', background)
       }
 
       if (mode === 'partial' && sourceImage) {
@@ -308,7 +361,129 @@ export function AiImageGenerationTool() {
             ) : null}
 
             {mode === 'partial' ? (
-              <ControlSection eyebrow="02" title="적용할 영역">
+              <ControlSection eyebrow="02" title="촬영 구도">
+                <div className="grid min-w-0 grid-cols-4 gap-2">
+                  {aiImageCompositions.map((composition) => {
+                    const selected = composition.id === compositionId
+
+                    return (
+                      <button
+                        key={composition.id}
+                        type="button"
+                        onClick={() => selectComposition(composition.id)}
+                        aria-pressed={selected}
+                        className="group min-w-0 text-center focus:outline-none"
+                      >
+                        <span
+                          className={`relative grid aspect-square w-full place-items-center overflow-hidden rounded-lg border transition ${
+                            selected
+                              ? 'border-cyan-100 bg-cyan-300/15 shadow-[0_0_20px_rgba(34,211,238,0.16)] ring-2 ring-cyan-300/15'
+                              : 'border-white/10 bg-[#080e18] group-hover:border-cyan-300/30 group-hover:bg-cyan-300/[0.06]'
+                          }`}
+                        >
+                          <CompositionSample
+                            alt={`${composition.name} 촬영 구도 표본`}
+                            compositionId={composition.id}
+                            src={composition.thumbnailPath}
+                          />
+                          {selected ? (
+                            <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-cyan-100 text-[9px] font-black text-[#07111d]">
+                              ✓
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className={`mt-2 block min-h-8 break-keep text-[9px] font-black leading-4 ${
+                          selected ? 'text-cyan-100' : 'text-slate-500'
+                        }`}>
+                          {composition.name}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="mt-2 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2.5">
+                  <p className="text-xs font-black text-white">{selectedComposition.name}</p>
+                  <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                    {selectedComposition.description}
+                  </p>
+                </div>
+              </ControlSection>
+            ) : null}
+
+            {mode === 'partial' ? (
+              <ControlSection eyebrow="03" title="촬영 옵션">
+                <div className="grid gap-4 rounded-lg border border-white/10 bg-black/15 p-3.5">
+                  {selectedComposition.supportsMask ? (
+                    <OptionRow label="마스크">
+                      {maskOptions.map((option) => (
+                        <OptionChip
+                          key={option.value}
+                          active={maskOption === option.value}
+                          label={option.label}
+                          onClick={() => {
+                            setMaskOption(option.value)
+                            clearFeedback()
+                          }}
+                        />
+                      ))}
+                    </OptionRow>
+                  ) : null}
+
+                  {selectedComposition.supportsEyeState ? (
+                    <OptionRow label="눈 상태">
+                      {eyeStateOptions.map((option) => (
+                        <OptionChip
+                          key={option.value}
+                          active={eyeState === option.value}
+                          label={option.label}
+                          onClick={() => {
+                            setEyeState(option.value)
+                            clearFeedback()
+                          }}
+                        />
+                      ))}
+                    </OptionRow>
+                  ) : null}
+
+                  {selectedComposition.supportsHandPose ? (
+                    <OptionRow label="손 연출">
+                      {handPoseOptions.map((option) => (
+                        <OptionChip
+                          key={option.value}
+                          active={handPose === option.value}
+                          label={option.label}
+                          onClick={() => {
+                            setHandPose(option.value)
+                            clearFeedback()
+                          }}
+                        />
+                      ))}
+                    </OptionRow>
+                  ) : null}
+
+                  <OptionRow label="배경">
+                    {backgroundOptions
+                      .filter((option) =>
+                        selectedComposition.allowedBackgrounds.includes(option.value),
+                      )
+                      .map((option) => (
+                        <OptionChip
+                          key={option.value}
+                          active={background === option.value}
+                          label={option.label}
+                          onClick={() => {
+                            setBackground(option.value)
+                            clearFeedback()
+                          }}
+                        />
+                      ))}
+                  </OptionRow>
+                </div>
+              </ControlSection>
+            ) : null}
+
+            {mode === 'partial' ? (
+              <ControlSection eyebrow="04" title="적용할 영역">
                 <div className="grid grid-cols-2 gap-2">
                   {targets.map((option) => (
                     <button
@@ -336,7 +511,7 @@ export function AiImageGenerationTool() {
             ) : null}
 
             <ControlSection
-              eyebrow={mode === 'partial' ? '03' : '01'}
+              eyebrow={mode === 'partial' ? '05' : '01'}
               title={mode === 'partial' ? '추가 요청' : '이미지 설명'}
               required={mode === 'prompt'}
             >
@@ -357,7 +532,7 @@ export function AiImageGenerationTool() {
                         ? '현재 결과에서 바꾸고 싶은 내용을 입력해주세요.'
                         : sourceImage
                           ? '업로드한 이미지에서 바꾸고 싶은 내용을 입력해주세요.'
-                          : '새로 만들 이미지의 분위기, 구도, 배경을 설명해주세요.'
+                          : '주체, 행동이나 목적, 배경, 표현 방식을 구체적으로 설명해주세요.'
                       : '선택 영역에 필요한 추가 요청을 입력하세요. 선택 사항입니다.'
                   }
                   rows={5}
@@ -367,28 +542,26 @@ export function AiImageGenerationTool() {
                   {prompt.length}/{maxPromptLength}
                 </div>
               </div>
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {promptSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => {
-                      setPrompt(suggestion)
-                      if (mode === 'prompt') {
+              {mode === 'prompt' ? (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {promptSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => {
+                        setPrompt(suggestion)
                         clearError()
-                      } else {
-                        clearFeedback()
-                      }
-                    }}
-                    className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[10px] font-bold text-slate-400 transition hover:border-cyan-300/30 hover:text-cyan-100"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
+                      }}
+                      className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[10px] font-bold text-slate-400 transition hover:border-cyan-300/30 hover:text-cyan-100"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </ControlSection>
 
-            <ControlSection eyebrow={mode === 'partial' ? '04' : '02'} title="이미지 비율">
+            <ControlSection eyebrow={mode === 'partial' ? '06' : '02'} title="이미지 비율">
               <div className="grid grid-cols-3 gap-2">
                 {(['1:1', '3:4', '4:5'] as AiImageAspectRatio[]).map((ratio) => (
                   <button
@@ -417,7 +590,7 @@ export function AiImageGenerationTool() {
             </ControlSection>
 
             <ControlSection
-              eyebrow={mode === 'partial' ? '05' : '03'}
+              eyebrow={mode === 'partial' ? '07' : '03'}
               title={mode === 'partial' ? '적용할 사진' : '기준 이미지'}
               required={requiresImage}
               help={mode === 'prompt' ? '선택 사항' : undefined}
@@ -541,6 +714,7 @@ export function AiImageGenerationTool() {
             <div className="flex flex-wrap gap-2">
               <StudioBadge label={mode === 'partial' ? '모델 적용' : '프롬프트 생성'} />
               {mode === 'partial' ? <StudioBadge label={selectedModel.name} /> : null}
+              {mode === 'partial' ? <StudioBadge label={selectedComposition.name} /> : null}
               <StudioBadge label={aspectRatio} />
               {mode === 'prompt' && resultImageUrl ? (
                 <StudioBadge label="연속 수정 준비" />
@@ -569,10 +743,7 @@ export function AiImageGenerationTool() {
           ) : (
             <StudioCanvas
               aspectRatio={aspectRatio}
-              modelName={mode === 'partial' ? selectedModel.name : ''}
-              referenceUrl={mode === 'partial' ? selectedModel.thumbnailPath : ''}
               resultUrl={resultImageUrl}
-              sourceUrl={sourceImage?.previewUrl ?? ''}
             />
           )}
         </main>
@@ -630,6 +801,65 @@ function ImageGenerationSkeleton({
   )
 }
 
+function OptionRow({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <div>
+      <p className="mb-2 text-[10px] font-black text-slate-500">{label}</p>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+    </div>
+  )
+}
+
+function OptionChip({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-md border px-2.5 py-1.5 text-[10px] font-black transition ${
+        active
+          ? 'border-cyan-200/55 bg-cyan-300/12 text-cyan-50'
+          : 'border-white/10 bg-white/[0.025] text-slate-500 hover:border-white/20'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
+function CompositionSample({
+  alt,
+  compositionId,
+  src,
+}: {
+  alt: string
+  compositionId: AiImageCompositionId
+  src: string
+}) {
+  return (
+    <span className="relative block h-full w-full overflow-hidden bg-[#080e18]">
+      <NextImage
+        src={src}
+        alt={alt}
+        fill
+        sizes="90px"
+        className={`object-cover ${
+          compositionId === 'right-angle' ? '-scale-x-100' : ''
+        }`}
+      />
+      <span className="absolute inset-0 bg-gradient-to-t from-[#07111d]/30 via-transparent to-transparent" />
+    </span>
+  )
+}
+
 function ModeButton({
   active,
   label,
@@ -667,7 +897,7 @@ function ControlSection({
   title: string
 }) {
   return (
-    <section>
+    <section className="min-w-0">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-[10px] font-black tracking-[0.15em] text-cyan-300/65">
           {eyebrow}
@@ -687,26 +917,16 @@ function ControlSection({
 
 function StudioCanvas({
   aspectRatio,
-  modelName,
-  referenceUrl,
   resultUrl,
-  sourceUrl,
 }: {
   aspectRatio: AiImageAspectRatio
-  modelName: string
-  referenceUrl: string
   resultUrl: string
-  sourceUrl: string
 }) {
-  const displayUrl = resultUrl || referenceUrl
-
   return (
     <div className="relative grid min-h-[520px] place-items-center overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.08),transparent_45%),linear-gradient(145deg,#101a29,#070c14)] p-4 md:min-h-[720px] md:p-8">
-      {displayUrl ? (
+      {resultUrl ? (
       <div
-        className={`relative grid max-h-[780px] w-full place-items-center overflow-hidden rounded-lg border bg-black/35 shadow-[0_28px_80px_rgba(0,0,0,0.45)] ${
-          resultUrl ? 'border-cyan-300/30' : 'border-white/10'
-        } ${
+        className={`relative grid max-h-[780px] w-full place-items-center overflow-hidden rounded-lg border border-cyan-300/30 bg-black/35 shadow-[0_28px_80px_rgba(0,0,0,0.45)] ${
           aspectRatio === '1:1'
             ? 'max-w-[700px] aspect-square'
             : aspectRatio === '3:4'
@@ -715,12 +935,12 @@ function StudioCanvas({
         }`}
       >
         <img
-          src={displayUrl}
-          alt={resultUrl ? 'AI 생성 결과' : `${modelName} 기준 이미지`}
+          src={resultUrl}
+          alt="AI 생성 결과"
           className="h-full w-full object-contain"
         />
         <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-[#07111d]/80 px-3 py-1.5 text-[10px] font-black text-white backdrop-blur">
-          {resultUrl ? '생성 결과' : '기준 모델 미리보기'}
+          생성 결과
         </span>
       </div>
       ) : (
@@ -728,22 +948,12 @@ function StudioCanvas({
           <div className="grid h-16 w-16 place-items-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-2xl text-cyan-100">
             ✦
           </div>
-          <p className="mt-5 text-lg font-black text-white">프롬프트로 이미지를 생성하세요</p>
+          <p className="mt-5 text-lg font-black text-white">결과 이미지가 여기에 표시됩니다</p>
           <p className="mt-2 break-keep text-xs font-semibold leading-6 text-slate-500">
-            이 모드에서는 모델 이미지나 업로드 사진을 사용하지 않습니다. 입력한 설명만으로
-            새로운 이미지를 생성합니다.
+            왼쪽에서 설정을 선택하고 AI 이미지 생성을 실행해주세요.
           </p>
         </div>
       )}
-
-      {sourceUrl ? (
-        <figure className="absolute bottom-5 left-5 overflow-hidden rounded-lg border border-white/15 bg-[#07111d]/90 p-2 shadow-xl backdrop-blur md:bottom-7 md:left-7">
-          <img src={sourceUrl} alt="참고 사진" className="h-20 w-20 rounded-md object-cover md:h-28 md:w-28" />
-          <figcaption className="mt-2 text-center text-[9px] font-black text-slate-400">
-            참고 사진
-          </figcaption>
-        </figure>
-      ) : null}
 
     </div>
   )
