@@ -383,6 +383,10 @@ function shouldRetryGeminiError(error: GeminiApiError) {
     return false
   }
 
+  if (error.status === 503) {
+    return false
+  }
+
   if (error.status === 429) {
     return !isDailyQuotaError(error) && Boolean(getRetryInfo(error).retryDelayMs)
   }
