@@ -9,10 +9,10 @@ import {
 const retryableStatuses = new Set([429, 500, 502, 503, 504])
 
 export function createGeminiDeveloperProvider(): ImageProvider {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_IMAGE_API_KEY ?? process.env.GEMINI_API_KEY
 
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured.')
+    throw new Error('GEMINI_IMAGE_API_KEY or GEMINI_API_KEY is not configured.')
   }
 
   return {
