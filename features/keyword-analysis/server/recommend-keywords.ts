@@ -7,7 +7,9 @@ const keywordBlogReferenceCount = 30
 
 export async function recommendKeywords(keyword: string) {
   const naverSearchContext = await getNaverBlogContext(keyword)
-  const generatedText = await generateGeminiText(createKeywordPrompt(keyword, naverSearchContext))
+  const generatedText = await generateGeminiText(createKeywordPrompt(keyword, naverSearchContext), {
+    responseMimeType: 'application/json',
+  })
 
   return normalizeKeywordPayload(keyword, parseJsonPayload(generatedText))
 }

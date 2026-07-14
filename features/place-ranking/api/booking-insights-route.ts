@@ -355,6 +355,7 @@ async function createRepeatDemandPredictions({
       }), {
         task: 'realtime-diagnosis',
         modelCandidates: geminiInsightModels,
+        responseMimeType: 'application/json',
       }),
       bookingRepeatDemandConfig.geminiTimeoutMs,
     )

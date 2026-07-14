@@ -287,7 +287,7 @@ async function processAiPlaceHarnessWorkerBatch({
           normalized,
           profile,
         }),
-        { task: 'benchmark-calibration' },
+        { task: 'benchmark-calibration', responseMimeType: 'application/json' },
       )
       const payload = parseJsonPayload<{
         semanticScores?: Record<string, number>
@@ -811,6 +811,7 @@ async function createBenchmarkLlmSummary({
   try {
     const text = await generateGeminiText(createBenchmarkPrompt({ keyword, statistics, baseSignals }), {
       task: 'benchmark-calibration',
+      responseMimeType: 'application/json',
     })
 
     return parseJsonPayload<BenchmarkLlmSummary>(text)

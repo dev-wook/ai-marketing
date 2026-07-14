@@ -108,6 +108,7 @@ type GeminiTextOptions = {
   useGoogleSearch?: boolean
   task?: GeminiTask
   modelCandidates?: string[]
+  responseMimeType?: 'application/json'
 }
 
 type GeminiModelQuota = {
@@ -153,6 +154,7 @@ export async function generateGeminiText(
       overrideModels: options.modelCandidates,
     }),
     prompt,
+    responseMimeType: options.responseMimeType,
     useGoogleSearch: options.useGoogleSearch ?? false,
   })
 }
@@ -161,11 +163,13 @@ async function requestGeminiTextWithFallback({
   apiKey,
   models,
   prompt,
+  responseMimeType,
   useGoogleSearch,
 }: {
   apiKey: string
   models: string[]
   prompt: string
+  responseMimeType?: GeminiTextOptions['responseMimeType']
   useGoogleSearch: boolean
 }) {
   let lastError: unknown
@@ -176,6 +180,7 @@ async function requestGeminiTextWithFallback({
         apiKey,
         model,
         prompt,
+        responseMimeType,
         useGoogleSearch,
       })
     } catch (error) {
@@ -211,11 +216,13 @@ async function requestGeminiText({
   apiKey,
   model,
   prompt,
+  responseMimeType,
   useGoogleSearch,
 }: {
   apiKey: string
   model: string
   prompt: string
+  responseMimeType?: GeminiTextOptions['responseMimeType']
   useGoogleSearch: boolean
 }) {
   let lastError: GeminiApiError | null = null
@@ -226,6 +233,7 @@ async function requestGeminiText({
         apiKey,
         model,
         prompt,
+        responseMimeType,
         useGoogleSearch,
       })
     } catch (error) {
@@ -259,11 +267,13 @@ async function requestGeminiTextOnce({
   apiKey,
   model,
   prompt,
+  responseMimeType,
   useGoogleSearch,
 }: {
   apiKey: string
   model: string
   prompt: string
+  responseMimeType?: GeminiTextOptions['responseMimeType']
   useGoogleSearch: boolean
 }) {
   rememberGeminiRequestOrThrow(model)
@@ -283,6 +293,7 @@ async function requestGeminiTextOnce({
           },
         ],
         tools: useGoogleSearch ? [{ google_search: {} }] : undefined,
+        generationConfig: responseMimeType ? { responseMimeType } : undefined,
       }),
     },
   )

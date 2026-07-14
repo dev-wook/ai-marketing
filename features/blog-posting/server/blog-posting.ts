@@ -32,6 +32,7 @@ export async function analyzeBlogPatterns(keyword: string): Promise<BlogPatternA
   const posts = await crawlNaverBlogPosts(searchPayload.items, 10)
   const generatedText = await generateGeminiText(
     createBlogPatternPrompt(safeKeyword, posts, searchPayload.items),
+    { responseMimeType: 'application/json' },
   )
   const payload = parseJsonPayload<BlogPatternPromptPayload>(generatedText)
 
@@ -50,7 +51,9 @@ export async function generateBlogDraft(input: {
 }): Promise<BlogDraftResponse> {
   validateDraftInput(input)
 
-  const generatedText = await generateGeminiText(createBlogDraftPrompt(input))
+  const generatedText = await generateGeminiText(createBlogDraftPrompt(input), {
+    responseMimeType: 'application/json',
+  })
 
   return normalizeDraftPayload(parseJsonPayload<Partial<BlogDraftResponse>>(generatedText))
 }
@@ -72,7 +75,9 @@ export async function reviseBlogDraft(input: {
     throw new Error('수정 요청 내용을 입력해주세요.')
   }
 
-  const generatedText = await generateGeminiText(createBlogRevisionPrompt(input))
+  const generatedText = await generateGeminiText(createBlogRevisionPrompt(input), {
+    responseMimeType: 'application/json',
+  })
 
   return normalizeDraftPayload(parseJsonPayload<Partial<BlogDraftResponse>>(generatedText))
 }
