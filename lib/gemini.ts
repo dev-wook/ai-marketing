@@ -84,7 +84,7 @@ export class GeminiRateLimitError extends Error {
 }
 
 const defaultGeminiTextModel = 'gemini-3.5-flash'
-const defaultRealtimeGeminiModels = ['gemini-3.5-flash', 'gemini-3.1-flash-lite']
+const defaultRealtimeGeminiModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash']
 const defaultBenchmarkGeminiModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash']
 const defaultGeminiFallbackTextModels = ['gemini-3.1-flash-lite']
 const retryableGeminiStatuses = new Set([429, 500, 503])

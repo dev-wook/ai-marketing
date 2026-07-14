@@ -29,8 +29,8 @@ const bookingInsightCacheTtlMs = 1000 * 60 * 5
 const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
 const maxForecastDays = bookingRepeatDemandConfig.maxForecastDays
 const geminiInsightModels = [
-  'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
+  'gemini-3.5-flash',
 ]
 const bookingInsightCache = new Map<
   string,
