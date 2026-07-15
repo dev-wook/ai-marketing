@@ -503,8 +503,9 @@ export function AiImageGenerationTool() {
       </header>
 
       <div className="grid min-w-0 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <aside className="min-w-0 border-b border-white/10 bg-[#0d1624] xl:border-b-0 xl:border-r">
-          <div className="grid gap-7 p-5 md:p-7">
+        <aside className="flex min-w-0 flex-col border-b border-white/10 bg-[#0d1624] xl:max-h-[calc(100vh-2rem)] xl:border-b-0 xl:border-r">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 md:px-7 md:py-7">
+          <div className="grid gap-7">
             {mode === 'partial' ? (
             <ControlSection eyebrow="01" title="기준 모델">
               <div className="grid grid-cols-3 gap-2.5">
@@ -1019,29 +1020,18 @@ export function AiImageGenerationTool() {
 
             <ToolErrorMessage message={errorMessage} log={debugLog} />
           </div>
-
-          <div className="sticky bottom-0 grid grid-cols-[96px_minmax(0,1fr)] gap-2 border-t border-white/10 bg-[#0d1624]/95 p-5 backdrop-blur md:px-7">
-            <button
-              type="button"
-              onClick={resetEditor}
-              disabled={isGenerating}
-              className="min-h-13 rounded-lg border border-white/10 bg-white/[0.04] text-xs font-black text-slate-300 transition hover:border-white/20 disabled:opacity-45"
-            >
-              초기화
-            </button>
-            <button
-              type="button"
-              onClick={generateImage}
-              disabled={!canGenerate}
-              className="min-h-13 rounded-lg bg-white px-5 text-sm font-black text-[#07111d] transition hover:bg-cyan-50 focus:outline-none focus:ring-4 focus:ring-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {isGenerating
-                ? '이미지 생성 중'
-                : mode === 'prompt' && resultImageUrl
-                  ? '현재 결과 수정하기'
-                  : 'AI 이미지 생성'}
-            </button>
           </div>
+
+          <GenerationActionBar
+            canGenerate={canGenerate}
+            isGenerating={isGenerating}
+            mode={mode}
+            resultImageUrl={resultImageUrl}
+            selectedCompositionName={mode === 'partial' ? selectedComposition.name : undefined}
+            selectedModelName={mode === 'partial' ? selectedModel.name : undefined}
+            onGenerate={generateImage}
+            onReset={resetEditor}
+          />
         </aside>
 
         <main className="min-w-0 bg-[#080e18] p-4 md:p-7">
@@ -1141,6 +1131,67 @@ function ImageGenerationSkeleton({
         <span className="absolute left-3 top-3 rounded-full border border-white/10 bg-[#07111d]/70 px-3 py-1.5 text-[10px] font-black text-cyan-100 backdrop-blur">
           AI 생성 중
         </span>
+      </div>
+    </div>
+  )
+}
+
+function GenerationActionBar({
+  canGenerate,
+  isGenerating,
+  mode,
+  onGenerate,
+  onReset,
+  resultImageUrl,
+  selectedCompositionName,
+  selectedModelName,
+}: {
+  canGenerate: boolean
+  isGenerating: boolean
+  mode: AiImageGenerationMode
+  onGenerate: () => void
+  onReset: () => void
+  resultImageUrl: string
+  selectedCompositionName?: string
+  selectedModelName?: string
+}) {
+  const actionLabel = isGenerating
+    ? '이미지 생성 중'
+    : mode === 'prompt' && resultImageUrl
+      ? '현재 결과 수정하기'
+      : 'AI 이미지 생성'
+
+  return (
+    <div className="shrink-0 border-t border-white/10 bg-[#0d1624]/98 p-4 shadow-[0_-18px_40px_rgba(0,0,0,0.22)] backdrop-blur md:px-5">
+      <div className="mb-3 rounded-lg border border-white/8 bg-black/20 px-3 py-2.5">
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-300/65">
+          생성 준비
+        </p>
+        <p className="mt-1 truncate text-xs font-black text-white">
+          {mode === 'partial'
+            ? `${selectedModelName ?? '모델'} · ${selectedCompositionName ?? '구도'}`
+            : resultImageUrl
+              ? '현재 결과 이어서 수정'
+              : '프롬프트로 새 이미지 생성'}
+        </p>
+      </div>
+      <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={isGenerating}
+          className="min-h-12 rounded-lg border border-white/10 bg-white/[0.04] text-xs font-black text-slate-300 transition hover:border-white/20 disabled:opacity-45"
+        >
+          초기화
+        </button>
+        <button
+          type="button"
+          onClick={onGenerate}
+          disabled={!canGenerate}
+          className="min-h-12 rounded-lg bg-white px-5 text-sm font-black text-[#07111d] transition hover:bg-cyan-50 focus:outline-none focus:ring-4 focus:ring-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          {actionLabel}
+        </button>
       </div>
     </div>
   )
