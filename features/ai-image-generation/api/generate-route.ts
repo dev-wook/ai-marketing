@@ -31,7 +31,14 @@ const targets = new Set<AiImageEditTarget>([
   'lips',
   'overall',
 ])
-const aspectRatios = new Set<AiImageAspectRatio>(['1:1', '3:4', '4:5'])
+const aspectRatios = new Set<AiImageAspectRatio>([
+  '1:1',
+  '3:4',
+  '4:5',
+  '4:3',
+  '16:9',
+  '9:16',
+])
 const compositionIds = new Set<AiImageCompositionId>(
   aiImageCompositions.map((composition) => composition.id),
 )

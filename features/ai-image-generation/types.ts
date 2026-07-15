@@ -12,7 +12,7 @@ export type AiImageEditTarget =
   | 'lips'
   | 'overall'
 
-export type AiImageAspectRatio = '1:1' | '3:4' | '4:5'
+export type AiImageAspectRatio = '1:1' | '3:4' | '4:5' | '4:3' | '16:9' | '9:16'
 
 export type AiImageCompositionId =
   | 'front'
@@ -20,7 +20,8 @@ export type AiImageCompositionId =
   | 'right-angle'
   | 'bed-front'
   | 'bed-angle'
-  | 'eyes-closeup'
+  | 'before-after'
+  | 'before-after-vertical'
   | 'single-eye-closeup'
 
 export type AiImageMaskOption = 'none' | 'white' | 'black'

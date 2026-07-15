@@ -54,14 +54,56 @@ const promptSuggestions = [
   '화이트 배경에 투명한 향수병이 놓인 고급 화장품 광고 이미지',
   '창가에서 책을 바라보는 갈색 푸들, 따뜻한 자연광의 사진',
 ]
+const aspectRatioOptions: AiImageAspectRatio[] = [
+  '1:1',
+  '3:4',
+  '4:5',
+  '4:3',
+  '16:9',
+  '9:16',
+]
 
 type SourceImage = {
   file: File
   previewUrl: string
 }
 
+type WatermarkPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'middle-left'
+  | 'middle-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
+  | 'center'
+
+type GalleryItem = {
+  id: string
+  imageDataUrl: string
+  createdAt: number
+  mode: AiImageGenerationMode
+  label: string
+}
+
+const galleryStorageKey = 'aiva.aiImageGeneration.gallery.v1'
+const maxGalleryItems = 10
+const watermarkPositions: Array<{ value: WatermarkPosition; label: string }> = [
+  { value: 'top-left', label: '왼쪽 위' },
+  { value: 'top-center', label: '위 가운데' },
+  { value: 'top-right', label: '오른쪽 위' },
+  { value: 'middle-left', label: '왼쪽 가운데' },
+  { value: 'center', label: '가운데' },
+  { value: 'middle-right', label: '오른쪽 가운데' },
+  { value: 'bottom-left', label: '왼쪽 아래' },
+  { value: 'bottom-center', label: '아래 가운데' },
+  { value: 'bottom-right', label: '오른쪽 아래' },
+]
+
 export function AiImageGenerationTool() {
   const inputRef = useRef<HTMLInputElement>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<AiImageGenerationMode>('partial')
   const [selectedModelId, setSelectedModelId] =
     useState<AiImageDesignModelId>('model-a')
@@ -75,7 +117,14 @@ export function AiImageGenerationTool() {
   const [aspectRatio, setAspectRatio] = useState<AiImageAspectRatio>('1:1')
   const [prompt, setPrompt] = useState('')
   const [sourceImage, setSourceImage] = useState<SourceImage | null>(null)
+  const [logoImage, setLogoImage] = useState<SourceImage | null>(null)
+  const [isWatermarkEnabled, setIsWatermarkEnabled] = useState(false)
+  const [watermarkPosition, setWatermarkPosition] =
+    useState<WatermarkPosition>('bottom-right')
+  const [watermarkSize, setWatermarkSize] = useState(18)
   const [resultImageUrl, setResultImageUrl] = useState('')
+  const [displayImageUrl, setDisplayImageUrl] = useState('')
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [debugLog, setDebugLog] = useState('')
   const [isDragging, setIsDragging] = useState(false)
@@ -101,10 +150,68 @@ export function AiImageGenerationTool() {
     }
   }, [sourceImage])
 
+  useEffect(() => {
+    return () => {
+      if (logoImage) {
+        URL.revokeObjectURL(logoImage.previewUrl)
+      }
+    }
+  }, [logoImage])
+
+  useEffect(() => {
+    setGalleryItems(readGalleryItems())
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function updateDisplayImage() {
+      if (!resultImageUrl) {
+        setDisplayImageUrl('')
+        return
+      }
+
+      if (!isWatermarkEnabled || !logoImage) {
+        setDisplayImageUrl(resultImageUrl)
+        return
+      }
+
+      try {
+        const watermarked = await applyLogoWatermark({
+          imageDataUrl: resultImageUrl,
+          logoUrl: logoImage.previewUrl,
+          position: watermarkPosition,
+          sizePercent: watermarkSize,
+        })
+
+        if (!cancelled) {
+          setDisplayImageUrl(watermarked)
+        }
+      } catch {
+        if (!cancelled) {
+          setDisplayImageUrl(resultImageUrl)
+        }
+      }
+    }
+
+    void updateDisplayImage()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    isWatermarkEnabled,
+    logoImage,
+    resultImageUrl,
+    watermarkPosition,
+    watermarkSize,
+  ])
+
   const clearFeedback = () => {
     setErrorMessage('')
     setDebugLog('')
     setResultImageUrl('')
+    setDisplayImageUrl('')
   }
 
   const clearError = () => {
@@ -180,6 +287,46 @@ export function AiImageGenerationTool() {
     clearFeedback()
   }
 
+  const selectLogoFile = (file?: File) => {
+    clearError()
+
+    if (!file) {
+      return
+    }
+
+    if (!acceptedFileTypes.includes(file.type)) {
+      setErrorMessage('로고는 JPG, PNG, WEBP 이미지만 사용할 수 있습니다.')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('로고 이미지는 5MB 이하로 업로드해주세요.')
+      return
+    }
+
+    setLogoImage((current) => {
+      if (current) {
+        URL.revokeObjectURL(current.previewUrl)
+      }
+
+      return {
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }
+    })
+    setIsWatermarkEnabled(true)
+  }
+
+  const removeLogoImage = () => {
+    setLogoImage((current) => {
+      if (current) {
+        URL.revokeObjectURL(current.previewUrl)
+      }
+      return null
+    })
+    setIsWatermarkEnabled(false)
+  }
+
   const resetEditor = () => {
     setMode('partial')
     setSelectedModelId('model-a')
@@ -191,7 +338,49 @@ export function AiImageGenerationTool() {
     setTarget('eyelashes')
     setAspectRatio('1:1')
     setPrompt('')
+    removeLogoImage()
     removeSourceImage()
+  }
+
+  const saveCurrentImageToGallery = async () => {
+    if (!displayImageUrl) {
+      return
+    }
+
+    try {
+      const storedImage = await compressImageDataUrl(displayImageUrl)
+      const nextItem: GalleryItem = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        imageDataUrl: storedImage,
+        createdAt: Date.now(),
+        mode,
+        label:
+          mode === 'partial'
+            ? `${selectedModel.name} · ${selectedComposition.name}`
+            : '프롬프트 생성',
+      }
+      const nextItems = [nextItem, ...galleryItems].slice(0, maxGalleryItems)
+
+      writeGalleryItems(nextItems)
+      setGalleryItems(nextItems)
+      clearError()
+    } catch {
+      setErrorMessage('갤러리 저장 공간이 부족합니다. 기존 이미지를 삭제한 뒤 다시 시도해주세요.')
+    }
+  }
+
+  const loadGalleryItem = (item: GalleryItem) => {
+    setResultImageUrl(item.imageDataUrl)
+    setDisplayImageUrl(item.imageDataUrl)
+    setIsWatermarkEnabled(false)
+    clearError()
+  }
+
+  const removeGalleryItem = (itemId: string) => {
+    const nextItems = galleryItems.filter((item) => item.id !== itemId)
+
+    writeGalleryItems(nextItems)
+    setGalleryItems(nextItems)
   }
 
   const generateImage = async () => {
@@ -265,6 +454,11 @@ export function AiImageGenerationTool() {
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     void selectFile(event.target.files?.[0])
+    event.target.value = ''
+  }
+
+  const handleLogoInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    selectLogoFile(event.target.files?.[0])
     event.target.value = ''
   }
 
@@ -563,7 +757,7 @@ export function AiImageGenerationTool() {
 
             <ControlSection eyebrow={mode === 'partial' ? '06' : '02'} title="이미지 비율">
               <div className="grid grid-cols-3 gap-2">
-                {(['1:1', '3:4', '4:5'] as AiImageAspectRatio[]).map((ratio) => (
+                {aspectRatioOptions.map((ratio) => (
                   <button
                     key={ratio}
                     type="button"
@@ -591,6 +785,147 @@ export function AiImageGenerationTool() {
 
             <ControlSection
               eyebrow={mode === 'partial' ? '07' : '03'}
+              title="로고 워터마크"
+              help="선택 사항"
+            >
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                onChange={handleLogoInputChange}
+                className="sr-only"
+              />
+              <div className="grid gap-3 rounded-lg border border-white/10 bg-black/15 p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black text-white">결과 이미지에 로고 삽입</p>
+                    <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                      다운로드와 갤러리 저장 이미지에 반영됩니다.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsWatermarkEnabled((current) => !current)}
+                    disabled={!logoImage}
+                    aria-pressed={isWatermarkEnabled}
+                    className={`h-7 w-12 rounded-full border p-0.5 transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      isWatermarkEnabled
+                        ? 'border-cyan-200/60 bg-cyan-300/25'
+                        : 'border-white/10 bg-white/[0.04]'
+                    }`}
+                  >
+                    <span
+                      className={`block h-5 w-5 rounded-full bg-white transition ${
+                        isWatermarkEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {logoImage ? (
+                  <div className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-lg border border-white/8 bg-white/[0.025] p-2.5">
+                    <img
+                      src={logoImage.previewUrl}
+                      alt="로고 미리보기"
+                      className="h-12 w-16 rounded-md bg-black/40 object-contain p-1"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-[11px] font-black text-white">
+                        {logoImage.file.name}
+                      </p>
+                      <div className="mt-1.5 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => logoInputRef.current?.click()}
+                          className="text-[10px] font-black text-cyan-200"
+                        >
+                          변경
+                        </button>
+                        <button
+                          type="button"
+                          onClick={removeLogoImage}
+                          className="text-[10px] font-black text-slate-500"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-white/15 bg-white/[0.025] px-4 text-xs font-black text-slate-300 transition hover:border-cyan-300/35 hover:text-cyan-100"
+                  >
+                    로고 이미지 선택
+                  </button>
+                )}
+
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-slate-500">로고 위치</p>
+                    <p className="text-[10px] font-bold text-slate-600">
+                      {watermarkPositions.find((item) => item.value === watermarkPosition)?.label}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-white/8 bg-black/20 p-1.5">
+                    {watermarkPositions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setWatermarkPosition(option.value)}
+                        aria-label={`로고 위치 ${option.label}`}
+                        aria-pressed={watermarkPosition === option.value}
+                        className={`grid aspect-square place-items-center rounded-md border transition ${
+                          watermarkPosition === option.value
+                            ? 'border-cyan-200/70 bg-cyan-300/15 shadow-[0_0_18px_rgba(34,211,238,0.12)]'
+                            : 'border-white/8 bg-white/[0.025] hover:border-cyan-300/30'
+                        }`}
+                      >
+                        <span
+                          className={`h-2.5 w-2.5 rounded-sm ${
+                            watermarkPosition === option.value
+                              ? 'bg-cyan-100'
+                              : 'bg-slate-600'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 rounded-lg border border-white/8 bg-white/[0.025] p-3">
+                  <div className="grid grid-cols-[minmax(0,1fr)_88px] items-center gap-3">
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-[10px] font-black text-slate-500">로고 크기</p>
+                        <p className="text-[10px] font-black text-cyan-100">{watermarkSize}%</p>
+                      </div>
+                      <input
+                        type="range"
+                        min={8}
+                        max={36}
+                        step={1}
+                        value={watermarkSize}
+                        onChange={(event) => setWatermarkSize(Number(event.target.value))}
+                        className="w-full accent-cyan-300"
+                      />
+                    </div>
+                    <WatermarkSizePreview
+                      logoUrl={logoImage?.previewUrl}
+                      position={watermarkPosition}
+                      sizePercent={watermarkSize}
+                    />
+                  </div>
+                  <p className="break-keep text-[10px] font-semibold leading-4 text-slate-500">
+                    미리보기의 작은 박스가 결과 이미지에서 로고가 차지할 대략적인 크기입니다.
+                  </p>
+                </div>
+              </div>
+            </ControlSection>
+
+            <ControlSection
+              eyebrow={mode === 'partial' ? '08' : '04'}
               title={mode === 'partial' ? '적용할 사진' : '기준 이미지'}
               required={requiresImage}
               help={mode === 'prompt' ? '선택 사항' : undefined}
@@ -723,15 +1058,25 @@ export function AiImageGenerationTool() {
                 <StudioBadge label={targets.find((item) => item.value === target)?.label ?? ''} />
               ) : null}
             </div>
-            {resultImageUrl ? (
-              <button
-                type="button"
-                onClick={() => downloadImage(resultImageUrl)}
-                className="flex min-h-10 w-fit items-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-3.5 text-xs font-black text-cyan-100 transition hover:border-cyan-200/50"
-              >
-                <DownloadIcon />
-                결과 저장
-              </button>
+            {displayImageUrl ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveCurrentImageToGallery()}
+                  className="flex min-h-10 w-fit items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 text-xs font-black text-slate-200 transition hover:border-cyan-300/35 hover:text-cyan-100"
+                >
+                  <GalleryIcon />
+                  갤러리에 저장
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadImage(displayImageUrl)}
+                  className="flex min-h-10 w-fit items-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-3.5 text-xs font-black text-cyan-100 transition hover:border-cyan-200/50"
+                >
+                  <DownloadIcon />
+                  다운로드
+                </button>
+              </div>
             ) : null}
           </div>
 
@@ -743,9 +1088,15 @@ export function AiImageGenerationTool() {
           ) : (
             <StudioCanvas
               aspectRatio={aspectRatio}
-              resultUrl={resultImageUrl}
+              resultUrl={displayImageUrl}
             />
           )}
+
+          <GalleryPanel
+            items={galleryItems}
+            onLoad={loadGalleryItem}
+            onRemove={removeGalleryItem}
+          />
         </main>
       </div>
     </section>
@@ -762,13 +1113,7 @@ function ImageGenerationSkeleton({
   return (
     <div className="relative grid min-h-[520px] place-items-center overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.08),transparent_45%),linear-gradient(145deg,#101a29,#070c14)] p-4 md:min-h-[720px] md:p-8">
       <div
-        className={`relative grid max-h-[780px] w-full place-items-center overflow-hidden rounded-lg border border-white/10 bg-[#111b29] shadow-[0_28px_80px_rgba(0,0,0,0.4)] ${
-          aspectRatio === '1:1'
-            ? 'max-w-[700px] aspect-square'
-            : aspectRatio === '3:4'
-              ? 'max-w-[570px] aspect-[3/4]'
-              : 'max-w-[600px] aspect-[4/5]'
-        }`}
+        className={`relative grid max-h-[780px] w-full place-items-center overflow-hidden rounded-lg border border-white/10 bg-[#111b29] shadow-[0_28px_80px_rgba(0,0,0,0.4)] ${getAspectRatioFrameClass(aspectRatio)}`}
       >
         <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-white/[0.035] via-cyan-300/[0.09] to-fuchsia-300/[0.05]" />
         <div className="absolute inset-0 -translate-x-full animate-[aiva-loading_2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
@@ -808,6 +1153,69 @@ function OptionRow({ children, label }: { children: ReactNode; label: string }) 
       <div className="flex flex-wrap gap-1.5">{children}</div>
     </div>
   )
+}
+
+function WatermarkSizePreview({
+  logoUrl,
+  position,
+  sizePercent,
+}: {
+  logoUrl?: string
+  position: WatermarkPosition
+  sizePercent: number
+}) {
+  const previewSize = Math.max(14, Math.round(72 * (sizePercent / 100)))
+
+  return (
+    <div className="relative aspect-square w-[88px] overflow-hidden rounded-lg border border-white/10 bg-[linear-gradient(135deg,#172235,#070d17)]">
+      <div className="absolute inset-2 rounded-md border border-dashed border-white/10 bg-cyan-300/[0.03]" />
+      <div
+        className="absolute grid place-items-center overflow-hidden rounded bg-white/90 p-1 shadow-[0_0_14px_rgba(34,211,238,0.2)]"
+        style={{
+          ...getWatermarkPreviewStyle(position),
+          height: previewSize,
+          width: previewSize,
+        }}
+      >
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="h-full w-full object-contain" />
+        ) : (
+          <span className="text-[7px] font-black text-[#07111d]">LOGO</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function getWatermarkPreviewStyle(position: WatermarkPosition) {
+  const offset = 10
+
+  if (position === 'top-left') {
+    return { left: offset, top: offset }
+  }
+  if (position === 'top-center') {
+    return { left: '50%', top: offset, transform: 'translateX(-50%)' }
+  }
+  if (position === 'top-right') {
+    return { right: offset, top: offset }
+  }
+  if (position === 'middle-left') {
+    return { left: offset, top: '50%', transform: 'translateY(-50%)' }
+  }
+  if (position === 'middle-right') {
+    return { right: offset, top: '50%', transform: 'translateY(-50%)' }
+  }
+  if (position === 'bottom-left') {
+    return { bottom: offset, left: offset }
+  }
+  if (position === 'bottom-center') {
+    return { bottom: offset, left: '50%', transform: 'translateX(-50%)' }
+  }
+  if (position === 'center') {
+    return { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }
+  }
+
+  return { bottom: offset, right: offset }
 }
 
 function OptionChip({
@@ -926,13 +1334,7 @@ function StudioCanvas({
     <div className="relative grid min-h-[520px] place-items-center overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.08),transparent_45%),linear-gradient(145deg,#101a29,#070c14)] p-4 md:min-h-[720px] md:p-8">
       {resultUrl ? (
       <div
-        className={`relative grid max-h-[780px] w-full place-items-center overflow-hidden rounded-lg border border-cyan-300/30 bg-black/35 shadow-[0_28px_80px_rgba(0,0,0,0.45)] ${
-          aspectRatio === '1:1'
-            ? 'max-w-[700px] aspect-square'
-            : aspectRatio === '3:4'
-              ? 'max-w-[570px] aspect-[3/4]'
-              : 'max-w-[600px] aspect-[4/5]'
-        }`}
+        className={`relative grid max-h-[780px] w-full place-items-center overflow-hidden rounded-lg border border-cyan-300/30 bg-black/35 shadow-[0_28px_80px_rgba(0,0,0,0.45)] ${getAspectRatioFrameClass(aspectRatio)}`}
       >
         <img
           src={resultUrl}
@@ -959,6 +1361,81 @@ function StudioCanvas({
   )
 }
 
+function GalleryPanel({
+  items,
+  onLoad,
+  onRemove,
+}: {
+  items: GalleryItem[]
+  onLoad: (item: GalleryItem) => void
+  onRemove: (itemId: string) => void
+}) {
+  return (
+    <section className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] p-4">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-white">로컬 갤러리</p>
+          <p className="mt-1 text-[11px] font-semibold text-slate-500">
+            브라우저에 최대 {maxGalleryItems}개까지 저장됩니다. 새로고침 후에도 유지됩니다.
+          </p>
+        </div>
+        <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] font-black text-slate-400">
+          {items.length}/{maxGalleryItems}
+        </span>
+      </div>
+
+      {items.length > 0 ? (
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {items.map((item) => (
+            <article
+              key={item.id}
+              className="group overflow-hidden rounded-lg border border-white/10 bg-[#07111d]"
+            >
+              <button
+                type="button"
+                onClick={() => onLoad(item)}
+                className="relative block aspect-square w-full overflow-hidden bg-black/30"
+              >
+                <img
+                  src={item.imageDataUrl}
+                  alt="갤러리 이미지"
+                  className="h-full w-full object-cover transition group-hover:scale-[1.03]"
+                />
+                <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[9px] font-black text-white backdrop-blur">
+                  불러오기
+                </span>
+              </button>
+              <div className="grid gap-2 p-2.5">
+                <p className="truncate text-[10px] font-black text-slate-300">
+                  {item.label}
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[9px] font-semibold text-slate-600">
+                    {formatGalleryDate(item.createdAt)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(item.id)}
+                    className="text-[10px] font-black text-slate-500 transition hover:text-rose-200"
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 grid min-h-28 place-items-center rounded-lg border border-dashed border-white/10 bg-black/15 px-4 text-center">
+          <p className="break-keep text-xs font-semibold text-slate-500">
+            마음에 드는 결과가 나오면 상단의 갤러리에 저장 버튼을 눌러 보관하세요.
+          </p>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function StudioBadge({ label }: { label: string }) {
   return (
     <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-black text-slate-300">
@@ -971,11 +1448,49 @@ function RatioIcon({ ratio }: { ratio: AiImageAspectRatio }) {
   return (
     <span
       aria-hidden="true"
-      className={`block border-2 border-current ${
-        ratio === '1:1' ? 'h-3.5 w-3.5' : ratio === '3:4' ? 'h-4 w-3' : 'h-4 w-[13px]'
-      }`}
+      className={`block border-2 border-current ${getRatioIconClass(ratio)}`}
     />
   )
+}
+
+function getAspectRatioFrameClass(ratio: AiImageAspectRatio) {
+  if (ratio === '1:1') {
+    return 'max-w-[700px] aspect-square'
+  }
+  if (ratio === '3:4') {
+    return 'max-w-[570px] aspect-[3/4]'
+  }
+  if (ratio === '4:5') {
+    return 'max-w-[600px] aspect-[4/5]'
+  }
+  if (ratio === '4:3') {
+    return 'max-w-[760px] aspect-[4/3]'
+  }
+  if (ratio === '16:9') {
+    return 'max-w-[860px] aspect-video'
+  }
+
+  return 'max-w-[430px] aspect-[9/16]'
+}
+
+function getRatioIconClass(ratio: AiImageAspectRatio) {
+  if (ratio === '1:1') {
+    return 'h-3.5 w-3.5'
+  }
+  if (ratio === '3:4') {
+    return 'h-4 w-3'
+  }
+  if (ratio === '4:5') {
+    return 'h-4 w-[13px]'
+  }
+  if (ratio === '4:3') {
+    return 'h-3 w-4'
+  }
+  if (ratio === '16:9') {
+    return 'h-2.5 w-5'
+  }
+
+  return 'h-5 w-2.5'
 }
 
 function UploadIcon() {
@@ -1010,11 +1525,215 @@ function DownloadIcon() {
   )
 }
 
+function GalleryIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-4 w-4"
+    >
+      <path d="M5 6.5A1.5 1.5 0 0 1 6.5 5h11A1.5 1.5 0 0 1 19 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 17.5z" />
+      <path d="m8 15 2.2-2.2a1 1 0 0 1 1.4 0L14 15.2l1-1a1 1 0 0 1 1.4 0L19 16.8" />
+      <path d="M9 9.5h.01" />
+    </svg>
+  )
+}
+
 function downloadImage(imageDataUrl: string) {
   const link = document.createElement('a')
   link.href = imageDataUrl
   link.download = `aiva-ai-image-${Date.now()}.png`
   link.click()
+}
+
+async function applyLogoWatermark({
+  imageDataUrl,
+  logoUrl,
+  position,
+  sizePercent,
+}: {
+  imageDataUrl: string
+  logoUrl: string
+  position: WatermarkPosition
+  sizePercent: number
+}) {
+  const [image, logo] = await Promise.all([
+    loadImageFromUrl(imageDataUrl),
+    loadImageFromUrl(logoUrl),
+  ])
+  const canvas = document.createElement('canvas')
+  canvas.width = image.naturalWidth || image.width
+  canvas.height = image.naturalHeight || image.height
+  const context = canvas.getContext('2d')
+
+  if (!context) {
+    throw new Error('Canvas is not available.')
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+  const maxLogoWidth = canvas.width * (sizePercent / 100)
+  const logoScale = maxLogoWidth / (logo.naturalWidth || logo.width)
+  const logoWidth = Math.max(1, Math.round((logo.naturalWidth || logo.width) * logoScale))
+  const logoHeight = Math.max(1, Math.round((logo.naturalHeight || logo.height) * logoScale))
+  const padding = Math.max(12, Math.round(canvas.width * 0.035))
+  const { x, y } = getWatermarkCoordinates({
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+    logoWidth,
+    logoHeight,
+    padding,
+    position,
+  })
+
+  context.globalAlpha = 0.9
+  context.drawImage(logo, x, y, logoWidth, logoHeight)
+  context.globalAlpha = 1
+
+  return canvas.toDataURL('image/png')
+}
+
+function getWatermarkCoordinates({
+  canvasHeight,
+  canvasWidth,
+  logoHeight,
+  logoWidth,
+  padding,
+  position,
+}: {
+  canvasHeight: number
+  canvasWidth: number
+  logoHeight: number
+  logoWidth: number
+  padding: number
+  position: WatermarkPosition
+}) {
+  if (position === 'top-left') {
+    return { x: padding, y: padding }
+  }
+  if (position === 'top-center') {
+    return { x: Math.round((canvasWidth - logoWidth) / 2), y: padding }
+  }
+  if (position === 'top-right') {
+    return { x: canvasWidth - logoWidth - padding, y: padding }
+  }
+  if (position === 'middle-left') {
+    return { x: padding, y: Math.round((canvasHeight - logoHeight) / 2) }
+  }
+  if (position === 'middle-right') {
+    return {
+      x: canvasWidth - logoWidth - padding,
+      y: Math.round((canvasHeight - logoHeight) / 2),
+    }
+  }
+  if (position === 'bottom-left') {
+    return { x: padding, y: canvasHeight - logoHeight - padding }
+  }
+  if (position === 'bottom-center') {
+    return {
+      x: Math.round((canvasWidth - logoWidth) / 2),
+      y: canvasHeight - logoHeight - padding,
+    }
+  }
+  if (position === 'center') {
+    return {
+      x: Math.round((canvasWidth - logoWidth) / 2),
+      y: Math.round((canvasHeight - logoHeight) / 2),
+    }
+  }
+
+  return {
+    x: canvasWidth - logoWidth - padding,
+    y: canvasHeight - logoHeight - padding,
+  }
+}
+
+async function compressImageDataUrl(imageDataUrl: string) {
+  const image = await loadImageFromUrl(imageDataUrl)
+  const maxDimension = 1200
+  const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight))
+  const width = Math.max(1, Math.round(image.naturalWidth * scale))
+  const height = Math.max(1, Math.round(image.naturalHeight * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+
+  if (!context) {
+    throw new Error('Canvas is not available.')
+  }
+
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, width, height)
+  context.drawImage(image, 0, 0, width, height)
+
+  return canvas.toDataURL('image/jpeg', 0.86)
+}
+
+function loadImageFromUrl(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Image decode failed.'))
+    image.src = url
+  })
+}
+
+function readGalleryItems() {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  try {
+    const raw = window.localStorage.getItem(galleryStorageKey)
+    const parsed = raw ? JSON.parse(raw) : []
+
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    return parsed
+      .filter(isGalleryItem)
+      .slice(0, maxGalleryItems)
+  } catch {
+    return []
+  }
+}
+
+function writeGalleryItems(items: GalleryItem[]) {
+  window.localStorage.setItem(
+    galleryStorageKey,
+    JSON.stringify(items.slice(0, maxGalleryItems)),
+  )
+}
+
+function isGalleryItem(value: unknown): value is GalleryItem {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const item = value as Partial<GalleryItem>
+
+  return (
+    typeof item.id === 'string' &&
+    typeof item.imageDataUrl === 'string' &&
+    typeof item.createdAt === 'number' &&
+    (item.mode === 'partial' || item.mode === 'prompt') &&
+    typeof item.label === 'string'
+  )
+}
+
+function formatGalleryDate(value: number) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(value)
 }
 
 async function dataUrlToUploadFile(imageDataUrl: string) {

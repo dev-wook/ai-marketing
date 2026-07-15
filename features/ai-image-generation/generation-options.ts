@@ -63,14 +63,27 @@ export const aiImageCompositions: AiImageComposition[] = [
     allowedBackgrounds: ['treatment-bed'],
   },
   {
-    id: 'eyes-closeup',
-    name: '양쪽 눈 클로즈업',
-    description: '눈과 눈썹 중심의 확대 구도',
-    thumbnailPath: '/ai-image-generation/composition-eyes-closeup-ai-v2.png',
-    prompt: 'tight symmetrical macro crop showing both eyes and eyebrows, no lower face visible',
+    id: 'before-after',
+    name: '시술 전 후',
+    description: '위아래로 전후 변화를 비교',
+    thumbnailPath: '/ai-image-generation/composition-before-after-ai-v3.png',
+    prompt:
+      'before-and-after comparison layout with a horizontal split: top half shows the original untreated eye area, bottom half shows the same eye area after treatment with clean lifted eyelashes; keep the same person, same frontal close-up crop, aligned eyes and brows, no text labels',
     supportsMask: false,
     supportsEyeState: true,
-    supportsHandPose: true,
+    supportsHandPose: false,
+    allowedBackgrounds: ['bright-studio', 'beauty-salon', 'treatment-bed'],
+  },
+  {
+    id: 'before-after-vertical',
+    name: '시술 전 후 v2',
+    description: '좌우로 전후 변화를 비교',
+    thumbnailPath: '/ai-image-generation/composition-before-after-vertical-ai-v2.png',
+    prompt:
+      'before-and-after comparison layout with two separate side-by-side close-up eye panels: left panel shows the same eye area before treatment, right panel shows the same eye area after treatment with clean lifted eyelashes; do not split one face down the middle; keep the same person, same single-eye close-up crop, aligned eye and brow position, no text labels',
+    supportsMask: false,
+    supportsEyeState: true,
+    supportsHandPose: false,
     allowedBackgrounds: ['bright-studio', 'beauty-salon', 'treatment-bed'],
   },
   {
