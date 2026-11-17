@@ -3,7 +3,6 @@
 import { useLayoutEffect } from 'react'
 
 const scrollLockDatasetKey = 'aivaScrollLocked'
-const scrollAllowedSelector = '[data-aiva-scroll-lock-allow="true"]'
 const touchMoveIntentThreshold = 7
 
 function isElementScrollable(element: HTMLElement) {
@@ -80,7 +79,7 @@ export function useBodyScrollLock(active: boolean) {
     document.documentElement.style.height = '100%'
     document.body.dataset[scrollLockDatasetKey] = 'true'
 
-    const findAllowedScrollElement = (target: EventTarget | null) => {
+    const findScrollableElement = (target: EventTarget | null, deltaY: number) => {
       if (!(target instanceof Element)) {
         return null
       }
@@ -89,13 +88,20 @@ export function useBodyScrollLock(active: boolean) {
 
       while (currentElement && currentElement !== document.body && currentElement !== document.documentElement) {
         if (currentElement instanceof HTMLElement && isElementScrollable(currentElement)) {
-          return currentElement
+          const canScrollUp = deltaY < 0 && currentElement.scrollTop > 0
+          const canScrollDown =
+            deltaY > 0 &&
+            currentElement.scrollTop + currentElement.clientHeight < currentElement.scrollHeight - 1
+
+          if (canScrollUp || canScrollDown) {
+            return currentElement
+          }
         }
 
         currentElement = currentElement.parentElement
       }
 
-      return target.closest(scrollAllowedSelector) as HTMLElement | null
+      return null
     }
 
     const onTouchStart = (event: TouchEvent) => {
@@ -115,53 +121,13 @@ export function useBodyScrollLock(active: boolean) {
         return
       }
 
-      const scrollElement = findAllowedScrollElement(event.target)
-
-      if (!scrollElement) {
-        event.preventDefault()
-        return
-      }
-
-      const canScroll = scrollElement.scrollHeight > scrollElement.clientHeight
-      const isAtTop = scrollElement.scrollTop <= 0
-      const isAtBottom =
-        scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 1
-
-      if (!canScroll) {
-        event.preventDefault()
-        return
-      }
-
-      if (isAtTop && deltaY > 0) {
-        scrollElement.scrollTop = 0
-        event.preventDefault()
-        return
-      }
-
-      if (isAtBottom && deltaY < 0) {
-        scrollElement.scrollTop = scrollElement.scrollHeight
+      if (!findScrollableElement(event.target, -deltaY)) {
         event.preventDefault()
       }
     }
 
     const onWheel = (event: WheelEvent) => {
-      const scrollElement = findAllowedScrollElement(event.target)
-
-      if (!scrollElement) {
-        event.preventDefault()
-        return
-      }
-
-      const canScroll = scrollElement.scrollHeight > scrollElement.clientHeight
-      const isAtTop = scrollElement.scrollTop <= 0
-      const isAtBottom =
-        scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 1
-
-      if (
-        !canScroll ||
-        (isAtTop && event.deltaY < 0) ||
-        (isAtBottom && event.deltaY > 0)
-      ) {
+      if (!findScrollableElement(event.target, event.deltaY)) {
         event.preventDefault()
       }
     }
